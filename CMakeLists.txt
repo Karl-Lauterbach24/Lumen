@@ -1,0 +1,173 @@
+cmake_minimum_required(VERSION 3.21)
+project(Lumen VERSION 0.1.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui OpenGL Qml Quick QuickControls2)
+qt_standard_project_setup(REQUIRES 6.5)
+
+# ---------------------------------------------------------------------------
+# libmpv  (Pflicht)
+#   -DMPV_ROOT=<pfad>   SDK-Ordner mit include/mpv/client.h und libmpv.dll.a / mpv.lib
+#   sonst pkg-config "mpv"
+# ---------------------------------------------------------------------------
+set(MPV_ROOT "" CACHE PATH "Pfad zu einem libmpv-SDK (include/ + lib)")
+find_package(PkgConfig QUIET)
+
+if(MPV_ROOT)
+    find_path(MPV_INCLUDE_DIR mpv/client.h PATHS "${MPV_ROOT}" PATH_SUFFIXES include NO_DEFAULT_PATH REQUIRED)
+    find_library(MPV_LIBRARY NAMES mpv libmpv mpv-2 PATHS "${MPV_ROOT}" PATH_SUFFIXES lib . NO_DEFAULT_PATH REQUIRED)
+    add_library(lumen_mpv UNKNOWN IMPORTED)
+    set_target_properties(lumen_mpv PROPERTIES
+        IMPORTED_LOCATION "${MPV_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${MPV_INCLUDE_DIR}")
+    file(GLOB MPV_RUNTIME_DLLS "${MPV_ROOT}/*mpv*.dll" "${MPV_ROOT}/bin/*mpv*.dll")
+elseif(PKG_CONFIG_FOUND)
+    pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
+    add_library(lumen_mpv INTERFACE)
+    target_link_libraries(lumen_mpv INTERFACE PkgConfig::MPV)
+else()
+    message(FATAL_ERROR "libmpv nicht gefunden: -DMPV_ROOT=<sdk> setzen oder pkg-config installieren")
+endif()
+
+# ---------------------------------------------------------------------------
+# libbluray  (optional) – nur zum Auslesen von Disc-/Titel-Infos.
+# Die Entschlüsselung erfolgt NICHT durch Lumen, sondern extern (Laufwerk mit
+# LibreDrive + eine vom Nutzer bereitgestellte AACS-Bibliothek).
+# ---------------------------------------------------------------------------
+option(LUMEN_WITH_LIBBLURAY "Disc-Infos via libbluray anzeigen" ON)
+set(BLURAY_ROOT "" CACHE PATH "Pfad zu einem libbluray-SDK (optional)")
+if(LUMEN_WITH_LIBBLURAY)
+    if(BLURAY_ROOT)
+        find_path(BLURAY_INCLUDE_DIR libbluray/bluray.h PATHS "${BLURAY_ROOT}" PATH_SUFFIXES include NO_DEFAULT_PATH)
+        find_library(BLURAY_LIBRARY NAMES bluray libbluray PATHS "${BLURAY_ROOT}" PATH_SUFFIXES lib NO_DEFAULT_PATH)
+        if(BLURAY_INCLUDE_DIR AND BLURAY_LIBRARY)
+            add_library(lumen_bluray UNKNOWN IMPORTED)
+            set_target_properties(lumen_bluray PROPERTIES
+                IMPORTED_LOCATION "${BLURAY_LIBRARY}"
+                INTERFACE_INCLUDE_DIRECTORIES "${BLURAY_INCLUDE_DIR}")
+            set(LUMEN_HAVE_BLURAY ON)
+        endif()
+    elseif(PKG_CONFIG_FOUND)
+        pkg_check_modules(BLURAY QUIET IMPORTED_TARGET libbluray>=1.0)
+        if(BLURAY_FOUND)
+            add_library(lumen_bluray INTERFACE)
+            target_link_libraries(lumen_bluray INTERFACE PkgConfig::BLURAY)
+            set(LUMEN_HAVE_BLURAY ON)
+        endif()
+    endif()
+endif()
+message(STATUS "Lumen: libbluray Disc-Infos: ${LUMEN_HAVE_BLURAY}")
+
+qt_add_executable(lumen WIN32 MACOSX_BUNDLE
+    src/main.cpp
+    src/MpvController.h     src/MpvController.cpp
+    src/DriveManager.h      src/DriveManager.cpp
+    src/DisplayManager.h    src/DisplayManager.cpp
+    src/ProfileManager.h    src/ProfileManager.cpp
+    src/DiscScanner.h       src/DiscScanner.cpp
+    src/BlurayNav.h         src/BlurayNav.cpp
+    src/PlayerWindow.h      src/PlayerWindow.cpp
+    src/PathUtil.h
+)
+
+set(LUMEN_QML
+    qml/Main.qml
+    qml/Theme.qml
+    qml/IconButton.qml
+    qml/SeekBar.qml
+    qml/Chip.qml
+    qml/Select.qml
+    qml/SelectList.qml
+    qml/ValueSlider.qml
+    qml/Toggle.qml
+    qml/SectionLabel.qml
+    qml/ProfileEditor.qml
+)
+set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+# Alle QML-Dateien ins Modul-Wurzelverzeichnis legen (gemeinsames qmldir -> Singleton "Theme")
+foreach(f ${LUMEN_QML})
+    get_filename_component(name "${f}" NAME)
+    set_source_files_properties(${f} PROPERTIES QT_RESOURCE_ALIAS ${name})
+endforeach()
+
+qt_add_qml_module(lumen
+    URI Lumen
+    VERSION 1.0
+    QML_FILES ${LUMEN_QML}
+    RESOURCES
+        icons/play.svg icons/pause.svg icons/stop.svg icons/prev.svg icons/next.svg
+        icons/rewind.svg icons/forward.svg icons/volume.svg icons/mute.svg
+        icons/fullscreen.svg icons/eject.svg icons/disc.svg icons/folder.svg
+        icons/tune.svg icons/loop.svg icons/camera.svg icons/info.svg
+        icons/frame-back.svg icons/frame-fwd.svg icons/refresh.svg
+        icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg
+        profiles/presets.json
+)
+
+target_compile_definitions(lumen PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")
+
+target_link_libraries(lumen PRIVATE
+    Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    lumen_mpv)
+
+if(LUMEN_HAVE_BLURAY)
+    target_link_libraries(lumen PRIVATE lumen_bluray)
+    target_compile_definitions(lumen PRIVATE LUMEN_HAVE_BLURAY=1)
+    # Blu-ray 3D: MVC-Ansicht zumischen (Decoder: FFmpeg-mvc zur Laufzeit)
+    target_sources(lumen PRIVATE src/MvcMerger.h src/MvcMerger.cpp)
+endif()
+
+if(WIN32)
+    target_compile_definitions(lumen PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 UNICODE _UNICODE NOMINMAX)
+    target_link_libraries(lumen PRIVATE user32)
+    foreach(dll ${MPV_RUNTIME_DLLS})
+        add_custom_command(TARGET lumen POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "${dll}" "$<TARGET_FILE_DIR:lumen>")
+    endforeach()
+endif()
+
+if(APPLE)
+    set_target_properties(lumen PROPERTIES MACOSX_BUNDLE_BUNDLE_NAME "Lumen")
+    target_link_libraries(lumen PRIVATE "-framework ApplicationServices")
+endif()
+
+# ---------------------------------------------------------------------------
+# Windows-Laufzeit: Qt (windeployqt) + alle DLL-Abhängigkeiten rekursiv.
+# LUMEN_DEPLOY_SEARCH: Suchordner in Reihenfolge – FFmpeg-mvc zuerst, damit
+# dessen avcodec/avformat/... die normalen FFmpeg-DLLs von libmpv ersetzen.
+# ---------------------------------------------------------------------------
+set(FFMPEG_MVC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ffmpeg-mvc" CACHE PATH "FFmpeg-mvc-Installation (Blu-ray 3D)")
+set(LUMEN_DEPLOY_SEARCH "" CACHE STRING "Ordner mit Laufzeit-DLLs (;-getrennt), z. B. <msys2>/ucrt64/bin")
+if(WIN32 AND LUMEN_DEPLOY_SEARCH)
+    find_package(Python3 COMPONENTS Interpreter)
+    find_program(WINDEPLOYQT NAMES windeployqt6 windeployqt HINTS ${LUMEN_DEPLOY_SEARCH})
+    set(_search "")
+    if(EXISTS "${FFMPEG_MVC_ROOT}/bin")
+        list(APPEND _search "${FFMPEG_MVC_ROOT}/bin")
+    endif()
+    list(APPEND _search ${LUMEN_DEPLOY_SEARCH})
+    if(WINDEPLOYQT)
+        add_custom_command(TARGET lumen POST_BUILD
+            COMMAND "${WINDEPLOYQT}" --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" --no-translations
+                    --no-compiler-runtime "$<TARGET_FILE:lumen>"
+            COMMENT "windeployqt")
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_custom_command(TARGET lumen POST_BUILD
+            COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/tools/deploy_windows.py"
+                    "$<TARGET_FILE:lumen>" --search ${_search}
+            COMMENT "Laufzeit-DLLs (FFmpeg-mvc, libmpv, libbluray, …)")
+    endif()
+endif()
+
+# Test: MVC-Zusammenführung gegen eine (synthetische) 3D-Disc, siehe README
+option(LUMEN_BUILD_TESTS "Test-Programme bauen" OFF)
+if(LUMEN_BUILD_TESTS AND LUMEN_HAVE_BLURAY)
+    add_executable(mvcmerge_test tests/mvcmerge_test.cpp src/MvcMerger.cpp src/MvcMerger.h)
+    target_link_libraries(mvcmerge_test PRIVATE Qt6::Core lumen_bluray)
+endif()
+
+include(GNUInstallDirs)
+install(TARGETS lumen BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

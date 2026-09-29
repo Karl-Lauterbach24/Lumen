@@ -1,0 +1,4 @@
+build/
+build-*/
+3rdparty/
+*.user
