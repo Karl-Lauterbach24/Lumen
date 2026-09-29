@@ -82,8 +82,13 @@ if(PKG_CONFIG_FOUND)
         pkg_check_modules(CDIO QUIET IMPORTED_TARGET libcdio libiso9660)
         set(LUMEN_HAVE_CDIO ${CDIO_FOUND})
     endif()
+    # KDM-Signaturprüfung (XML-DSig): Kanonisierung (C14N) über libxml2
+    if(LUMEN_HAVE_OPENSSL)
+        pkg_check_modules(LIBXML2 QUIET IMPORTED_TARGET libxml-2.0)
+        set(LUMEN_HAVE_LIBXML2 ${LIBXML2_FOUND})
+    endif()
 endif()
-message(STATUS "Lumen: OpenSSL (DCP-Entschlüsselung): ${LUMEN_HAVE_OPENSSL} · libdvdnav: ${LUMEN_HAVE_DVDNAV} · libcdio: ${LUMEN_HAVE_CDIO}")
+message(STATUS "Lumen: OpenSSL (DCP-Entschlüsselung): ${LUMEN_HAVE_OPENSSL} · libdvdnav: ${LUMEN_HAVE_DVDNAV} · libcdio: ${LUMEN_HAVE_CDIO} · libxml2 (KDM-Signatur): ${LUMEN_HAVE_LIBXML2}")
 
 # DCP-Kern (ohne GUI, auch für das Testprogramm)
 set(LUMEN_DCP_SOURCES
@@ -91,6 +96,7 @@ set(LUMEN_DCP_SOURCES
     src/DcpCrypto.h         src/DcpCrypto.cpp
     src/DcpStream.h         src/DcpStream.cpp
     src/DcpSubtitles.h      src/DcpSubtitles.cpp
+    src/DcpSignature.h      src/DcpSignature.cpp
 )
 
 qt_add_executable(lumen WIN32 MACOSX_BUNDLE
@@ -163,6 +169,10 @@ function(lumen_optional_libs target)
         target_link_libraries(${target} PRIVATE PkgConfig::CDIO)
         target_compile_definitions(${target} PRIVATE LUMEN_HAVE_CDIO=1)
     endif()
+    if(LUMEN_HAVE_LIBXML2)
+        target_link_libraries(${target} PRIVATE PkgConfig::LIBXML2)
+        target_compile_definitions(${target} PRIVATE LUMEN_HAVE_LIBXML2=1)
+    endif()
 endfunction()
 lumen_optional_libs(lumen)
 
@@ -226,8 +236,13 @@ endif()
 if(LUMEN_BUILD_TESTS)
     add_executable(dcp_test tests/dcp_test.cpp ${LUMEN_DCP_SOURCES})
     target_include_directories(dcp_test PRIVATE src)
-    target_link_libraries(dcp_test PRIVATE Qt6::Core Qt6::Xml lumen_mpv)
+    target_link_libraries(dcp_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
     lumen_optional_libs(dcp_test)
+    # Test: DVD-Menüs mit echter mpv-Ausgabe (Test-DVD: tools/make_test_dvd.py)
+    add_executable(dvd_test tests/dvd_test.cpp src/DvdNav.cpp src/DvdNav.h)
+    target_include_directories(dvd_test PRIVATE src)
+    target_link_libraries(dvd_test PRIVATE Qt6::Core Qt6::Gui lumen_mpv)
+    lumen_optional_libs(dvd_test)
 endif()
 
 include(GNUInstallDirs)

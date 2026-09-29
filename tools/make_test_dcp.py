@@ -21,6 +21,7 @@ import struct
 import subprocess
 import sys
 import uuid
+import zlib
 
 TRIPLET = bytes.fromhex("060e2b34020401070d010301027e0100")
 PARTITION_PREFIX = bytes.fromhex("060e2b34020501010d01020101")  # + Typ (02 Kopf, 03 Body, 04 Fuß)
@@ -61,6 +62,33 @@ def aes_cbc(openssl, key, iv, data):
 
 
 def encrypt_mxf(src, dst, key, openssl, track_file_id):
+    def triplet(k, value, seq):
+        iv = os.urandom(16)
+        pad = 16 - (len(value) % 16)
+        enc = aes_cbc(openssl, key, iv, CHECK + value + bytes([pad]) * pad)
+        esv = iv + enc
+        body = (ber(16) + CONTEXT + ber(8) + (0).to_bytes(8, "big") + ber(16) + k + ber(8) + len(value).to_bytes(8, "big")
+                + ber(len(esv)) + esv + ber(16) + track_file_id + ber(8) + seq.to_bytes(8, "big"))
+        return TRIPLET + ber(len(body)) + body
+    rewrite_mxf(src, dst, triplet)
+
+
+def stereo_mxf(left, right, dst):
+    """3D-Spurdatei (SMPTE 429-10): je Edit Unit linkes und rechtes JPEG-2000-Element."""
+    rdata = open(right, "rb").read()
+    rvalues = [rdata[p + h:p + h + n] for p, k, h, n in read_klvs(rdata) if is_essence(k)]
+
+    def pair(k, value, seq):
+        lk = k[:13] + bytes([2]) + k[14:15] + bytes([1])
+        rk = k[:13] + bytes([2]) + k[14:15] + bytes([2])
+        rv = rvalues[seq - 1]
+        return lk + ber(len(value)) + value + rk + ber(len(rv)) + rv
+    rewrite_mxf(left, dst, pair)
+
+
+def rewrite_mxf(src, dst, essence_fn):
+    """Essenz-KLVs ersetzen (essence_fn(key, value, nr) -> Bytes) und Partitionen,
+    Index-Tabellen und RIP auf die neuen Offsets anpassen."""
     data = open(src, "rb").read()
     klvs = read_klvs(data)
     out = bytearray()
@@ -71,13 +99,7 @@ def encrypt_mxf(src, dst, key, openssl, track_file_id):
         value = data[pos + hdr:pos + hdr + length]
         if is_essence(k):
             seq += 1
-            iv = os.urandom(16)
-            pad = 16 - (len(value) % 16)
-            enc = aes_cbc(openssl, key, iv, CHECK + value + bytes([pad]) * pad)
-            esv = iv + enc
-            body = (ber(16) + CONTEXT + ber(8) + (0).to_bytes(8, "big") + ber(16) + k + ber(8) + len(value).to_bytes(8, "big")
-                    + ber(len(esv)) + esv + ber(16) + track_file_id + ber(8) + seq.to_bytes(8, "big"))
-            out += TRIPLET + ber(len(body)) + body
+            out += essence_fn(k, value, seq)
         else:
             out += data[pos:pos + hdr + length]
     remap[len(data)] = len(out)
@@ -164,6 +186,19 @@ def encrypt_mxf(src, dst, key, openssl, track_file_id):
     open(dst, "wb").write(out)
 
 
+def write_png(path, w, h, rgba):
+    """Einfarbiges RGBA-PNG mit 4 px transparentem Rand (Bilduntertitel)."""
+    clear = bytes(4)
+    raw = b"".join(b"\x00" + b"".join(bytes(rgba) if 4 <= x < w - 4 and 4 <= y < h - 4 else clear for x in range(w))
+                   for y in range(h))
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
 def sha1_b64(path):
     return base64.b64encode(hashlib.sha1(open(path, "rb").read()).digest()).decode()
 
@@ -174,6 +209,7 @@ def main():
     ap.add_argument("openssl")
     ap.add_argument("out")
     ap.add_argument("--encrypt", metavar="LEAF_PEM")
+    ap.add_argument("--stereo", action="store_true", help="3D-DCP: linkes Auge Testbild, rechtes Auge rot")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     tmp = os.path.join(a.out, "_tmp")
@@ -188,8 +224,16 @@ def main():
                     "sine=f=440:r=48000:d=2", "-c:a", "pcm_s24le", "-mxf_audio_edit_rate", "24",
                     "-f", "mxf_opatom", snd_plain], check=True)
 
-    ids = {n: str(uuid.uuid4()) for n in ("cpl", "pkl", "am", "pic", "snd", "sub", "reel1", "reel2", "kpic", "ksnd")}
+    ids = {n: str(uuid.uuid4()) for n in ("cpl", "pkl", "am", "pic", "snd", "sub", "reel1", "reel2", "kpic", "ksnd", "cc", "img")}
     keys = {"kpic": os.urandom(16), "ksnd": os.urandom(16)}
+    if a.stereo:
+        right_plain = os.path.join(tmp, "pic_r.mxf")
+        subprocess.run([a.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
+                        "color=c=red:size=2048x858:rate=24", "-t", "2", "-c:v", "jpeg2000", "-pix_fmt", "xyz12le",
+                        "-b:v", "6M", "-f", "mxf", right_plain], check=True)
+        stereo_plain = os.path.join(tmp, "pic_3d.mxf")
+        stereo_mxf(pic_plain, right_plain, stereo_plain)
+        pic_plain = stereo_plain
     pic = os.path.join(a.out, "picture.mxf")
     snd = os.path.join(a.out, "sound.mxf")
     if a.encrypt:
@@ -208,20 +252,37 @@ def main():
 <Text VAlign="bottom" VPosition="12">Erste Zeile</Text><Text VAlign="bottom" VPosition="6"><Font Italic="yes">kursiv</Font> &amp; normal</Text>
 </Subtitle>
 <Subtitle SpotNumber="2" TimeIn="00:00:00:210" TimeOut="00:00:00:240"><Text VAlign="top" VPosition="8" HAlign="left" HPosition="5">Oben links</Text></Subtitle>
+<Subtitle SpotNumber="3" TimeIn="00:00:00:100" TimeOut="00:00:00:240" FadeUpTime="0" FadeDownTime="0"><Image VAlign="top" VPosition="10" HAlign="center">subimage.png</Image></Subtitle>
+</Font></DCSubtitle>
+""")
+    subimg = os.path.join(a.out, "subimage.png")
+    write_png(subimg, 600, 80, (255, 210, 0, 255))
+    cc = os.path.join(a.out, "captions.xml")
+    open(cc, "w", encoding="utf-8").write(f"""<?xml version="1.0" encoding="UTF-8"?>
+<DCSubtitle Version="1.0"><SubtitleID>{ids['cc']}</SubtitleID><MovieTitle>Lumen Test</MovieTitle><ReelNumber>1</ReelNumber>
+<Language>German</Language><Font Id="" Color="FFFFFFFF" Size="36">
+<Subtitle SpotNumber="1" TimeIn="00:00:00:075" TimeOut="00:00:00:240"><Text VAlign="bottom" VPosition="20">[Musik]</Text></Subtitle>
 </Font></DCSubtitle>
 """)
 
     def key_id(name):
         return f"<KeyId>urn:uuid:{ids[name]}</KeyId>" if a.encrypt else ""
 
+    def picture_tag(entry):
+        body = (f"<Id>urn:uuid:{ids['pic']}</Id><EditRate>24 1</EditRate><IntrinsicDuration>48</IntrinsicDuration><EntryPoint>{entry}</EntryPoint>"
+                f"<Duration>24</Duration>{key_id('kpic')}<FrameRate>{'48' if a.stereo else '24'} 1</FrameRate><ScreenAspectRatio>2048 858</ScreenAspectRatio>")
+        if a.stereo:
+            return f'<msp-cpl:MainStereoscopicPicture xmlns:msp-cpl="http://www.smpte-ra.org/schemas/429-10/2008/Main-Stereo-Picture-CPL">{body}</msp-cpl:MainStereoscopicPicture>'
+        return f"<MainPicture>{body}</MainPicture>"
+
     def reel(n, entry):
         return f"""<Reel><Id>urn:uuid:{ids['reel' + str(n)]}</Id><AssetList>
 <MainMarkers><Id>urn:uuid:{uuid.uuid4()}</Id><EditRate>24 1</EditRate><IntrinsicDuration>24</IntrinsicDuration><MarkerList>
 {'<Marker><Label>FFOC</Label><Offset>0</Offset></Marker>' if n == 1 else '<Marker><Label>FFEC</Label><Offset>12</Offset></Marker><Marker><Label>LFOC</Label><Offset>23</Offset></Marker>'}
 </MarkerList></MainMarkers>
-<MainPicture><Id>urn:uuid:{ids['pic']}</Id><EditRate>24 1</EditRate><IntrinsicDuration>48</IntrinsicDuration><EntryPoint>{entry}</EntryPoint><Duration>24</Duration>{key_id('kpic')}<FrameRate>24 1</FrameRate><ScreenAspectRatio>2048 858</ScreenAspectRatio></MainPicture>
+{picture_tag(entry)}
 <MainSound><Id>urn:uuid:{ids['snd']}</Id><EditRate>24 1</EditRate><IntrinsicDuration>48</IntrinsicDuration><EntryPoint>{entry}</EntryPoint><Duration>24</Duration>{key_id('ksnd')}</MainSound>
-{'<MainSubtitle><Id>urn:uuid:' + ids['sub'] + '</Id><EditRate>24 1</EditRate><IntrinsicDuration>24</IntrinsicDuration><EntryPoint>0</EntryPoint><Duration>24</Duration><Language>de</Language></MainSubtitle>' if n == 1 else ''}
+{'<MainSubtitle><Id>urn:uuid:' + ids['sub'] + '</Id><EditRate>24 1</EditRate><IntrinsicDuration>24</IntrinsicDuration><EntryPoint>0</EntryPoint><Duration>24</Duration><Language>de</Language></MainSubtitle><cc-cpl:MainClosedCaption xmlns:cc-cpl="http://www.digicine.com/PROTO-ASDCP-CC-CPL-20070926#"><Id>urn:uuid:' + ids['cc'] + '</Id><EditRate>24 1</EditRate><IntrinsicDuration>24</IntrinsicDuration><EntryPoint>0</EntryPoint><Duration>24</Duration><Language>de</Language></cc-cpl:MainClosedCaption>' if n == 1 else ''}
 </AssetList></Reel>"""
 
     cpl = os.path.join(a.out, f"cpl_{ids['cpl']}.xml")
@@ -233,7 +294,7 @@ def main():
 <RatingList/><ReelList>{reel(1, 0)}{reel(2, 24)}</ReelList></CompositionPlaylist>
 """)
     files = [(ids["cpl"], cpl, "text/xml"), (ids["pic"], pic, "application/mxf"), (ids["snd"], snd, "application/mxf"),
-             (ids["sub"], sub, "text/xml")]
+             (ids["sub"], sub, "text/xml"), (ids["cc"], cc, "text/xml"), (ids["img"], subimg, "image/png")]
     pkl = os.path.join(a.out, f"pkl_{ids['pkl']}.xml")
     assets = "".join(f"<Asset><Id>urn:uuid:{i}</Id><Hash>{sha1_b64(p)}</Hash><Size>{os.path.getsize(p)}</Size><Type>{t}</Type>"
                      f"<OriginalFileName>{os.path.basename(p)}</OriginalFileName></Asset>" for i, p, t in files)

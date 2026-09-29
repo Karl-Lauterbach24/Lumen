@@ -292,6 +292,7 @@ ScrollView {
                         Layout.fillWidth: true
                         text: modelData.error ? modelData.error
                               : modelData.keys + " Schlüssel · bis " + Qt.formatDateTime(modelData.notAfter, "dd.MM.yyyy HH:mm")
+                                + " · " + modelData.signatureText
                                 + (modelData.cplLoaded ? "" : " · CPL nicht geladen")
                         color: modelData.error ? Theme.bad : Theme.textDim
                         font.pixelSize: 11

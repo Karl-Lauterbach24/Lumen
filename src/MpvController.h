@@ -12,6 +12,7 @@ struct mpv_event;
 class BlurayNav;
 class DisplayManager;
 class DvdNav;
+class QImage;
 class PlayerWindow;
 
 // Steuert eine libmpv-Instanz. Das Player-Fenster ist entweder mpv's eigenes
@@ -110,6 +111,10 @@ public:
 
     // Zusätzliche mpv-Protokolle (DCP, VCD …), je mpv-Instanz angemeldet
     void addProtocol(std::function<void(mpv_handle *)> attach);
+    // Eigene Bild-Overlays (z. B. DCP-Bilduntertitel); img = ARGB32_Premultiplied
+    void setOverlay(int id, const QImage &img, int x, int y, int w, int h);
+    void removeOverlay(int id);
+    QVariantMap osdDimensions() const { return m_osdDims; }
     void setDvdNav(DvdNav *dvd);
 
     // Transport
@@ -196,6 +201,7 @@ public:
     static bool isDisc3D(const QString &device);
 
 signals:
+    void osdDimensionsChanged();
     void droppedFramesChanged();
     void queueChanged();
     // DCP-Paket öffnen (DcpManager), cpl < 0 = erste/Spielfilm-CPL
@@ -259,6 +265,9 @@ private:
     DvdNav *m_dvd = nullptr;
     std::vector<std::function<void(mpv_handle *)>> m_protocols;
     QString m_sourceKind;
+    QVariantMap m_osdDims;
+    QString m_snapshotFile;        // Entwickler-Hilfe LUMEN_PLAYER_SNAPSHOT=<datei>@<sekunden>
+    double m_snapshotAt = -1;
     QString m_lastUrl;             // für Neustarts der mpv-Instanz
     QVariantMap m_lastOptions;
     QString m_dvdMode = QStringLiteral("menu");

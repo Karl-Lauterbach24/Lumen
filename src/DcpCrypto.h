@@ -71,6 +71,11 @@ struct Kdm
     bool smpte = true;
     QList<ContentKey> keys;
     QStringList keyIds;  // öffentlich gelistete Schlüssel-IDs
+    bool signed_ = false;      // XML-Signatur vorhanden
+    bool signatureValid = false;
+    bool chainValid = false;
+    QString signer;
+    QString signatureError;
     QString error;
 };
 

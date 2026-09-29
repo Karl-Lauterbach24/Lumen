@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLocale>
+#include <QPainter>
 #include <QPointer>
 #include <QRegularExpression>
 #include <QSet>
@@ -62,28 +63,35 @@ DcpManager::DcpManager(MpvController *player, DisplayManager *displays, QObject 
     m_decodeMode = s.value(QStringLiteral("dcp/decode"), QStringLiteral("auto")).toString();
     m_identity = DcpCrypto::loadIdentity(configDir());
     loadStoredKdms();
+    m_imageClock.setInterval(40);
+    connect(&m_imageClock, &QTimer::timeout, this, &DcpManager::updateImageSubtitle);
 
     if (m_player) {
         m_player->addProtocol([](mpv_handle *mpv) { Dcp::attachProtocol(mpv); });
-        connect(m_player, &MpvController::mediaChanged, this, [this] {
-            const bool on = m_player->sourceKind() == QLatin1String("dcp") && !m_player->idle();
+        // Aktiv = eine DCP-Komposition läuft. Beim Laden ist mpv kurz "idle",
+        // daher erst aus, wenn eine andere Quelle geladen wird.
+        auto sync = [this] {
+            if (m_player->sourceKind() != QLatin1String("dcp") && m_playing >= 0) {
+                m_playing = -1;
+                m_current.clear();
+                m_imageSubs.clear();
+                m_imageClock.stop();
+                m_player->removeOverlay(58);
+            }
+            const bool on = m_playing >= 0 && !m_player->idle();
             if (on != m_active) {
                 m_active = on;
-                if (!on) {
-                    m_current.clear();
-                    m_playing = -1;
-                }
                 emit activeChanged();
+                emit packageChanged();
             }
-        });
-        connect(m_player, &MpvController::idleChanged, this, [this] {
-            if (m_player->idle() && m_active) {
-                m_active = false;
-                m_playing = -1;
-                emit activeChanged();
-            }
-        });
+        };
+        connect(m_player, &MpvController::mediaChanged, this, sync);
+        connect(m_player, &MpvController::idleChanged, this, sync);
         connect(m_player, &MpvController::droppedFramesChanged, this, &DcpManager::onDroppedFrames);
+        connect(m_player, &MpvController::osdDimensionsChanged, this, [this] {
+            m_imageAlpha = -1; // neu platzieren
+            updateImageSubtitle();
+        });
     }
 }
 
@@ -265,6 +273,13 @@ QVariantList DcpManager::kdms() const
             {"notAfter", k.notAfter},
             {"valid", k.error.isEmpty() && (!k.notBefore.isValid() || now >= k.notBefore) && (!k.notAfter.isValid() || now <= k.notAfter)},
             {"forUs", !m_identity.serial.isEmpty() && k.recipientSerial == m_identity.serial},
+            {"signed", k.signed_},
+            {"signatureValid", k.signatureValid},
+            {"chainValid", k.chainValid},
+            {"signer", k.signer},
+            {"signatureText", !k.signed_ ? QStringLiteral("unsigniert")
+                              : k.signatureValid ? (k.chainValid ? QStringLiteral("Signatur geprüft") : QStringLiteral("Signatur gültig, Kette unvollständig"))
+                                                 : QStringLiteral("Signatur ungültig")},
             {"error", k.error},
         });
     }
@@ -535,7 +550,7 @@ bool DcpManager::play(int index, double start)
 
     // --- EDL: Bild (1 oder 2 Augen) und Ton über alle Rollen ---------------
     QStringList pic[2], snd;
-    QList<Dcp::SubtitleSource> subs;
+    QList<Dcp::SubtitleSource> subs, captions;
     QString ffmeta = QStringLiteral(";FFMETADATA1\n");
     struct Chapter { double t; QString title; };
     QList<Chapter> chapters;
@@ -579,6 +594,10 @@ bool DcpManager::play(int index, double start)
         if (const Dcp::ReelAsset *st = reel.find(Dcp::Kind::Subtitle)) {
             if (!st->file.isEmpty())
                 subs.append({st->file, keyFor(*st), t, st->startSeconds(), len, st->language});
+        }
+        if (const Dcp::ReelAsset *cc = reel.find(Dcp::Kind::ClosedCaption)) {
+            if (!cc->file.isEmpty())
+                captions.append({cc->file, keyFor(*cc), t, cc->startSeconds(), len, cc->language});
         }
         t += len;
     }
@@ -654,19 +673,46 @@ bool DcpManager::play(int index, double start)
     if (start > 0)
         opts["start"] = QString::number(start, 'f', 3);
 
+    // Untertitel (offene Einblendung, per Voreinstellung an) und Closed Captions
+    // (als zweite, wählbare Spur); Bilduntertitel laufen als Overlay
     QString subInfo;
+    QStringList subFiles;
+    m_imageSubs.clear();
+    m_imageShown = -1;
+    m_player->removeOverlay(58);
     if (!subs.isEmpty()) {
-        const Dcp::SubtitleResult sr = Dcp::buildSubtitles(subs, dir, QStringLiteral("subtitles"));
+        const Dcp::SubtitleResult sr = Dcp::buildSubtitles(subs, dir, QStringLiteral("Untertitel ") + subs.first().language);
         if (!sr.assFile.isEmpty()) {
-            opts["sub-files"] = QStringList{sr.assFile};
+            subFiles << sr.assFile;
             opts["sub-fonts-dir"] = sr.fontsDir;
             opts["sid"] = "1";
-            opts["sub-ass-override"] = "no"; // Positionen/Stile der DCP-Untertitel beibehalten
             subInfo = QStringLiteral(" · Untertitel %1").arg(sr.language);
-        } else if (!sr.error.isEmpty()) {
+        } else if (!sr.error.isEmpty() && sr.imageEvents.isEmpty()) {
             subInfo = QStringLiteral(" · ") + sr.error;
         }
+        m_imageSubs = sr.imageEvents;
+        if (!m_imageSubs.isEmpty())
+            subInfo += QStringLiteral(" · %1 Bilduntertitel").arg(m_imageSubs.size());
     }
+    if (!captions.isEmpty()) {
+        const Dcp::SubtitleResult cr = Dcp::buildSubtitles(captions, dir, QStringLiteral("Closed Captions ") + captions.first().language);
+        if (!cr.assFile.isEmpty()) {
+            subFiles << cr.assFile;
+            if (!opts.contains("sub-fonts-dir"))
+                opts["sub-fonts-dir"] = cr.fontsDir;
+            subInfo += QStringLiteral(" · Closed Captions");
+        }
+    }
+    if (!subFiles.isEmpty()) {
+        opts["sub-files"] = subFiles;
+        opts["sub-ass-override"] = "no"; // Positionen/Stile der DCP-Untertitel beibehalten
+    }
+    m_pictureSize = QSize(width, height);
+    m_imageAlpha = -1;
+    if (m_imageSubs.isEmpty())
+        m_imageClock.stop();
+    else
+        m_imageClock.start();
 
     m_playing = index;
     m_current = cpl.toVariant();
@@ -687,6 +733,76 @@ bool DcpManager::play(int index, double start)
         parts << (want3d ? QStringLiteral("3D") : QStringLiteral("3D-DCP als 2D"));
     setStatus(parts.join(QStringLiteral(" · ")) + subInfo);
     return true;
+}
+
+// Bilduntertitel zeitgenau einblenden (mit Ein-/Ausblendung), relativ zur Bildfläche
+void DcpManager::updateImageSubtitle()
+{
+    if (!m_player)
+        return;
+    if (!m_active || m_imageSubs.isEmpty()) {
+        if (m_imageShown >= 0) {
+            m_player->removeOverlay(58);
+            m_imageShown = -1;
+        }
+        return; // Uhr läuft weiter: "aktiv" kann beim Laden kurz wechseln
+    }
+    const double t = m_player->position();
+    int found = -1;
+    for (int i = 0; i < m_imageSubs.size(); ++i)
+        if (t >= m_imageSubs[i].start && t < m_imageSubs[i].end) {
+            found = i;
+            break;
+        }
+    if (found < 0) {
+        if (m_imageShown >= 0)
+            m_player->removeOverlay(58);
+        m_imageShown = -1;
+        return;
+    }
+    const Dcp::ImageSub &s = m_imageSubs[found];
+    double a = 1.0;
+    if (s.fadeIn > 0 && t < s.start + s.fadeIn)
+        a = (t - s.start) / s.fadeIn;
+    if (s.fadeOut > 0 && t > s.end - s.fadeOut)
+        a = std::min(a, (s.end - t) / s.fadeOut);
+    const int alpha = int(std::clamp(a, 0.0, 1.0) * 255);
+    if (found == m_imageShown && std::abs(alpha - m_imageAlpha) < 8)
+        return;
+    if (found != m_imageShown)
+        m_imageCache = QImage::fromData(s.png).convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    m_imageShown = found;
+    m_imageAlpha = alpha;
+    if (m_imageCache.isNull())
+        return;
+    QImage img = m_imageCache;
+    if (alpha < 255) {
+        img = QImage(m_imageCache.size(), QImage::Format_ARGB32_Premultiplied);
+        img.fill(Qt::transparent);
+        QPainter p(&img);
+        p.setOpacity(alpha / 255.0);
+        p.drawImage(0, 0, m_imageCache);
+    }
+    const QVariantMap o = m_player->osdDimensions();
+    const double ow = o.value("w").toDouble(), oh = o.value("h").toDouble();
+    const double ml = o.value("ml").toDouble(), mt = o.value("mt").toDouble();
+    const double vw = ow - ml - o.value("mr").toDouble(), vh = oh - mt - o.value("mb").toDouble();
+    if (vw <= 0 || vh <= 0)
+        return;
+    // PNG-Pixel beziehen sich auf die Bildgröße des DCP
+    const double scale = vw / std::max(1, m_pictureSize.width());
+    const double dw = img.width() * scale, dh = img.height() * scale;
+    double x = ml + vw * (0.5 + s.hpos) - dw / 2;
+    if (s.halign == QLatin1String("left"))
+        x = ml + vw * s.hpos;
+    else if (s.halign == QLatin1String("right"))
+        x = ml + vw * (1.0 - s.hpos) - dw;
+    double y = mt + vh * (1.0 - s.vpos) - dh;
+    if (s.valign == QLatin1String("top"))
+        y = mt + vh * s.vpos;
+    else if (s.valign == QLatin1String("center"))
+        y = mt + vh * (0.5 + s.vpos) - dh / 2;
+    m_player->setOverlay(58, img, qRound(x), qRound(y), qRound(dw), qRound(dh));
 }
 
 // Automatik: Schafft die CPU volle Auflösung nicht in Echtzeit, auf die nächste

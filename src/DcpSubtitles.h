@@ -20,12 +20,22 @@ struct SubtitleSource
     QString language;
 };
 
+// Bilduntertitel (PNG): Lumen blendet sie als Overlay ein
+struct ImageSub
+{
+    double start = 0, end = 0, fadeIn = 0, fadeOut = 0;
+    QByteArray png;
+    QString valign, halign;   // bottom/top/center, left/center/right
+    double vpos = 0, hpos = 0; // Anteil der Bildhöhe/-breite (0..1)
+};
+
 struct SubtitleResult
 {
     QString assFile;
     QString fontsDir;
     int events = 0;
-    int images = 0;           // Bilduntertitel (PNG) – nicht unterstützt
+    int images = 0;           // Bilduntertitel (PNG)
+    QList<ImageSub> imageEvents;
     QString language;
     QString error;
 };

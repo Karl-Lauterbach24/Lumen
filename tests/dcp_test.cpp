@@ -9,6 +9,7 @@
 //                                             mit libmpv (vo=null) abspielen
 #include "DcpCrypto.h"
 #include "DcpPackage.h"
+#include "DcpSignature.h"
 #include "DcpStream.h"
 #include "DcpSubtitles.h"
 
@@ -18,6 +19,7 @@
 #include <QFileInfo>
 #include <QFile>
 #include <QHash>
+#include <QImage>
 #include <QTemporaryDir>
 #include <QThread>
 
@@ -95,6 +97,30 @@ int main(int argc, char **argv)
         return k.keys.isEmpty() ? 1 : 0;
     }
 
+    // signkdm <kdm.xml> <signer.key> <kette.pem> <out.xml>
+    if (cmd == QLatin1String("signkdm") && a.size() >= 5) {
+        auto read = [](const QString &f) { QFile x(f); return x.open(QIODevice::ReadOnly) ? x.readAll() : QByteArray(); };
+        QByteArray out;
+        QString err;
+        if (!DcpSignature::sign(read(a[1]), {QStringLiteral("ID_AuthenticatedPublic"), QStringLiteral("ID_AuthenticatedPrivate")},
+                                read(a[2]), read(a[3]), &out, &err)) {
+            print(err);
+            return 1;
+        }
+        QFile f(a[4]);
+        f.open(QIODevice::WriteOnly);
+        f.write(out);
+        print(QStringLiteral("signiert"));
+        return 0;
+    }
+    if (cmd == QLatin1String("verifykdm") && a.size() >= 2) {
+        QFile f(a[1]);
+        f.open(QIODevice::ReadOnly);
+        const DcpSignature::Result r = DcpSignature::verify(f.readAll());
+        print(QStringLiteral("present=%1 valid=%2 chain=%3 signer=%4 error=%5").arg(r.present).arg(r.valid).arg(r.chainValid).arg(r.signer, r.error));
+        return r.valid && r.chainValid ? 0 : 1;
+    }
+
     if (cmd == QLatin1String("decrypt") && a.size() >= 4) {
         Dcp::StreamSpec spec{a[1], QByteArray::fromHex(a[2].toLatin1()), a.size() > 4 ? a[4].toInt() : 0};
         const QByteArray data = Dcp::readAllTransformed(spec);
@@ -104,6 +130,59 @@ int main(int argc, char **argv)
         out.write(data);
         print(QStringLiteral("%1 Bytes, Prüfwertfehler=%2").arg(data.size()).arg(Dcp::g_keyErrors.load()));
         return Dcp::g_keyErrors ? 1 : 0;
+    }
+
+    // play3d <dcp> <kdm> <leaf.key> <bild.png>: beide Augen dekodieren, nebeneinander,
+    // und prüfen, dass links und rechts verschiedene Bilder stehen (rechts: rot)
+    if (cmd == QLatin1String("play3d") && a.size() >= 5) {
+        const Dcp::Package pkg = Dcp::scan(a[1]);
+        if (pkg.cpls.isEmpty())
+            return 1;
+        const DcpCrypto::Kdm k = DcpCrypto::decryptKdm(a[2], a[3]);
+        QHash<QString, QByteArray> keys;
+        for (const auto &key : k.keys)
+            keys.insert(key.keyId, key.key);
+        QString eyes[2];
+        for (const Dcp::Reel &r : pkg.cpls[0].reels) {
+            const Dcp::ReelAsset *p = r.find(Dcp::Kind::StereoPicture);
+            if (!p)
+                return 1;
+            for (int eye = 0; eye < 2; ++eye)
+                eyes[eye] += QStringLiteral("%1,%2,%3;").arg(edlFile(Dcp::streamUrl(Dcp::registerStream({p->file, keys.value(p->keyId), eye + 1}))))
+                                 .arg(p->startSeconds(), 0, 'f', 6).arg(r.seconds(), 0, 'f', 6);
+        }
+        const QByteArray url = (QStringLiteral("edl://!new_stream;") + eyes[0] + QStringLiteral("!new_stream;") + eyes[1]).toUtf8();
+        mpv_handle *mpv = mpv_create();
+        const QByteArray outDir = QFileInfo(a[4]).absolutePath().toUtf8();
+        for (auto [key, val] : std::initializer_list<std::pair<const char *, const char *>>{
+                 {"vo", "image"}, {"ao", "null"}, {"frames", "3"}, {"vo-image-format", "png"}, {"terminal", "no"},
+                 {"load-unsafe-playlists", "yes"}, {"lavfi-complex", "[vid1][vid2]hstack[vo]"}, {"hwdec", "no"}})
+            mpv_set_option_string(mpv, key, val);
+        mpv_set_option_string(mpv, "vo-image-outdir", outDir.constData());
+        if (mpv_initialize(mpv) < 0)
+            return 1;
+        Dcp::attachProtocol(mpv);
+        const char *load[] = {"loadfile", url.constData(), nullptr};
+        mpv_command(mpv, load);
+        for (;;) {
+            mpv_event *ev = mpv_wait_event(mpv, 30);
+            if (ev->event_id == MPV_EVENT_END_FILE || ev->event_id == MPV_EVENT_NONE)
+                break;
+        }
+        mpv_terminate_destroy(mpv);
+        const QImage img(QFileInfo(a[4]).absolutePath() + QStringLiteral("/00000002.png"));
+        if (img.isNull()) {
+            print(QStringLiteral("kein Bild"));
+            return 1;
+        }
+        const QColor left = img.pixelColor(img.width() / 4, img.height() / 2);
+        const QColor right = img.pixelColor(img.width() * 3 / 4, img.height() / 2);
+        print(QStringLiteral("SBS %1x%2 links=%3 rechts=%4 keyErrors=%5").arg(img.width()).arg(img.height())
+                  .arg(left.name(), right.name()).arg(Dcp::g_keyErrors.load()));
+        img.save(a[4]);
+        const bool ok = img.width() == 4096 && right.red() > 200 && right.green() < 60 && right.blue() < 60
+                        && !(left.red() > 200 && left.green() < 60 && left.blue() < 60) && Dcp::g_keyErrors == 0;
+        return ok ? 0 : 1;
     }
 
     if ((cmd == QLatin1String("play") || cmd == QLatin1String("subs")) && a.size() >= 2) {

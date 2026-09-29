@@ -176,7 +176,11 @@ struct Parser
     QHash<QString, QString> fonts; // LoadFont-ID -> Familienname
     SubtitleSource src;
     QList<Event> *events = nullptr;
+    QList<ImageSub> *imageEvents = nullptr;
     int images = 0;
+    QDir baseDir;                       // Interop: PNG-Dateien neben dem XML
+    QList<QByteArray> pngs;             // SMPTE: eingebettete PNGs (Reihenfolge der Ressourcen)
+    QHash<QString, int> pngIndex;       // SMPTE: Bild-UUID -> Ressource
 
     double time(const QString &s) const
     {
@@ -244,6 +248,7 @@ struct Parser
             const QString name = local(e);
             if (name == QLatin1String("Image")) {
                 ++images;
+                image(e, in, out, fadeIn, fadeOut);
             } else if (name == QLatin1String("Text")) {
                 text(e, style, in, out, fadeIn, fadeOut);
             } else if (name == QLatin1String("Font")) {
@@ -252,6 +257,37 @@ struct Parser
                 texts(e, inner, in, out, fadeIn, fadeOut);
             }
         }
+    }
+
+    void image(const QDomElement &e, double in, double out, double fadeIn, double fadeOut)
+    {
+        QString ref = e.text().trimmed();
+        QByteArray data;
+        if (smpte || ref.startsWith(QLatin1String("urn:uuid:"))) {
+            // SMPTE: Verweis auf eine Ancillary Resource im MXF – Zuordnung in der
+            // Reihenfolge des ersten Auftretens
+            ref = ref.toLower();
+            if (!pngIndex.contains(ref))
+                pngIndex.insert(ref, int(pngIndex.size()));
+            data = pngs.value(pngIndex.value(ref));
+        } else {
+            QFile f(baseDir.filePath(ref));
+            if (f.open(QIODevice::ReadOnly))
+                data = f.readAll();
+        }
+        if (data.isEmpty() || !imageEvents)
+            return;
+        ImageSub img;
+        img.start = in;
+        img.end = out;
+        img.fadeIn = fadeIn;
+        img.fadeOut = fadeOut;
+        img.png = data;
+        img.valign = attr(e, QStringLiteral("VAlign")).toLower();
+        img.halign = attr(e, QStringLiteral("HAlign")).toLower();
+        img.vpos = attr(e, QStringLiteral("VPosition")).toDouble() / 100.0;
+        img.hpos = attr(e, QStringLiteral("HPosition")).toDouble() / 100.0;
+        imageEvents->append(img);
     }
 
     void text(const QDomElement &t, const Style &style, double in, double out, double fadeIn, double fadeOut)
@@ -361,6 +397,11 @@ SubtitleResult buildSubtitles(const QList<SubtitleSource> &sources, const QStrin
         p.smpte = local(root) == QLatin1String("SubtitleReel");
         p.src = src;
         p.events = &events;
+        p.imageEvents = &res.imageEvents;
+        p.baseDir = QFileInfo(src.file).dir();
+        for (const QByteArray &r : std::as_const(resources))
+            if (r.startsWith("PNG"))
+                p.pngs.append(r);
         if (res.language.isEmpty())
             res.language = src.language;
         for (QDomElement e = root.firstChildElement(); !e.isNull(); e = e.nextSiblingElement()) {
@@ -414,8 +455,8 @@ SubtitleResult buildSubtitles(const QList<SubtitleSource> &sources, const QStrin
     }
 
     if (events.isEmpty()) {
-        if (res.error.isEmpty())
-            res.error = res.images ? QStringLiteral("Nur Bilduntertitel (PNG) – nicht unterstützt") : QStringLiteral("Keine Untertitel");
+        if (res.error.isEmpty() && res.imageEvents.isEmpty())
+            res.error = QStringLiteral("Keine Untertitel");
         return res;
     }
     std::stable_sort(events.begin(), events.end(), [](const Event &a, const Event &b) { return a.start < b.start; });

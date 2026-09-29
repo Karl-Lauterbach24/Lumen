@@ -2,9 +2,12 @@
 
 #include "DcpCrypto.h"
 #include "DcpPackage.h"
+#include "DcpSubtitles.h"
 
 #include <QElapsedTimer>
 #include <QHash>
+#include <QImage>
+#include <QTimer>
 #include <QObject>
 #include <QUrl>
 #include <QVariant>
@@ -116,6 +119,7 @@ private:
     QVariantMap keyStatus(const Dcp::Cpl &cpl) const;
     int chooseReduction(const Dcp::Cpl &cpl) const;
     void onDroppedFrames();
+    void updateImageSubtitle();
 
     MpvController *m_player = nullptr;
     DisplayManager *m_displays = nullptr;
@@ -137,6 +141,14 @@ private:
     int m_channels = 0;
     QElapsedTimer m_playClock;
     bool m_adapted = false;
+
+    // Bilduntertitel (PNG) als Overlay
+    QList<Dcp::ImageSub> m_imageSubs;
+    QTimer m_imageClock;
+    int m_imageShown = -1;
+    int m_imageAlpha = -1;
+    QImage m_imageCache;
+    QSize m_pictureSize{2048, 1080};
 
     double m_fader = 7.0;
     QString m_route = QStringLiteral("auto");

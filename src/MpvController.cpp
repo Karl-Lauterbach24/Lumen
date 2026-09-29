@@ -11,6 +11,7 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QImage>
 #include <QScreen>
 #include <QDir>
 #include <QFile>
@@ -177,6 +178,11 @@ MpvController::MpvController(DisplayManager *displays, BlurayNav *nav, QObject *
     , m_displays(displays)
     , m_nav(nav)
 {
+    const QString snap = qEnvironmentVariable("LUMEN_PLAYER_SNAPSHOT");
+    if (snap.contains(QLatin1Char('@'))) {
+        m_snapshotFile = snap.section(QLatin1Char('@'), 0, -2);
+        m_snapshotAt = snap.section(QLatin1Char('@'), -1).toDouble();
+    }
     if (m_nav) {
         connect(m_nav, &BlurayNav::audioPidSelected, this, [this](int pid) { selectTrackByPid(QStringLiteral("audio"), pid); });
         connect(m_nav, &BlurayNav::subtitlePidSelected, this, [this](int pid, bool on) {
@@ -926,6 +932,30 @@ void MpvController::addProtocol(std::function<void(mpv_handle *)> attach)
     m_protocols.push_back(std::move(attach));
 }
 
+void MpvController::setOverlay(int id, const QImage &img, int x, int y, int w, int h)
+{
+    if (!m_mpv || img.isNull())
+        return;
+    const QByteArray sid = QByteArray::number(id);
+    const QByteArray addr = "&" + QByteArray::number(quintptr(img.constBits()));
+    const QByteArray bx = QByteArray::number(x), by = QByteArray::number(y);
+    const QByteArray bw = QByteArray::number(img.width()), bh = QByteArray::number(img.height());
+    const QByteArray stride = QByteArray::number(img.bytesPerLine());
+    const QByteArray dw = QByteArray::number(qMax(1, w)), dh = QByteArray::number(qMax(1, h));
+    const char *args[] = {"overlay-add", sid.constData(), bx.constData(), by.constData(), addr.constData(), "0", "bgra",
+                          bw.constData(), bh.constData(), stride.constData(), dw.constData(), dh.constData(), nullptr};
+    mpv_command(m_mpv, args); // synchron: mpv kopiert die Pixel
+}
+
+void MpvController::removeOverlay(int id)
+{
+    if (!m_mpv)
+        return;
+    const QByteArray sid = QByteArray::number(id);
+    const char *args[] = {"overlay-remove", sid.constData(), nullptr};
+    mpv_command_async(m_mpv, 0, args);
+}
+
 void MpvController::setDvdNav(DvdNav *dvd)
 {
     m_dvd = dvd;
@@ -1326,6 +1356,11 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     case P_PAUSE: m_paused = flag(); emit pausedChanged(); break;
     case P_TIMEPOS: {
         m_position = dbl();
+        if (m_snapshotAt >= 0 && m_position >= m_snapshotAt && !m_idle) {
+            m_snapshotAt = -1;
+            setOptionRaw(QStringLiteral("pause"), true, false);
+            command({"screenshot-to-file", m_snapshotFile, "window"});
+        }
         const int bucket = int(m_position * 4); // max. 4 UI-Updates pro Sekunde
         if (bucket != m_positionBucket) {
             m_positionBucket = bucket;
@@ -1423,6 +1458,8 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         emit fullscreenChanged();
         break;
     case P_OSDDIMS:
+        m_osdDims = node().toMap();
+        emit osdDimensionsChanged();
         if (m_nav)
             m_nav->setOsdDimensions(node().toMap());
         if (m_dvd)

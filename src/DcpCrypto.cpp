@@ -1,4 +1,5 @@
 #include "DcpCrypto.h"
+#include "DcpSignature.h"
 
 #include <QDir>
 #include <QDomDocument>
@@ -349,8 +350,20 @@ Kdm decryptKdm(const QString &file, const QString &privateKeyFile)
     QDomDocument doc;
     {
         QFile f(file);
-        if (!f.open(QIODevice::ReadOnly) || !doc.setContent(f.readAll())) {
+        const QByteArray data = f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        if (data.isEmpty() || !doc.setContent(data)) {
             kdm.error = QStringLiteral("KDM ist kein gültiges XML");
+            return kdm;
+        }
+        // XML-Signatur (Aussteller, Unverändertheit) prüfen
+        const DcpSignature::Result sig = DcpSignature::verify(data);
+        kdm.signed_ = sig.present;
+        kdm.signatureValid = sig.valid;
+        kdm.chainValid = sig.chainValid;
+        kdm.signer = sig.signer;
+        kdm.signatureError = sig.error;
+        if (sig.present && !sig.valid && DcpSignature::available()) {
+            kdm.error = QStringLiteral("KDM-Signatur ungültig (%1) – Schlüssel werden nicht verwendet").arg(sig.error);
             return kdm;
         }
     }
