@@ -8,7 +8,7 @@ import Lumen.Core
 // Steuerfenster. Das Bild läuft im separaten Player-Fenster (mpv, nativ).
 ApplicationWindow {
     id: win
-    width: 1180
+    width: 1240
     height: 720
     minimumWidth: 900
     minimumHeight: 560
@@ -50,17 +50,35 @@ ApplicationWindow {
     readonly property var vinfo: Player.videoInfo
     readonly property var ainfo: Player.audioInfo
 
-    // Im Menümodus liefert libbluray Zeit, Kapitel und Spulen
-    readonly property bool navMode: Nav.active
-    readonly property real curPos: navMode ? Nav.position : Player.position
-    readonly property real curDur: navMode ? Nav.duration : Player.duration
-    readonly property var curChapters: navMode ? Nav.chapters : Player.chapters
-    readonly property int curChapter: navMode ? Nav.chapter : Player.currentChapter
-    function seekAbs(s) { if (navMode) Nav.seek(s); else Player.seek(s, false) }
-    function seekRel(d) { if (navMode) Nav.seekRelative(d); else Player.seek(d, true) }
-    function nextChapter() { if (navMode) Nav.nextChapter(); else Player.nextChapter() }
-    function prevChapter() { if (navMode) Nav.prevChapter(); else Player.prevChapter() }
-    function setChapter(i) { if (navMode) Nav.setChapter(i); else Player.setChapter(i) }
+    // Im Menümodus liefert libbluray bzw. libdvdnav Zeit, Kapitel und Spulen
+    readonly property var nav: DvdNav.active ? DvdNav : Nav
+    readonly property bool isDvd: DvdNav.active
+    readonly property bool navMode: Nav.active || DvdNav.active
+    readonly property real curPos: navMode ? nav.position : Player.position
+    readonly property real curDur: navMode ? nav.duration : Player.duration
+    readonly property var curChapters: navMode ? nav.chapters : Player.chapters
+    readonly property int curChapter: navMode ? nav.chapter : Player.currentChapter
+    function seekAbs(s) { if (navMode) nav.seek(s); else Player.seek(s, false) }
+    function seekRel(d) { if (navMode) nav.seekRelative(d); else Player.seek(d, true) }
+    function nextChapter() { if (navMode) nav.nextChapter(); else Player.nextChapter() }
+    function prevChapter() { if (navMode) nav.prevChapter(); else Player.prevChapter() }
+    function setChapter(i) { if (navMode) nav.setChapter(i); else Player.setChapter(i) }
+
+    function kindLabel(k) {
+        return ({ bluray: "Blu-ray", dvd: "DVD-Video", hddvd: "HD DVD", vcd: "Video-CD", svcd: "Super Video-CD",
+                  cdda: "Audio-CD", dcp: "Digital Cinema Package", file: "Datei" })[k] || "Datei"
+    }
+    function localPath(url) {
+        return decodeURIComponent(url.toString().replace(/^file:\/{2,3}/, Qt.platform.os === "windows" ? "" : "/"))
+    }
+    // Beliebige Quelle öffnen: Disc-Info lesen (außer DCP/Datei) und abspielen
+    function openPath(path, withMenu) {
+        currentDevice = path
+        const kind = Player.detectKind(path)
+        if (kind === "dcp") { Dcp.open(path, true); settings.tab = 5; return }
+        if (kind !== "file") Disc.scan(path); else Disc.clear()
+        Player.openSource(path, withMenu ? "menu" : "main", -1)
+    }
 
     function stereoLabel(v) {
         return ({ none: "2D", fp: "HDMI Frame Packing", sbs2l: "Side-by-Side Half", sbsl: "Side-by-Side Full",
@@ -70,11 +88,8 @@ ApplicationWindow {
 
     function playDrive(drive, withMenu) {
         if (!drive) return
-        currentDevice = drive.path
-        Disc.scan(drive.path)
         const menu = withMenu === undefined ? settings.startWithMenu : withMenu
-        if (menu && Nav.available) Player.openDiscMenu(drive.path)
-        else Player.openDisc(drive.path, "longest")
+        openPath(drive.path, menu)
     }
     function ejectSelected() {
         if (!selectedDrive) return
@@ -87,7 +102,7 @@ ApplicationWindow {
     Connections {
         target: Player
         function onMediaChanged() {
-            if (Player.isDisc && Player.device) win.currentDevice = Player.device
+            if ((Player.isDisc || Player.sourceKind === "dcp") && Player.device) win.currentDevice = Player.device
         }
     }
 
@@ -95,32 +110,21 @@ ApplicationWindow {
         target: Drives
         function onDiscInserted(drive) {
             if (settings.autoPlay && Player.idle) win.playDrive(drive)
-            else Disc.scan(drive.path)
+            else if (drive.kind !== "dcp") Disc.scan(drive.path)
         }
     }
 
     FileDialog {
         id: fileDialog
         title: "Datei oder ISO öffnen"
-        nameFilters: ["Medien (*.iso *.mkv *.m2ts *.mts *.ts *.mp4 *.mov *.webm *.bdmv)", "Alle Dateien (*)"]
-        onAccepted: {
-            const p = selectedFile.toString()
-            if (/\.iso$/i.test(p)) {
-                win.currentDevice = decodeURIComponent(p.replace(/^file:\/{2,3}/, Qt.platform.os === "windows" ? "" : "/"))
-                Disc.scan(win.currentDevice)
-            }
-            Player.openFile(selectedFile)
-        }
+        nameFilters: ["Medien (*.iso *.mkv *.m2ts *.mts *.ts *.mp4 *.mov *.webm *.bdmv *.vob *.ifo *.evo *.mpg *.dat *.cue *.bin *.nrg *.mxf *.xml)",
+                      "Disc-Abbilder (*.iso *.cue *.bin *.nrg)", "Alle Dateien (*)"]
+        onAccepted: win.openPath(win.localPath(selectedFile), settings.startWithMenu)
     }
     FolderDialog {
         id: folderDialog
-        title: "Blu-ray-Ordner (mit BDMV) öffnen"
-        onAccepted: {
-            const path = decodeURIComponent(selectedFolder.toString().replace(/^file:\/{2,3}/, Qt.platform.os === "windows" ? "" : "/"))
-            win.currentDevice = path
-            Disc.scan(path)
-            Player.openDisc(path, "longest")
-        }
+        title: "Disc- oder DCP-Ordner öffnen (BDMV, VIDEO_TS, HVDVD_TS, MPEGAV, ASSETMAP)"
+        onAccepted: win.openPath(win.localPath(selectedFolder), settings.startWithMenu)
     }
 
     ProfileEditor { id: editor }
@@ -130,15 +134,15 @@ ApplicationWindow {
     // ------------------------------------------------------------------
     Shortcut { sequence: "Space"; onActivated: Player.togglePause() }
     // Im Disc-Menü steuern Pfeile/Enter die Menüauswahl
-    Shortcut { sequence: "Left"; onActivated: if (!(Nav.menuVisible && Nav.key("left"))) win.seekRel(-10) }
-    Shortcut { sequence: "Right"; onActivated: if (!(Nav.menuVisible && Nav.key("right"))) win.seekRel(10) }
+    Shortcut { sequence: "Left"; onActivated: if (!(win.nav.menuVisible && win.nav.key("left"))) win.seekRel(-10) }
+    Shortcut { sequence: "Right"; onActivated: if (!(win.nav.menuVisible && win.nav.key("right"))) win.seekRel(10) }
     Shortcut { sequence: "Shift+Left"; onActivated: win.seekRel(-60) }
     Shortcut { sequence: "Shift+Right"; onActivated: win.seekRel(60) }
-    Shortcut { sequence: "Up"; onActivated: if (!(Nav.menuVisible && Nav.key("up"))) Player.setVolume(Math.min(Player.volumeMax, Player.volume + 5)) }
-    Shortcut { sequence: "Down"; onActivated: if (!(Nav.menuVisible && Nav.key("down"))) Player.setVolume(Math.max(0, Player.volume - 5)) }
-    Shortcut { sequence: "Return"; enabled: Nav.menuVisible; onActivated: Nav.key("enter") }
-    Shortcut { sequence: "Home"; enabled: Nav.active; onActivated: Nav.key("menu") }
-    Shortcut { sequence: "End"; enabled: Nav.active; onActivated: Nav.key("popup") }
+    Shortcut { sequence: "Up"; onActivated: if (!(win.nav.menuVisible && win.nav.key("up"))) Player.setVolume(Math.min(Player.volumeMax, Player.volume + 5)) }
+    Shortcut { sequence: "Down"; onActivated: if (!(win.nav.menuVisible && win.nav.key("down"))) Player.setVolume(Math.max(0, Player.volume - 5)) }
+    Shortcut { sequence: "Return"; enabled: win.nav.menuVisible; onActivated: win.nav.key("enter") }
+    Shortcut { sequence: "Home"; enabled: win.navMode; onActivated: win.nav.key("menu") }
+    Shortcut { sequence: "End"; enabled: win.navMode; onActivated: win.nav.key("popup") }
     Shortcut { sequence: "PgUp"; onActivated: win.nextChapter() }
     Shortcut { sequence: "PgDown"; onActivated: win.prevChapter() }
     Shortcut { sequence: "."; onActivated: Player.frameStep() }
@@ -153,6 +157,7 @@ ApplicationWindow {
     Shortcut { sequence: "Backspace"; onActivated: Player.setSpeed(1) }
     Shortcut { sequences: [StandardKey.Open]; onActivated: fileDialog.open() }
     Shortcut { sequence: "Ctrl+E"; onActivated: win.ejectSelected() }
+    Shortcut { sequence: "Ctrl+D"; onActivated: settings.tab = 5 }
 
     // ------------------------------------------------------------------
     // Layout
@@ -187,7 +192,7 @@ ApplicationWindow {
                     textRole: "title"
                     popupWidth: 380
                     placeholder: Drives.scanning ? "Suche Laufwerke …" : "Kein Laufwerk gefunden"
-                    onActivated: if (win.selectedDrive && win.selectedDrive.isBluray) Disc.scan(win.selectedDrive.path)
+                    onActivated: if (win.selectedDrive && win.selectedDrive.kind && win.selectedDrive.kind !== "dcp") Disc.scan(win.selectedDrive.path)
                 }
                 IconButton {
                     iconName: "disc"
@@ -197,20 +202,21 @@ ApplicationWindow {
                 }
                 IconButton {
                     iconName: "menu"
-                    visible: Nav.available
-                    tip: "Mit Disc-Menü starten"
+                    tip: "Mit Disc-Menü starten (Blu-ray, DVD)"
                     enabled: !!win.selectedDrive && !!win.selectedDrive.hasDisc
+                             && (win.selectedDrive.kind === "bluray" ? Nav.available : win.selectedDrive.kind === "dvd")
                     onClicked: win.playDrive(win.selectedDrive, true)
                 }
                 IconButton { iconName: "eject"; tip: "Auswerfen (Strg+E)"; enabled: !!win.selectedDrive; onClicked: win.ejectSelected() }
                 IconButton {
                     iconName: "folder"
-                    tip: "Datei / ISO / BDMV-Ordner öffnen"
+                    tip: "Datei, Abbild, Disc- oder DCP-Ordner öffnen"
                     onClicked: openMenu.popup()
                     Menu {
                         id: openMenu
-                        MenuItem { text: "Datei oder ISO …"; onTriggered: fileDialog.open() }
-                        MenuItem { text: "Blu-ray-Ordner (BDMV) …"; onTriggered: folderDialog.open() }
+                        MenuItem { text: "Datei oder Abbild (ISO, CUE/BIN) …"; onTriggered: fileDialog.open() }
+                        MenuItem { text: "Disc-Ordner (Blu-ray, DVD, HD DVD, VCD) …"; onTriggered: folderDialog.open() }
+                        MenuItem { text: "DCP (Kino) …"; onTriggered: folderDialog.open() }
                         background: Rectangle { implicitWidth: 220; color: Theme.raised; border.color: Theme.line; radius: Theme.radiusSmall }
                     }
                 }
@@ -252,10 +258,12 @@ ApplicationWindow {
                     spacing: 8
                     visible: !Player.idle
 
-                    SectionLabel { text: Player.isDisc ? "Blu-ray" : "Datei" }
+                    SectionLabel { text: win.kindLabel(Player.sourceKind) + (Dcp.active && Dcp.current.contentKind ? " · " + Dcp.current.contentKind : "") }
                     Text {
                         Layout.fillWidth: true
-                        text: (Player.isDisc && Disc.info.discName) ? Disc.info.discName
+                        text: (Dcp.active && Dcp.current.title) ? Dcp.current.title
+                            : (win.isDvd && DvdNav.discTitle) ? DvdNav.discTitle
+                            : (Player.isDisc && Disc.info.discName) ? Disc.info.discName
                             : (Player.isDisc && win.selectedDrive && win.selectedDrive.label) ? win.selectedDrive.label
                             : Player.mediaTitle
                         color: Theme.text
@@ -268,13 +276,15 @@ ApplicationWindow {
                         text: {
                             const parts = []
                             if (win.navMode) {
-                                parts.push(!Nav.menuMode ? "Titel" : Nav.menuVisible ? "Disc-Menü" : "Menümodus")
-                                if (Nav.playlist >= 0) parts.push(("0000" + Nav.playlist).slice(-5) + ".mpls")
+                                parts.push(!win.nav.menuMode ? "Titel" : win.nav.menuVisible ? "Disc-Menü" : "Menümodus")
+                                if (win.nav.playlist >= 0) parts.push(("0000" + win.nav.playlist).slice(-5) + ".mpls")
+                                if (win.isDvd && DvdNav.title > 0) parts.push("Titel " + DvdNav.title + " / " + DvdNav.titles)
                             } else if (Player.isDisc && Player.currentTitle >= 0) {
                                 parts.push("Titel " + (Player.currentTitle + 1))
                             }
                             if (win.curChapters.length) parts.push("Kapitel " + (win.curChapter + 1) + " / " + win.curChapters.length)
-                            if (!Player.isDisc) parts.push(Player.path)
+                            if (Player.sourceKind === "file") parts.push(Player.path)
+                            else if (Dcp.active) parts.push(Dcp.current.standard + " · " + Dcp.current.reels + " Rolle(n)")
                             return parts.join("   ·   ")
                         }
                         color: Theme.textDim
@@ -301,11 +311,16 @@ ApplicationWindow {
                         Chip { text: Player.buffering ? "Puffert …" : ""; tint: Theme.warn }
                         Chip { text: Player.speed !== 1 ? Player.speed.toFixed(2) + "×" : ""; tint: Theme.accent }
                         Chip { text: Player.embedded ? "Eingebettet · SDR" : ""; tint: Theme.textDim }
+                        Chip { text: Dcp.active && Dcp.current.encrypted ? "Entschlüsselt (KDM)" : ""; tint: Theme.good }
+                        Chip { text: Dcp.active && Dcp.reduction > 0 ? "J2K 1/" + Math.pow(2, Dcp.reduction) : ""; tint: Theme.warn }
+                        Chip { text: Dcp.active && Dcp.fader !== 7 ? "Fader " + Dcp.fader.toFixed(1) : ""; tint: Theme.textDim }
+                        Chip { text: Player.droppedFrames > 0 && !Player.idle ? Player.droppedFrames + (Player.droppedFrames === 1 ? " Bild verworfen" : " Bilder verworfen") : ""; tint: Theme.warn }
+                        Chip { text: win.isDvd && DvdNav.angles > 1 ? "Winkel " + DvdNav.angle + "/" + DvdNav.angles : ""; tint: Theme.accent }
                     }
 
                     // Fernbedienung für Disc-Menüs
                     RowLayout {
-                        visible: win.navMode && Nav.menuMode
+                        visible: win.navMode && win.nav.menuMode
                         Layout.topMargin: 10
                         spacing: 18
 
@@ -313,21 +328,21 @@ ApplicationWindow {
                             columns: 3
                             spacing: 4
                             Item { width: 36; height: 36 }
-                            IconButton { iconName: "up"; tip: "Hoch"; onClicked: Nav.key("up") }
+                            IconButton { iconName: "up"; tip: "Hoch"; onClicked: win.nav.key("up") }
                             Item { width: 36; height: 36 }
-                            IconButton { iconName: "left"; tip: "Links"; onClicked: Nav.key("left") }
+                            IconButton { iconName: "left"; tip: "Links"; onClicked: win.nav.key("left") }
                             Button {
                                 width: 36; height: 36
                                 text: "OK"
                                 focusPolicy: Qt.NoFocus
                                 font.pixelSize: 11; font.weight: Font.Bold
-                                onClicked: Nav.key("enter")
+                                onClicked: win.nav.key("enter")
                                 contentItem: Text { text: parent.text; color: Theme.bg; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                                 background: Rectangle { radius: 18; color: parent.down ? "#c9ccd6" : Theme.text }
                             }
-                            IconButton { iconName: "right"; tip: "Rechts"; onClicked: Nav.key("right") }
+                            IconButton { iconName: "right"; tip: "Rechts"; onClicked: win.nav.key("right") }
                             Item { width: 36; height: 36 }
-                            IconButton { iconName: "down"; tip: "Runter"; onClicked: Nav.key("down") }
+                            IconButton { iconName: "down"; tip: "Runter"; onClicked: win.nav.key("down") }
                             Item { width: 36; height: 36 }
                         }
                         ColumnLayout {
@@ -336,17 +351,30 @@ ApplicationWindow {
                                 text: "Hauptmenü"
                                 flat: true
                                 palette.windowText: Theme.text
-                                onClicked: Nav.key("menu")
+                                onClicked: win.nav.key("menu")
                             }
                             Button {
-                                text: "Pop-up-Menü"
+                                text: win.isDvd ? "Titelmenü" : "Pop-up-Menü"
                                 flat: true
-                                enabled: Nav.popupAvailable
+                                enabled: win.nav.popupAvailable
                                 palette.windowText: Theme.text
-                                onClicked: Nav.key("popup")
+                                onClicked: win.nav.key("popup")
+                            }
+                            RowLayout {
+                                visible: win.isDvd
+                                spacing: 2
+                                Button { text: "Ton"; flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("audio") }
+                                Button { text: "Untertitel"; flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("subtitle") }
+                                Button { text: "Zurück"; flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("back") }
+                                Button {
+                                    text: "Winkel " + DvdNav.angle
+                                    visible: DvdNav.angles > 1
+                                    flat: true; palette.windowText: Theme.accent
+                                    onClicked: DvdNav.setAngle(DvdNav.angle % DvdNav.angles + 1)
+                                }
                             }
                             Text {
-                                text: "Pfeile/Enter/Maus funktionieren auch im Player-Fenster · Pos1 = Hauptmenü · Ende = Pop-up"
+                                text: "Pfeile/Enter/Maus funktionieren auch im Player-Fenster · Pos1 = Hauptmenü · Ende = " + (win.isDvd ? "Titelmenü" : "Pop-up")
                                 color: Theme.textFaint
                                 font.pixelSize: 11
                             }
@@ -369,7 +397,8 @@ ApplicationWindow {
                     spacing: 14
                     SectionLabel { text: "Bereit" }
                     Text {
-                        text: Drives.drives.some(d => d.isBluray) ? "Disc erkannt – bereit zur Wiedergabe" : "Disc einlegen oder Datei öffnen"
+                        text: Drives.drives.some(d => d.kind === "dcp") && !Drives.drives.some(d => d.kind && d.kind !== "dcp") ? "DCP gefunden – bereit zur Vorführung"
+                            : Drives.drives.some(d => !!d.kind) ? "Disc erkannt – bereit zur Wiedergabe" : "Disc einlegen oder Datei öffnen"
                         color: Theme.text
                         font.pixelSize: 26
                         font.weight: Font.DemiBold
@@ -391,14 +420,14 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     anchors.margins: 14
                                     spacing: 12
-                                    Image { source: Theme.icon("disc"); sourceSize: Qt.size(28, 28); opacity: 0.8 }
+                                    Image { source: Theme.icon(modelData.kind === "dcp" ? "folder" : "disc"); sourceSize: Qt.size(28, 28); opacity: 0.8 }
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 2
                                         Text { Layout.fillWidth: true; text: modelData.label || modelData.device; color: Theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; elide: Text.ElideRight }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: (modelData.isUhd ? "UHD Blu-ray" : modelData.isBluray ? "Blu-ray" : "Disc") + (modelData.is3d ? " · 3D" : "") + (modelData.hardware ? " · " + modelData.hardware : "")
+                                            text: (modelData.kindLabel || "Disc") + (modelData.is3d ? " · 3D" : "") + (modelData.hardware ? " · " + modelData.hardware : "")
                                             color: Theme.textDim; font.pixelSize: 11; elide: Text.ElideRight
                                         }
                                     }
@@ -413,7 +442,6 @@ ApplicationWindow {
                         implicitWidth: 360
                     }
                     Toggle {
-                        visible: Nav.available
                         label: "Mit Disc-Menü starten"
                         hint: "Aus: Hauptfilm direkt abspielen"
                         checked: settings.startWithMenu
@@ -538,7 +566,7 @@ ApplicationWindow {
 
             // ---------- Rechte Seite: Panels ----------
             Rectangle {
-                Layout.preferredWidth: 400
+                Layout.preferredWidth: 450
                 Layout.fillHeight: true
                 color: Theme.panel
                 Rectangle { width: 1; height: parent.height; color: Theme.line }
@@ -555,7 +583,7 @@ ApplicationWindow {
                         Layout.topMargin: 10
                         spacing: 2
                         Repeater {
-                            model: ["Titel", "Kapitel", "Ton", "Untertitel", "Bild", "Ausgabe"]
+                            model: ["Titel", "Kapitel", "Ton", "Untertitel", "Bild", "Kino", "Ausgabe"]
                             delegate: AbstractButton {
                                 id: tabBtn
                                 required property string modelData
@@ -597,7 +625,7 @@ ApplicationWindow {
 
                             Rectangle {
                                 Layout.fillWidth: true
-                                visible: Disc.available && (Disc.busy || Disc.info.device !== undefined)
+                                visible: Disc.available && (Disc.busy || Disc.info.device !== undefined) && (Disc.info.kind || "bluray") !== "dcp"
                                 implicitHeight: discStatus.implicitHeight + 20
                                 radius: Theme.radiusSmall
                                 color: Theme.raised
@@ -619,7 +647,16 @@ ApplicationWindow {
                                         Layout.fillWidth: true; wrapMode: Text.WordWrap
                                     }
                                     Flow {
-                                        visible: !Disc.busy && !discStatus.i.error
+                                        visible: !Disc.busy && !discStatus.i.error && (discStatus.i.kind || "bluray") !== "bluray"
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        Chip { text: win.kindLabel(discStatus.i.kind || "") }
+                                        Chip { text: discStatus.i.regions ? "Region " + discStatus.i.regions : "" }
+                                        Chip { text: (discStatus.i.titles || []).length + " Titel" }
+                                        Chip { text: discStatus.i.aacs ? "AACS – nicht entschlüsselt" : ""; tint: Theme.bad }
+                                    }
+                                    Flow {
+                                        visible: !Disc.busy && !discStatus.i.error && (discStatus.i.kind || "bluray") === "bluray"
                                         Layout.fillWidth: true
                                         spacing: 6
                                         Chip {
@@ -652,33 +689,46 @@ ApplicationWindow {
                                 Button {
                                     text: "Disc-Menü"
                                     flat: true
-                                    visible: Nav.available && win.currentDevice.length > 0
+                                    visible: win.currentDevice.length > 0 && Player.sourceKind !== "dcp"
+                                             && (Disc.info.kind === "dvd" || (Disc.info.kind === "bluray" && Nav.available))
                                     palette.windowText: Theme.accent
-                                    onClicked: Player.openDiscMenu(win.currentDevice)
+                                    onClicked: Player.openSource(win.currentDevice, "menu", -1)
                                 }
                                 Button {
                                     text: "Hauptfilm"
                                     flat: true
-                                    visible: win.currentDevice.length > 0
+                                    visible: win.currentDevice.length > 0 && Player.sourceKind !== "dcp" && !!Disc.info.kind
+                                             && Disc.info.kind !== "dcp" && Disc.info.kind !== "file"
                                     palette.windowText: Theme.accent
-                                    onClicked: Player.openDisc(win.currentDevice, "longest")
+                                    onClicked: Player.openSource(win.currentDevice, "main", -1)
                                 }
                             }
                             Text {
                                 Layout.fillWidth: true
-                                visible: Nav.status.length > 0
-                                text: Nav.status
+                                visible: win.nav.status.length > 0
+                                text: win.nav.status
                                 wrapMode: Text.WordWrap
-                                color: Nav.active ? Theme.good : Theme.warn
+                                color: win.nav.active ? Theme.good : Theme.warn
                                 font.pixelSize: 12
                             }
                             SelectList {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                emptyText: Nav.available ? "Keine Disc geladen.\nStart mit Disc-Menü oder Titel hier direkt wählen."
+                                emptyText: Player.sourceKind === "dcp" ? "Digital Cinema Package: Kompositionen, Schlüssel und Programm im Tab „Kino“."
+                                         : Nav.available ? "Keine Disc geladen.\nStart mit Disc-Menü oder Titel hier direkt wählen."
                                                          : "Keine Disc geladen.\nOhne libbluray gebaut – Titel werden direkt gewählt."
                                 model: {
                                     const t = Disc.info.titles
+                                    const kind = Disc.info.kind || "bluray"
+                                    if (t && t.length && kind !== "bluray")
+                                        return t.map(x => ({
+                                            label: (x.label || ("Titel " + (x.title || x.index + 1))) + (x.main ? "   ★ Hauptfilm" : ""),
+                                            detail: [x.chapters ? x.chapters + " Kap." : ""].filter(s => s).join("  ·  "),
+                                            trailing: x.duration > 0 ? Theme.time(x.duration) : "",
+                                            selected: win.isDvd ? DvdNav.title === x.title : false,
+                                            titleIndex: x.index,
+                                            dvdTitle: kind === "dvd" ? x.title : -1
+                                        }))
                                     if (Disc.available && t && t.length)
                                         return t.map(x => ({
                                             label: "Titel " + (x.index + 1) + (x.main ? "   ★ Hauptfilm" : ""),
@@ -695,7 +745,9 @@ ApplicationWindow {
                                     }))
                                 }
                                 onPicked: (i, item) => {
-                                    if (item.playlist !== undefined) Player.openPlaylist(win.currentDevice, item.playlist)
+                                    if (item.dvdTitle > 0 && DvdNav.active) DvdNav.playTitle(item.dvdTitle)
+                                    else if (item.titleIndex !== undefined) Player.openSource(win.currentDevice, "title", item.titleIndex)
+                                    else if (item.playlist !== undefined) Player.openPlaylist(win.currentDevice, item.playlist)
                                     else Player.setTitle(item.index)
                                 }
                             }
@@ -757,9 +809,12 @@ ApplicationWindow {
                             SelectList {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                model: [{ label: "Aus", selected: Player.subtitleId === 0, id: 0 }]
-                                       .concat(Player.subtitleTracks.map(t => ({ label: t.label, selected: t.id === Player.subtitleId, id: t.id })))
-                                onPicked: (i, item) => Player.setSubtitleId(item.id)
+                                model: win.isDvd
+                                       ? [{ label: "Aus (nur erzwungene)", selected: DvdNav.subtitleStream < 0, id: -1 }]
+                                         .concat(DvdNav.subtitleStreams.map(t => ({ label: t.label, selected: t.id === DvdNav.subtitleStream, id: t.id })))
+                                       : [{ label: "Aus", selected: Player.subtitleId === 0, id: 0 }]
+                                         .concat(Player.subtitleTracks.map(t => ({ label: t.label, selected: t.id === Player.subtitleId, id: t.id })))
+                                onPicked: (i, item) => win.isDvd ? DvdNav.selectSubtitle(item.id) : Player.setSubtitleId(item.id)
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
@@ -771,7 +826,7 @@ ApplicationWindow {
                             }
                             Toggle {
                                 Layout.fillWidth: true
-                                visible: !Nav.mvcActive
+                                visible: !Nav.mvcActive && !win.isDvd
                                 label: "Nur erzwungene Untertitel"
                                 hint: "Zeigt nur als 'forced' markierte Einblendungen (PGS)"
                                 onToggled: Player.setOption("sub-forced-events-only", checked)
@@ -909,6 +964,9 @@ ApplicationWindow {
                                 }
                             }
                         }
+
+                        // ---- Kino (DCP, KDM, Programm) ----
+                        CinemaPane {}
 
                         // ---- Ausgabe ----
                         ScrollView {

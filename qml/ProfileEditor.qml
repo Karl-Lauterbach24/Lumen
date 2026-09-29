@@ -210,6 +210,8 @@ Popup {
                         options: [
                             { value: "auto", text: "Automatisch" },
                             { value: "bt.1886", text: "BT.1886 / Gamma 2.4 (Beamer, dunkler Raum)" },
+                            { value: "gamma2.6", text: "Gamma 2.6 (Digitalkino, DCI)" },
+                            { value: "gamma2.4", text: "Gamma 2.4 (reine Potenzfunktion)" },
                             { value: "gamma2.2", text: "Gamma 2.2 (heller Raum)" },
                             { value: "srgb", text: "sRGB" },
                             { value: "pq", text: "PQ (HDR10-Ausgabe)" },
@@ -231,7 +233,8 @@ Popup {
                         options: [
                             { value: "fast", text: "Schnell (geringe GPU-Last)" },
                             { value: "balanced", text: "Ausgewogen" },
-                            { value: "high", text: "Hoch (EWA Lanczos, lineares Downscaling)" }
+                            { value: "high", text: "Hoch (EWA Lanczos, lineares Downscaling)" },
+                            { value: "reference", text: "Referenz (Lanczos 4, Error Diffusion, HDR-Kontrast)" }
                         ]
                     }
                 }
@@ -259,6 +262,75 @@ Popup {
                         ]
                     }
                 }
+                // ---------------- Kalibrierung ----------------
+                SectionLabel { text: "Kalibrierung"; Layout.columnSpan: 2 }
+                Toggle { label: "ICC-Profil des Systems"; hint: "Farbprofil des Bildschirms automatisch verwenden"; checked: !!editor.draft.iccAuto; onToggled: editor.set("iccAuto", checked); Layout.fillWidth: true }
+                Field {
+                    title: "Eigenes ICC-Profil (Pfad, optional)"
+                    TextField {
+                        width: parent.width
+                        text: editor.draft.iccProfile || ""
+                        onTextEdited: editor.set("iccProfile", text)
+                        color: Theme.text; placeholderText: "z. B. C:/Kalibrierung/beamer.icc"; placeholderTextColor: Theme.textFaint
+                        background: Rectangle { radius: Theme.radiusSmall; color: Theme.raised; border.color: Theme.line }
+                    }
+                }
+                Field {
+                    title: "3D-LUT der Anzeige (.cube, z. B. aus DisplayCAL/Calman)"
+                    TextField {
+                        width: parent.width
+                        text: editor.draft.targetLut || ""
+                        onTextEdited: editor.set("targetLut", text)
+                        color: Theme.text; placeholderText: "leer = keine"; placeholderTextColor: Theme.textFaint
+                        background: Rectangle { radius: Theme.radiusSmall; color: Theme.raised; border.color: Theme.line }
+                    }
+                }
+                ValueSlider {
+                    Layout.fillWidth: true
+                    label: "Nativer Kontrast des Geräts (0 = automatisch)"
+                    from: 0; to: 20000; stepSize: 100; unit: ":1"
+                    value: editor.draft.targetContrast || 0
+                    onMoved: v => editor.set("targetContrast", v)
+                }
+                Field {
+                    title: "Dithering"
+                    RowLayout {
+                        width: parent.width
+                        EnumSelect {
+                            key: "dither"
+                            Layout.fillWidth: true
+                            options: [
+                                { value: "auto", text: "Automatisch" },
+                                { value: "error-diffusion", text: "Error Diffusion (beste)" },
+                                { value: "ordered", text: "Geordnet" },
+                                { value: "no", text: "Aus" }
+                            ]
+                        }
+                        EnumSelect {
+                            key: "ditherDepth"
+                            Layout.fillWidth: true
+                            options: [
+                                { value: "auto", text: "Tiefe: auto" },
+                                { value: "8", text: "8 Bit" },
+                                { value: "10", text: "10 Bit" },
+                                { value: "12", text: "12 Bit" }
+                            ]
+                        }
+                    }
+                }
+                Field {
+                    Layout.columnSpan: 2
+                    title: "GLSL-Shader (je Zeile ein Pfad, z. B. FSRCNNX, KrigBilateral)"
+                    TextArea {
+                        width: parent.width
+                        height: 54
+                        text: editor.draft.shaders || ""
+                        onTextChanged: if (text !== (editor.draft.shaders || "")) editor.set("shaders", text)
+                        color: Theme.text; font.family: Theme.mono; font.pixelSize: 12
+                        background: Rectangle { radius: Theme.radiusSmall; color: Theme.raised; border.color: Theme.line }
+                    }
+                }
+
                 Toggle { label: "Zwischenbildberechnung"; hint: "Glättet 24p auf 60 Hz – nicht nötig bei 24-Hz-Modus"; checked: !!editor.draft.interpolation; onToggled: editor.set("interpolation", checked); Layout.fillWidth: true }
                 Toggle { label: "Debanding"; hint: "Entfernt Farbabstufungen"; checked: editor.draft.deband !== false; onToggled: editor.set("deband", checked); Layout.fillWidth: true }
                 Field {

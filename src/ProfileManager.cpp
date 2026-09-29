@@ -64,6 +64,14 @@ QVariantMap ProfileManager::defaults() const
         {"videoSync", QStringLiteral("display-resample")},
         {"interpolation", false},
         {"deband", true},
+        // Kalibrierung / Kinoqualität
+        {"iccAuto", false},          // ICC-Profil des Monitors vom System
+        {"iccProfile", QString()},   // eigenes ICC-Profil (Datei)
+        {"targetLut", QString()},    // 3D-LUT (.cube) der Anzeigekalibrierung
+        {"targetContrast", 0},       // 0 = automatisch, sonst z. B. 2000 (Projektor)
+        {"dither", QStringLiteral("auto")}, // auto | error-diffusion | ordered | no
+        {"ditherDepth", QStringLiteral("auto")},
+        {"shaders", QString()},      // GLSL-Shader, je Zeile ein Pfad
         // 3D
         {"stereoOut", QStringLiteral("none")},
         {"subtitleDepth", 0},
@@ -267,6 +275,21 @@ QVariantMap ProfileManager::toMpvOptions(const QVariantMap &p)
         o["linear-downscaling"] = "no";
         o["sigmoid-upscaling"] = "no";
         o["hdr-compute-peak"] = "no";
+    } else if (q == QLatin1String("reference")) {
+        // Referenz: EWA Lanczos 4 (schärfste Rekonstruktion), Error Diffusion,
+        // dynamische HDR-Spitzenmessung mit Kontrastrückgewinnung
+        o["scale"] = "ewa_lanczos4sharpest";
+        o["cscale"] = "ewa_lanczossharp";
+        o["dscale"] = "mitchell";
+        o["correct-downscaling"] = "yes";
+        o["linear-downscaling"] = "yes";
+        o["sigmoid-upscaling"] = "yes";
+        o["hdr-compute-peak"] = "yes";
+        o["hdr-peak-percentile"] = "99.995";
+        o["hdr-contrast-recovery"] = "0.30";
+        o["dither"] = "error-diffusion";
+        o["error-diffusion"] = "sierra-lite";
+        o["deband-iterations"] = "2";
     } else if (q == QLatin1String("high")) {
         o["scale"] = "ewa_lanczossharp";
         o["cscale"] = "ewa_lanczossharp";
@@ -285,7 +308,22 @@ QVariantMap ProfileManager::toMpvOptions(const QVariantMap &p)
         o["hdr-compute-peak"] = "yes";
     }
     o["deband"] = yesNo(p.value("deband", true).toBool());
-    o["dither-depth"] = "auto";
+    o["dither-depth"] = p.value("ditherDepth", "auto").toString();
+    const QString dither = p.value("dither", "auto").toString();
+    if (dither != QLatin1String("auto"))
+        o["dither"] = dither;
+
+    // --- Kalibrierung ------------------------------------------------------
+    o["icc-profile-auto"] = yesNo(p.value("iccAuto").toBool() && p.value("iccProfile").toString().isEmpty());
+    o["icc-profile"] = p.value("iccProfile").toString();
+    o["target-lut"] = p.value("targetLut").toString();
+    const int contrast = p.value("targetContrast").toInt();
+    o["target-contrast"] = contrast > 0 ? QString::number(contrast) : QStringLiteral("auto");
+    QStringList shaders;
+    for (const QString &line : p.value("shaders").toString().split(QLatin1Char('\n'), Qt::SkipEmptyParts))
+        if (!line.trimmed().isEmpty())
+            shaders << line.trimmed();
+    o["glsl-shaders"] = shaders;
 
     // --- HDR ---------------------------------------------------------------
     const QString hdr = p.value("hdr", "auto").toString();

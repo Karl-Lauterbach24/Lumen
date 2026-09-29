@@ -1,4 +1,7 @@
 #include "DiscScanner.h"
+#include "DvdNav.h"
+#include "MpvController.h"
+#include "OpticalMedia.h"
 #include "PathUtil.h"
 
 #include <QCoreApplication>
@@ -69,11 +72,7 @@ DiscScanner::~DiscScanner()
 
 bool DiscScanner::available() const
 {
-#ifdef LUMEN_HAVE_BLURAY
-    return true;
-#else
-    return false;
-#endif
+    return true; // Blu-ray über libbluray, übrige Formate über libdvdnav/libcdio/eigene Parser
 }
 
 void DiscScanner::clear()
@@ -108,6 +107,16 @@ QVariantMap DiscScanner::scanBlocking(const QString &device)
 {
     QVariantMap m;
     m["device"] = device;
+    const QString kind = MpvController::detectKind(device);
+    if (kind == QLatin1String("dvd"))
+        return DvdNav::scan(device);
+    if (kind == QLatin1String("hddvd") || kind == QLatin1String("vcd") || kind == QLatin1String("svcd") || kind == QLatin1String("cdda"))
+        return Optical::scan(device, kind);
+    if (kind == QLatin1String("dcp") || kind == QLatin1String("file")) {
+        m["kind"] = kind;
+        return m;
+    }
+    m["kind"] = QStringLiteral("bluray");
 #ifdef LUMEN_HAVE_BLURAY
     BLURAY *bd = bd_open(blurayPath(device).toUtf8().constData(), nullptr);
     if (!bd) {

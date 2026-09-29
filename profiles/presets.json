@@ -22,7 +22,12 @@
     "toneMapping": "bt.2390",
     "videoSync": "display-resample",
     "stereoOut": "sbs2l",
-    "audioPassthrough": ["ac3", "eac3", "dts-hd", "truehd"],
+    "audioPassthrough": [
+      "ac3",
+      "eac3",
+      "dts-hd",
+      "truehd"
+    ],
     "audioExclusive": true
   },
   {
@@ -41,8 +46,46 @@
     "videoSync": "display-resample",
     "stereoOut": "fp",
     "subtitleDepth": 6,
-    "audioPassthrough": ["ac3", "eac3", "dts-hd", "truehd"],
+    "audioPassthrough": [
+      "ac3",
+      "eac3",
+      "dts-hd",
+      "truehd"
+    ],
     "audioExclusive": true
+  },
+  {
+    "id": "cinema-dci",
+    "name": "Kino-Projektor DCI-P3 (Gamma 2.6)",
+    "description": "Digitalkino-Kalibrierung: DCI-P3-Primärfarben, Gamma 2.6, 48 cd/m² (14 fL). DCPs (XYZ) werden farbtreu umgerechnet, HDR/UHD tone-gemappt. Referenz-Skalierung, Bildrate wird angepasst.",
+    "fullscreen": true,
+    "border": false,
+    "matchRefreshRate": true,
+    "quality": "reference",
+    "hdr": "tonemap",
+    "targetPrim": "dci-p3",
+    "targetTrc": "gamma2.6",
+    "targetPeak": 48,
+    "toneMapping": "bt.2390",
+    "videoSync": "display-resample",
+    "dither": "error-diffusion",
+    "audioChannels": "7.1,5.1,stereo",
+    "audioExclusive": true
+  },
+  {
+    "id": "mastering-p3",
+    "name": "Mastering-Monitor P3-D65 (Referenz)",
+    "description": "Farbkritische Kontrolle auf einem kalibrierten P3-D65-Monitor mit Gamma 2.4 und 100 nits. Kalibrier-LUT (.cube) bzw. ICC-Profil im Profil hinterlegen.",
+    "fullscreen": false,
+    "quality": "reference",
+    "hdr": "tonemap",
+    "targetPrim": "display-p3",
+    "targetTrc": "gamma2.4",
+    "targetPeak": 100,
+    "toneMapping": "bt.2390",
+    "dither": "error-diffusion",
+    "ditherDepth": "10",
+    "deband": false
   },
   {
     "id": "led-4k-hdr",
@@ -55,7 +98,12 @@
     "quality": "high",
     "hdr": "passthrough",
     "targetPeak": 0,
-    "audioPassthrough": ["ac3", "eac3", "dts-hd", "truehd"],
+    "audioPassthrough": [
+      "ac3",
+      "eac3",
+      "dts-hd",
+      "truehd"
+    ],
     "audioExclusive": true
   },
   {
@@ -72,7 +120,12 @@
     "targetTrc": "pq",
     "targetPeak": 250,
     "toneMapping": "bt.2390",
-    "audioPassthrough": ["ac3", "eac3", "dts-hd", "truehd"],
+    "audioPassthrough": [
+      "ac3",
+      "eac3",
+      "dts-hd",
+      "truehd"
+    ],
     "audioExclusive": true
   },
   {
@@ -85,7 +138,12 @@
     "osHdrSwitch": true,
     "quality": "high",
     "hdr": "passthrough",
-    "audioPassthrough": ["ac3", "eac3", "dts-hd", "truehd"],
+    "audioPassthrough": [
+      "ac3",
+      "eac3",
+      "dts-hd",
+      "truehd"
+    ],
     "audioExclusive": true
   },
   {

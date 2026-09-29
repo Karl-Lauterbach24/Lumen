@@ -2,6 +2,8 @@
 
 [English](README.md) · [Deutsch](README.de.md) · **Français** · [Español](README.es.md) · [Italiano](README.it.md) · [Português](README.pt.md)
 
+> **Nouveau :** Lumen lit désormais aussi les **DVD-Video (avec menus), HD DVD, Video-CD/SVCD (y compris images CUE/BIN), CD audio** et les **Digital Cinema Packages (DCP, JPEG 2000, SMPTE/Interop, chiffrés avec KDM)**, avec onglet « Kino » (certificat du lecteur, KDM, fader cinéma, routage des canaux, programme de projection) et des profils de calibration (ICC, LUT 3D, qualité de référence). Détails : [README en anglais](README.md).
+
 Lecteur Blu-ray / UHD / 3D rapide et minimaliste pour le home cinéma, avec **deux fenêtres** :
 
 - **Fenêtre de lecture** – fenêtre mpv native (gpu-next, D3D11/Vulkan/Wayland), attribuable à un périphérique de sortie, HDR passthrough.

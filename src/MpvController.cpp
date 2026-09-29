@@ -1,7 +1,10 @@
 #include "MpvController.h"
 
 #include "BlurayNav.h"
+#include "DcpPackage.h"
 #include "DisplayManager.h"
+#include "DvdNav.h"
+#include "OpticalMedia.h"
 #include "PathUtil.h"
 #include "PlayerWindow.h"
 #include "ProfileManager.h"
@@ -31,7 +34,7 @@ enum PropId : quint64 {
     P_CHAPTER, P_TRACKLIST, P_AID, P_SID, P_VIDEOPARAMS, P_VIDEOFORMAT, P_FPS,
     P_HWDEC, P_DISPLAYFPS, P_AUDIOOUTPARAMS, P_AUDIOCODEC, P_AUDIODEVICES,
     P_ABA, P_ABB, P_FULLSCREEN, P_AUDIODELAY, P_SUBDELAY, P_CACHEPAUSE, P_CACHEDUR,
-    P_OSDDIMS, P_MOUSEPOS,
+    P_OSDDIMS, P_MOUSEPOS, P_VODROPS, P_DECDROPS, P_EOF,
 };
 
 struct Observed
@@ -76,6 +79,9 @@ const Observed kObserved[] = {
     {"demuxer-cache-duration", MPV_FORMAT_DOUBLE, P_CACHEDUR},
     {"osd-dimensions", MPV_FORMAT_NODE, P_OSDDIMS},
     {"mouse-pos", MPV_FORMAT_NODE, P_MOUSEPOS},
+    {"frame-drop-count", MPV_FORMAT_INT64, P_VODROPS},
+    {"decoder-frame-drop-count", MPV_FORMAT_INT64, P_DECDROPS},
+    {"eof-reached", MPV_FORMAT_FLAG, P_EOF},
 };
 
 // Optionen, die ein neues Player-Fenster / einen neuen Renderer erfordern
@@ -112,7 +118,8 @@ QString valueToString(const QVariant &v)
 {
     switch (v.typeId()) {
     case QMetaType::Bool: return v.toBool() ? QStringLiteral("yes") : QStringLiteral("no");
-    case QMetaType::QStringList: return v.toStringList().join(QLatin1Char(','));
+    // Stringlisten sind bei mpv Pfadlisten (sub-files, glsl-shaders): Trenner ';' (Windows) bzw. ':'
+    case QMetaType::QStringList: return v.toStringList().join(QDir::listSeparator());
     case QMetaType::QVariantList: {
         QStringList parts;
         for (const auto &x : v.toList())
@@ -133,6 +140,8 @@ QString prettyCodec(const QString &c, const QString &profile)
         {"pcm_bluray", "LPCM"}, {"flac", "FLAC"}, {"aac", "AAC"}, {"opus", "Opus"},
         {"hdmv_pgs_subtitle", "PGS"}, {"subrip", "SRT"}, {"ass", "ASS"}, {"dvd_subtitle", "VobSub"},
         {"hevc", "HEVC"}, {"wrapped_avframe", "RAW"}, {"h264", "AVC"}, {"vc1", "VC-1"}, {"mpeg2video", "MPEG-2"}, {"av1", "AV1"},
+        {"mpeg1video", "MPEG-1"}, {"jpeg2000", "JPEG 2000"}, {"pcm_s24le", "PCM"}, {"pcm_s16le", "PCM"},
+        {"pcm_dvd", "LPCM"}, {"mp2", "MPEG Audio"}, {"mp1", "MPEG Audio"},
     };
     return names.value(c, c.toUpper());
 }
@@ -365,7 +374,9 @@ bool MpvController::create(const QVariantMap &options)
     for (auto it = options.cbegin(); it != options.cend(); ++it)
         setOptionRaw(it.key(), it.value(), true);
 
-    mpv_request_log_messages(m_mpv, "error");
+    // Entwickler-Hilfe: LUMEN_MPV_LOG=warn|info|v|debug gibt mpv-Meldungen aus
+    const QByteArray logLevel = qgetenv("LUMEN_MPV_LOG");
+    mpv_request_log_messages(m_mpv, logLevel.isEmpty() ? "error" : logLevel.constData());
 
     if (mpv_initialize(m_mpv) < 0) {
         mpv_terminate_destroy(m_mpv);
@@ -380,6 +391,11 @@ bool MpvController::create(const QVariantMap &options)
         m_nav->attach(m_mpv);
         m_nav->setStereo(want3D(), m_profile.value("stereoOut").toString());
     }
+    if (m_dvd)
+        m_dvd->attach(m_mpv);
+    Optical::attachProtocol(m_mpv);
+    for (const auto &attach : m_protocols)
+        attach(m_mpv);
 
     if (options.value("vo").toString() == QLatin1String("libmpv")) {
         m_window = new PlayerWindow(m_mpv);
@@ -441,6 +457,8 @@ void MpvController::destroy()
     mpv_terminate_destroy(h);
     if (m_nav)
         m_nav->detach();
+    if (m_dvd)
+        m_dvd->detach();
     delete m_window;
     m_window = nullptr;
 }
@@ -451,15 +469,24 @@ void MpvController::restart(const QVariantMap &options)
     const double pos = m_position;
     const bool paused = m_paused;
 
+    const QString lastUrl = m_lastUrl;
+    QVariantMap lastOptions = m_lastOptions;
     destroy();
     if (!create(options))
         return;
     if (path.startsWith(QLatin1String("lumenbd://"))) {
         openDiscMenu(m_currentDevice); // Menü-Sitzung startet neu
+    } else if (path.startsWith(QLatin1String("lumendvd://"))) {
+        openDvd(m_currentDevice, m_dvdMode, m_dvdTitle);
     } else if (!path.isEmpty()) {
         if (path.startsWith(QLatin1String("bd://")) && !m_currentDevice.isEmpty())
             setOptionRaw(QStringLiteral("bluray-device"), m_currentDevice, false);
-        loadFile(path, {{"start", QString::number(pos, 'f', 3)}, {"pause", paused ? "yes" : "no"}});
+        // Datei-Optionen der Quelle (EDL, DCP, VCD …) wiederherstellen
+        if (lastUrl != path)
+            lastOptions.clear();
+        lastOptions["start"] = QString::number(pos, 'f', 3);
+        lastOptions["pause"] = paused ? "yes" : "no";
+        loadFile(path, lastOptions);
     }
 }
 
@@ -523,6 +550,9 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
         m_pendingOptions = fileOptions;
         return;
     }
+    m_lastUrl = url;
+    m_lastOptions = fileOptions;
+    m_eof = false;
     // Benannte Argumente: unabhängig von der loadfile-Signatur der mpv-Version
     QByteArray bUrl = url.toUtf8();
     QByteArray bName("loadfile"), bFlags("replace");
@@ -575,6 +605,8 @@ void MpvController::openDisc(const QString &device, const QString &target)
         return;
     }
     m_currentDevice = QDir::toNativeSeparators(device);
+    m_sourceKind = QStringLiteral("bluray");
+    resetAutoStereo();
     setOptionRaw(QStringLiteral("bluray-device"), blurayPath(m_currentDevice), false);
     // Resume ist für bd:// nicht disc-spezifisch (gleicher Pfad für alle Discs) -> aus
     loadFile(QStringLiteral("bd://") + t, {{"resume-playback", "no"}});
@@ -595,7 +627,10 @@ void MpvController::openNavStream(const QString &device, const QString &mode, in
     if (!m_mpv || !m_nav || !BlurayNav::available() || device.isEmpty())
         return;
     m_currentDevice = QDir::toNativeSeparators(device);
+    m_sourceKind = QStringLiteral("bluray");
     const bool stereo = want3D();
+    if (!stereo)
+        resetAutoStereo();
     m_nav->setStereo(stereo, m_profile.value("stereoOut").toString());
 
     // Linearer Strom: kleiner Puffer, damit Menüeingaben sofort wirken;
@@ -653,6 +688,25 @@ void MpvController::selectTrackByPid(const QString &type, int pid)
 
 void MpvController::handleClientMessage(const QStringList &args)
 {
+    if (m_dvd && m_dvd->active()) {
+        const bool dvdMenu = m_dvd->menuVisible();
+        if (args.value(0) == QLatin1String("lumen-click")) {
+            if (dvdMenu)
+                m_dvd->mouseClick(m_mouseX, m_mouseY);
+            return;
+        }
+        if (args.value(0) != QLatin1String("lumen-key"))
+            return;
+        const QString k = args.value(1);
+        if ((dvdMenu || k == QLatin1String("menu") || k == QLatin1String("popup")) && m_dvd->key(k))
+            return;
+        static const QHash<QString, double> dvdSeeks = {{"left", -10}, {"right", 10}, {"up", 60}, {"down", -60}};
+        if (dvdSeeks.contains(k))
+            m_dvd->seekRelative(dvdSeeks.value(k));
+        else if (k == QLatin1String("enter"))
+            toggleFullscreen();
+        return;
+    }
     const bool nav = m_nav && m_nav->active();
     const bool menu = nav && m_nav->menuVisible();
     if (args.value(0) == QLatin1String("lumen-click")) {
@@ -683,34 +737,277 @@ void MpvController::handleClientMessage(const QStringList &args)
 
 void MpvController::openFile(const QUrl &url)
 {
-    const QString local = url.isLocalFile() ? url.toLocalFile() : QString();
-    if (local.isEmpty()) {
+    if (!url.isLocalFile()) {
+        m_sourceKind = QStringLiteral("file");
+        m_currentDevice.clear();
+        resetAutoStereo();
         loadFile(url.toString());
         return;
     }
-    const QFileInfo fi(local);
-    // ISO-Abbild, Disc-Ordner oder BDMV/index.bdmv -> als Blu-ray öffnen
-    if (fi.suffix().compare(QLatin1String("iso"), Qt::CaseInsensitive) == 0) {
-        openDisc(local);
-        return;
-    }
-    if (fi.isDir() && QFileInfo::exists(fi.filePath() + QStringLiteral("/BDMV/index.bdmv"))) {
-        openDisc(local);
-        return;
-    }
-    if (fi.fileName().compare(QLatin1String("index.bdmv"), Qt::CaseInsensitive) == 0) {
-        openDisc(fi.dir().absolutePath() + QStringLiteral("/.."));
-        return;
-    }
-    loadFile(local);
+    openSource(url.toLocalFile());
 }
 
 void MpvController::openLocation(const QString &location)
 {
     if (QFileInfo::exists(location))
-        openFile(QUrl::fromLocalFile(QFileInfo(location).absoluteFilePath()));
+        openSource(QFileInfo(location).absoluteFilePath());
     else
-        loadFile(location);
+        openFile(QUrl::fromUserInput(location));
+}
+
+// ISO-Abbild: Verzeichnisnamen im Dateisystem-Kopf suchen (UDF/ISO 9660 speichern
+// sie als ASCII bzw. OSTA-CS0 mit 8-Bit-Zeichen)
+static QString isoKind(const QString &file)
+{
+    QFile f(file);
+    if (!f.open(QIODevice::ReadOnly))
+        return QStringLiteral("bluray");
+    const QByteArray head = f.read(8 * 1024 * 1024);
+    if (head.contains("HVDVD_TS"))
+        return QStringLiteral("hddvd");
+    if (head.contains("BDMV"))
+        return QStringLiteral("bluray");
+    if (head.contains("VIDEO_TS"))
+        return QStringLiteral("dvd");
+    return QStringLiteral("bluray");
+}
+
+QString MpvController::detectKind(const QString &path)
+{
+    const QFileInfo fi(path);
+    if (fi.isDir()) {
+        if (QFileInfo::exists(path + QStringLiteral("/BDMV/index.bdmv")))
+            return QStringLiteral("bluray");
+        if (DvdNav::isDvd(path))
+            return QStringLiteral("dvd");
+        if (Dcp::isDcp(path))
+            return QStringLiteral("dcp");
+        const QString other = Optical::detect(path);
+        if (!other.isEmpty())
+            return other;
+        return QStringLiteral("file");
+    }
+#ifdef Q_OS_LINUX
+    if (path.startsWith(QLatin1String("/dev/sr")))
+        return QStringLiteral("bluray"); // ungemountet: libbluray prüft beim Öffnen
+#endif
+    const QString name = fi.fileName();
+    const QString suffix = fi.suffix().toLower();
+    if (suffix == QLatin1String("iso"))
+        return isoKind(path);
+    if (name.compare(QLatin1String("index.bdmv"), Qt::CaseInsensitive) == 0)
+        return QStringLiteral("bluray");
+    if (DvdNav::isDvd(path))
+        return QStringLiteral("dvd");
+    if (name.startsWith(QLatin1String("ASSETMAP"), Qt::CaseInsensitive)
+        || (suffix == QLatin1String("xml") && Dcp::isDcp(fi.absolutePath())))
+        return QStringLiteral("dcp");
+    if (Optical::isImage(path)) {
+        const QString k = Optical::detect(path);
+        return k.isEmpty() ? QStringLiteral("file") : k;
+    }
+    return QStringLiteral("file");
+}
+
+void MpvController::openSource(const QString &path, const QString &mode, int title)
+{
+    if (!m_mpv || path.isEmpty())
+        return;
+    const QString kind = detectKind(path);
+    const QFileInfo fi(path);
+    // Datei innerhalb einer Disc-Struktur -> Wurzel der Disc
+    QString root = path;
+    if (fi.isFile() && fi.fileName().compare(QLatin1String("index.bdmv"), Qt::CaseInsensitive) == 0)
+        root = QDir::cleanPath(fi.dir().absolutePath() + QStringLiteral("/.."));
+    else if (fi.isFile() && kind == QLatin1String("dvd") && fi.suffix().compare(QLatin1String("iso"), Qt::CaseInsensitive) != 0)
+        root = fi.dir().dirName().compare(QLatin1String("VIDEO_TS"), Qt::CaseInsensitive) == 0
+                   ? QDir::cleanPath(fi.dir().absolutePath() + QStringLiteral("/..")) : fi.dir().absolutePath();
+
+    if (kind == QLatin1String("bluray")) {
+        if (mode == QLatin1String("menu"))
+            openDiscMenu(root);
+        else if (mode == QLatin1String("title") && title >= 0)
+            openPlaylist(root, title);
+        else
+            openDisc(root, QStringLiteral("longest"));
+    } else if (kind == QLatin1String("dvd")) {
+        if (mode == QLatin1String("title") && title >= 0)
+            openDvd(root, QStringLiteral("title"), title + 1);
+        else if (mode == QLatin1String("main"))
+            openDvd(root, QStringLiteral("main"));
+        else
+            openDvd(root, QStringLiteral("menu"));
+    } else if (kind == QLatin1String("dcp")) {
+        emit dcpRequested(fi.isDir() ? path : fi.absolutePath(), title);
+    } else if (kind == QLatin1String("file")) {
+        m_sourceKind = QStringLiteral("file");
+        m_currentDevice.clear();
+        resetAutoStereo();
+        loadFile(path);
+    } else {
+        const Optical::Prepared p = Optical::prepare(path, kind, mode == QLatin1String("title") ? title : -1);
+        if (p.url.isEmpty()) {
+            setError(p.error);
+            return;
+        }
+        openPrepared(p.url, p.options, kind, path);
+        if (!p.error.isEmpty())
+            setError(p.error);
+    }
+}
+
+void MpvController::openDvd(const QString &device, const QString &mode, int title)
+{
+    if (!m_mpv || device.isEmpty())
+        return;
+    m_currentDevice = QDir::toNativeSeparators(device);
+    m_sourceKind = QStringLiteral("dvd");
+    m_dvdMode = mode;
+    m_dvdTitle = title;
+    resetAutoStereo();
+    const QString label = QFileInfo(QDir::cleanPath(QDir::fromNativeSeparators(device))).fileName();
+    if (!m_dvd || !DvdNav::available()) {
+        // Ohne libdvdnav-Integration: mpv's eigener DVD-Zugriff (ohne Menüs)
+        setOptionRaw(QStringLiteral("dvd-device"), m_currentDevice, false);
+        loadFile(title > 0 ? QStringLiteral("dvd://%1").arg(title - 1) : QStringLiteral("dvd://"),
+                 {{"resume-playback", "no"}, {"force-media-title", label.isEmpty() ? QStringLiteral("DVD") : label}});
+        return;
+    }
+    // Linearer Strom wie bei Blu-ray-Menüs: kleiner Puffer für direkte Menüreaktion
+    const QVariantMap opts{
+        {"resume-playback", "no"},
+        {"cache", "no"},
+        {"demuxer-readahead-secs", "0.4"},
+        {"demuxer-max-bytes", "32MiB"},
+        {"demuxer-lavf-format", "mpeg"},
+        {"demuxer-lavf-probesize", "65536"},
+        {"demuxer-lavf-analyzeduration", "0.4"},
+        {"force-seekable", "no"},
+        {"sid", "no"}, // Untertitel/Menügrafik zeichnet Lumen (DVD-Palette)
+        {"force-media-title", label.isEmpty() ? QStringLiteral("DVD") : label},
+    };
+    loadFile(m_dvd->prepare(m_currentDevice, mode, title), opts);
+}
+
+void MpvController::openPrepared(const QString &url, const QVariantMap &options, const QString &kind,
+                                 const QString &device, const QString &stereoIn)
+{
+    if (!m_mpv)
+        return;
+    m_sourceKind = kind;
+    m_currentDevice = QDir::toNativeSeparators(device);
+    if (stereoIn != QLatin1String("none")) {
+        setStereoInput(stereoIn);
+        m_autoStereo = true;
+    } else {
+        resetAutoStereo();
+    }
+    loadFile(url, options);
+}
+
+void MpvController::resetAutoStereo()
+{
+    if (m_autoStereo && !mvcActive()) {
+        m_autoStereo = false;
+        setStereoInput(QStringLiteral("none"));
+    }
+}
+
+bool MpvController::isDisc() const
+{
+    static const QStringList kinds = {"bluray", "dvd", "hddvd", "vcd", "svcd", "cdda"};
+    return kinds.contains(m_sourceKind) || m_path.startsWith(QLatin1String("bd://")) || m_path.startsWith(QLatin1String("lumenbd://"));
+}
+
+void MpvController::addProtocol(std::function<void(mpv_handle *)> attach)
+{
+    if (m_mpv)
+        attach(m_mpv);
+    m_protocols.push_back(std::move(attach));
+}
+
+void MpvController::setDvdNav(DvdNav *dvd)
+{
+    m_dvd = dvd;
+    if (!m_dvd)
+        return;
+    if (m_mpv)
+        m_dvd->attach(m_mpv);
+    connect(m_dvd, &DvdNav::audioPidSelected, this, [this](int id) { selectTrackByPid(QStringLiteral("audio"), id); });
+    connect(m_dvd, &DvdNav::streamsChanged, this, [this] { rebuildTracks(m_rawTracks); });
+}
+
+// --------------------------------------------------------------------------
+// Vorführprogramm (Show): Werbung, Trailer, Hauptfilm … nacheinander
+// --------------------------------------------------------------------------
+
+void MpvController::queueAdd(const QString &path, const QString &label, int title)
+{
+    m_queue.append(QVariantMap{{"path", path}, {"label", label.isEmpty() ? QFileInfo(path).fileName() : label},
+                               {"title", title}, {"kind", detectKind(path)}});
+    emit queueChanged();
+}
+
+void MpvController::queueRemove(int index)
+{
+    if (index < 0 || index >= m_queue.size())
+        return;
+    m_queue.removeAt(index);
+    if (m_queueIndex >= index)
+        --m_queueIndex;
+    emit queueChanged();
+}
+
+void MpvController::queueMove(int index, int delta)
+{
+    const int to = index + delta;
+    if (index < 0 || index >= m_queue.size() || to < 0 || to >= m_queue.size())
+        return;
+    m_queue.move(index, to);
+    if (m_queueIndex == index)
+        m_queueIndex = to;
+    else if (m_queueIndex == to)
+        m_queueIndex = index;
+    emit queueChanged();
+}
+
+void MpvController::queueClear()
+{
+    m_queue.clear();
+    m_queueIndex = -1;
+    m_queueActive = false;
+    emit queueChanged();
+}
+
+void MpvController::queueStart(int index)
+{
+    if (index < 0 || index >= m_queue.size())
+        return;
+    m_queueIndex = index;
+    const QVariantMap item = m_queue[index].toMap();
+    const int title = item.value("title").toInt();
+    openSource(item.value("path").toString(), title >= 0 ? QStringLiteral("title") : QStringLiteral("main"), title);
+    m_queueActive = true;
+    emit queueChanged();
+}
+
+void MpvController::queueStop()
+{
+    m_queueActive = false;
+    emit queueChanged();
+}
+
+void MpvController::advanceQueue()
+{
+    if (!m_queueActive)
+        return;
+    if (m_queueIndex + 1 >= m_queue.size()) {
+        m_queueActive = false;
+        emit queueChanged();
+        showText(QStringLiteral("Programm beendet"), 3000);
+        return;
+    }
+    queueStart(m_queueIndex + 1);
 }
 
 // --------------------------------------------------------------------------
@@ -722,8 +1019,12 @@ void MpvController::setPaused(bool p) { setOptionRaw(QStringLiteral("pause"), p,
 
 void MpvController::stop()
 {
-    if (!m_idle && !isDisc())
+    if (!m_idle && m_sourceKind == QLatin1String("file"))
         command({"write-watch-later-config"});
+    if (m_queueActive) {
+        m_queueActive = false;
+        emit queueChanged();
+    }
     command({"stop"});
 }
 
@@ -757,6 +1058,13 @@ void MpvController::setSpeed(double s) { setOptionRaw(QStringLiteral("speed"), s
 
 void MpvController::setAudioId(int id)
 {
+    if (m_dvd && m_dvd->active()) {
+        for (const auto &v : m_rawTracks) {
+            const QVariantMap t = v.toMap();
+            if (t.value("type").toString() == QLatin1String("audio") && t.value("id").toInt() == id)
+                m_dvd->noteAudioSelected(t.value("src-id").toInt());
+        }
+    }
     setOptionRaw(QStringLiteral("aid"), id > 0 ? QString::number(id) : QStringLiteral("no"), false);
 }
 
@@ -959,15 +1267,24 @@ void MpvController::handleEvent(mpv_event *ev)
         auto *m = static_cast<mpv_event_log_message *>(ev->data);
         const QString text = QStringLiteral("%1: %2").arg(QString::fromUtf8(m->prefix), QString::fromUtf8(m->text).trimmed());
         qWarning().noquote() << "mpv" << text;
-        setError(text);
+        // Einzelne Decoder-Fehler (Einstieg mitten in einem Frame, Sprungstellen) sind
+        // vorübergehend und keine Störung der Wiedergabe
+        const QByteArray prefix(m->prefix);
+        const bool transient = prefix == "ad" || prefix == "vd" || prefix.startsWith("ffmpeg/");
+        if (m->log_level <= MPV_LOG_LEVEL_ERROR && !transient)
+            setError(text);
         break;
     }
     case MPV_EVENT_END_FILE: {
         auto *e = static_cast<mpv_event_end_file *>(ev->data);
         if (e->reason == MPV_END_FILE_REASON_ERROR) {
             QString msg = QStringLiteral("Wiedergabe fehlgeschlagen: %1").arg(QString::fromUtf8(mpv_error_string(e->error)));
-            if (isDisc() || m_path.isEmpty())
+            if (m_sourceKind == QLatin1String("bluray"))
                 msg += QStringLiteral(" – ist die Disc für libbluray lesbar (LibreDrive-Laufwerk + externe AACS-Bibliothek)?");
+            else if (m_sourceKind == QLatin1String("dvd"))
+                msg += QStringLiteral(" – ist die DVD für libdvdread lesbar?");
+            else if (m_sourceKind == QLatin1String("dcp"))
+                msg += QStringLiteral(" – Spurdateien vollständig und Schlüssel (KDM) passend?");
             setError(msg);
         }
         break;
@@ -981,6 +1298,7 @@ void MpvController::handleEvent(mpv_event *ev)
         break;
     }
     case MPV_EVENT_FILE_LOADED:
+        m_vo_drops = m_dec_drops = 0;
         m_matchedFps = 0;
         m_hdrState = -1;
         emit fileLoaded();
@@ -1107,6 +1425,8 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     case P_OSDDIMS:
         if (m_nav)
             m_nav->setOsdDimensions(node().toMap());
+        if (m_dvd)
+            m_dvd->setOsdDimensions(node().toMap());
         break;
     case P_MOUSEPOS: {
         const QVariantMap m = node().toMap();
@@ -1114,6 +1434,25 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         m_mouseY = m.value("y").toDouble();
         if (m_nav && m_nav->menuVisible() && m.value("hover").toBool())
             m_nav->mouseMove(m_mouseX, m_mouseY);
+        if (m_dvd && m_dvd->menuVisible() && m.value("hover").toBool())
+            m_dvd->mouseMove(m_mouseX, m_mouseY);
+        break;
+    }
+    case P_VODROPS:
+    case P_DECDROPS: {
+        const int v = int(std::max<qint64>(0, i64(0)));
+        (PropId(id) == P_VODROPS ? m_vo_drops : m_dec_drops) = v;
+        if (m_vo_drops + m_dec_drops != m_droppedFrames) {
+            m_droppedFrames = m_vo_drops + m_dec_drops;
+            emit droppedFramesChanged();
+        }
+        break;
+    }
+    case P_EOF: {
+        const bool eof = flag();
+        if (eof && !m_eof && m_queueActive)
+            QMetaObject::invokeMethod(this, &MpvController::advanceQueue, Qt::QueuedConnection);
+        m_eof = eof;
         break;
     }
     case P_AUDIODELAY: m_audioDelay = dbl(); emit delaysChanged(); break;
@@ -1148,6 +1487,12 @@ void MpvController::rebuildTracks(const QVariantList &list)
         const QString title = t.value("title").toString();
         if (!title.isEmpty())
             parts << title;
+        // DVD: Sprache/Format aus der IFO (der MPEG-PS-Strom kennt keine Sprachen)
+        if (m_dvd && m_dvd->active() && type == QLatin1String("audio")) {
+            const QString label = m_dvd->audioLabel(t.value("src-id").toInt());
+            if (!label.isEmpty())
+                parts = QStringList{label};
+        }
         if (t.value("forced").toBool())
             parts << QStringLiteral("erzwungen");
 
@@ -1183,6 +1528,9 @@ void MpvController::updateVideoInfo()
     // HDMI geht bei Passthrough die HDR10-Basis (echtes DV-Signal kann kein PC-Player)
     if (m_dvProfile > 0)
         range = QStringLiteral("Dolby Vision P%1").arg(m_dvProfile);
+    // Digitalkino: JPEG 2000 in CIE XYZ (DCI-P3, Gamma 2.6)
+    if (m_videoParams.value("pixelformat").toString().startsWith(QLatin1String("xyz")))
+        range = QStringLiteral("DCI XYZ");
     v["dolbyVision"] = m_dvProfile;
 
     v["width"] = w;

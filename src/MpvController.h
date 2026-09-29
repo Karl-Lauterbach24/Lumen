@@ -4,10 +4,14 @@
 #include <QUrl>
 #include <QVariant>
 
+#include <functional>
+#include <vector>
+
 struct mpv_handle;
 struct mpv_event;
 class BlurayNav;
 class DisplayManager;
+class DvdNav;
 class PlayerWindow;
 
 // Steuert eine libmpv-Instanz. Das Player-Fenster ist entweder mpv's eigenes
@@ -55,6 +59,13 @@ class MpvController : public QObject
     Q_PROPERTY(bool mvcCapable READ mvcCapable NOTIFY profileApplied)
     // Blu-ray 3D läuft gerade mit beiden Ansichten
     Q_PROPERTY(bool mvcActive READ mvcActive NOTIFY mvcActiveChanged)
+    // Art der Quelle: file, bluray, dvd, hddvd, vcd, svcd, cdda, dcp
+    Q_PROPERTY(QString sourceKind READ sourceKind NOTIFY mediaChanged)
+    Q_PROPERTY(int droppedFrames READ droppedFrames NOTIFY droppedFramesChanged)
+    // Vorführprogramm (Show): Quellen nacheinander abspielen
+    Q_PROPERTY(QVariantList queue READ queue NOTIFY queueChanged)
+    Q_PROPERTY(int queueIndex READ queueIndex NOTIFY queueChanged)
+    Q_PROPERTY(bool queueActive READ queueActive NOTIFY queueChanged)
 
 public:
     explicit MpvController(DisplayManager *displays, BlurayNav *nav, QObject *parent = nullptr);
@@ -78,6 +89,28 @@ public:
     Q_INVOKABLE void openFile(const QUrl &url);
     // Kommandozeile: lokaler Pfad (Datei/ISO/Ordner/Laufwerk) oder mpv-URL
     void openLocation(const QString &location);
+    // Beliebige Quelle erkennen und öffnen. mode: "auto" | "menu" | "main" | "title";
+    // title: Titel/Playlist/CPL-Index (-1 = Hauptfilm)
+    Q_INVOKABLE void openSource(const QString &path, const QString &mode = QStringLiteral("auto"), int title = -1);
+    // DVD über libdvdnav (mode "menu", "main", "title"; title 1-basiert)
+    Q_INVOKABLE void openDvd(const QString &device, const QString &mode = QStringLiteral("menu"), int title = -1);
+    // Vorbereitete URL (EDL o. Ä.) mit Datei-Optionen laden
+    Q_INVOKABLE void openPrepared(const QString &url, const QVariantMap &options, const QString &kind,
+                                  const QString &device, const QString &stereoIn = QStringLiteral("none"));
+    // Quelle erkennen: bluray, dvd, hddvd, vcd, svcd, cdda, dcp oder file
+    Q_INVOKABLE static QString detectKind(const QString &path);
+
+    // Vorführprogramm
+    Q_INVOKABLE void queueAdd(const QString &path, const QString &label, int title = -1);
+    Q_INVOKABLE void queueRemove(int index);
+    Q_INVOKABLE void queueMove(int index, int delta);
+    Q_INVOKABLE void queueClear();
+    Q_INVOKABLE void queueStart(int index = 0);
+    Q_INVOKABLE void queueStop();
+
+    // Zusätzliche mpv-Protokolle (DCP, VCD …), je mpv-Instanz angemeldet
+    void addProtocol(std::function<void(mpv_handle *)> attach);
+    void setDvdNav(DvdNav *dvd);
 
     // Transport
     Q_INVOKABLE void togglePause();
@@ -125,7 +158,12 @@ public:
     QString mediaTitle() const { return m_mediaTitle; }
     QString path() const { return m_path; }
     QString device() const { return m_currentDevice; }
-    bool isDisc() const { return m_path.startsWith(QLatin1String("bd://")) || m_path.startsWith(QLatin1String("lumenbd://")); }
+    bool isDisc() const;
+    QString sourceKind() const { return m_sourceKind; }
+    int droppedFrames() const { return m_droppedFrames; }
+    QVariantList queue() const { return m_queue; }
+    int queueIndex() const { return m_queueIndex; }
+    bool queueActive() const { return m_queueActive; }
     QVariantList titles() const { return m_titles; }
     int currentTitle() const { return m_currentTitle; }
     QVariantList chapters() const { return m_chapters; }
@@ -158,6 +196,10 @@ public:
     static bool isDisc3D(const QString &device);
 
 signals:
+    void droppedFramesChanged();
+    void queueChanged();
+    // DCP-Paket öffnen (DcpManager), cpl < 0 = erste/Spielfilm-CPL
+    void dcpRequested(const QString &path, int cpl);
     void mvcActiveChanged();
     void stereoInputChanged();
     void outputStatusChanged();
@@ -209,9 +251,25 @@ private:
     int trackIdForPid(const QString &type, int pid) const;
     void openNavStream(const QString &device, const QString &mode, int playlist);
     void placeEmbeddedWindow();
+    void resetAutoStereo();
+    void advanceQueue();
 
     DisplayManager *m_displays = nullptr;
     BlurayNav *m_nav = nullptr;
+    DvdNav *m_dvd = nullptr;
+    std::vector<std::function<void(mpv_handle *)>> m_protocols;
+    QString m_sourceKind;
+    QString m_lastUrl;             // für Neustarts der mpv-Instanz
+    QVariantMap m_lastOptions;
+    QString m_dvdMode = QStringLiteral("menu");
+    int m_dvdTitle = -1;
+    int m_droppedFrames = 0;
+    int m_vo_drops = 0;
+    int m_dec_drops = 0;
+    bool m_eof = false;
+    QVariantList m_queue;
+    int m_queueIndex = -1;
+    bool m_queueActive = false;
     PlayerWindow *m_window = nullptr;
     mpv_handle *m_mpv = nullptr;
     QVariantList m_rawTracks;

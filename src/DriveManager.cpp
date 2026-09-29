@@ -1,8 +1,12 @@
 #include "DriveManager.h"
+#include "DcpPackage.h"
+#include "DvdNav.h"
+#include "OpticalMedia.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QPointer>
 #include <QProcess>
 #include <QSet>
@@ -23,21 +27,45 @@
 
 namespace {
 
-// Liest den Header von BDMV/index.bdmv: "INDX0100/0200" = Blu-ray, "INDX0300" = UHD
+QString kindLabel(const QVariantMap &d)
+{
+    const QString k = d.value("kind").toString();
+    if (k == QLatin1String("bluray"))
+        return d.value("isUhd").toBool() ? QStringLiteral("UHD Blu-ray") : QStringLiteral("Blu-ray");
+    static const QHash<QString, QString> labels = {
+        {"dvd", "DVD-Video"}, {"hddvd", "HD DVD"}, {"vcd", "Video-CD"}, {"svcd", "Super Video-CD"},
+        {"cdda", "Audio-CD"}, {"dcp", "DCP"},
+    };
+    return labels.value(k);
+}
+
+// Disc-/Paketstruktur erkennen. Blu-ray: Header von BDMV/index.bdmv
+// ("INDX0100/0200" = Blu-ray, "INDX0300" = UHD)
 QVariantMap inspectRoot(const QString &root)
 {
     QVariantMap m;
     const QString bdmv = QDir(root).filePath(QStringLiteral("BDMV"));
     QFile index(bdmv + QStringLiteral("/index.bdmv"));
-    if (!index.open(QIODevice::ReadOnly)) {
-        m["isBluray"] = false;
+    m["isBluray"] = false;
+    if (index.open(QIODevice::ReadOnly)) {
+        const QByteArray head = index.read(8);
+        m["isBluray"] = head.startsWith("INDX");
+        m["isUhd"] = head == "INDX0300";
+        m["is3d"] = QFileInfo::exists(bdmv + QStringLiteral("/STREAM/SSIF"));
+        m["hasAacs"] = QFileInfo::exists(QDir(root).filePath(QStringLiteral("AACS")));
+        if (m["isBluray"].toBool())
+            m["kind"] = QStringLiteral("bluray");
         return m;
     }
-    const QByteArray head = index.read(8);
-    m["isBluray"] = head.startsWith("INDX");
-    m["isUhd"] = head == "INDX0300";
-    m["is3d"] = QFileInfo::exists(bdmv + QStringLiteral("/STREAM/SSIF"));
-    m["hasAacs"] = QFileInfo::exists(QDir(root).filePath(QStringLiteral("AACS")));
+    QString kind;
+    if (DvdNav::isDvd(root))
+        kind = QStringLiteral("dvd");
+    else if (Dcp::isDcp(root))
+        kind = QStringLiteral("dcp");
+    else
+        kind = Optical::detect(root);
+    if (!kind.isEmpty())
+        m["kind"] = kind;
     return m;
 }
 
@@ -119,14 +147,16 @@ void DriveManager::applyScan(const QVariantList &list)
     QSet<QString> before;
     for (const auto &v : m_drives) {
         const QVariantMap d = v.toMap();
-        if (d.value("isBluray").toBool())
-            before.insert(d.value("device").toString());
+        if (!d.value("kind").toString().isEmpty())
+            before.insert(d.value("path").toString());
     }
     m_drives = list;
     emit drivesChanged();
     for (const auto &v : m_drives) {
         const QVariantMap d = v.toMap();
-        if (d.value("isBluray").toBool() && !before.contains(d.value("device").toString()))
+        // Neu eingelegte Disc (DCP-Festplatten starten nicht von selbst)
+        const QString kind = d.value("kind").toString();
+        if (!kind.isEmpty() && kind != QLatin1String("dcp") && !before.contains(d.value("path").toString()))
             emit discInserted(d);
     }
 }
@@ -202,13 +232,17 @@ QVariantList DriveManager::scan()
                 break;
             }
         }
-        if (!d.contains("isBluray") && d["hasDisc"].toBool())
+        if (!d.contains("isBluray") && d["hasDisc"].toBool()) {
             d["isBluray"] = true; // ungemountet: Annahme, libbluray prüft beim Öffnen
+            d["kind"] = QStringLiteral("bluray");
+        }
         out.append(d);
     }
 #endif
 
-    // Alle Plattformen: eingehängte Volumes mit BDMV-Struktur (macOS-Discs, ISO-Mounts)
+    // Alle Plattformen: eingehängte Volumes mit Disc-Struktur (macOS-Discs, ISO-Mounts)
+    // und DCP-Festplatten (Paket im Wurzelordner oder eine Ebene tiefer)
+    const QString systemRoot = QDir::cleanPath(QStorageInfo::root().rootPath()).toLower();
     for (const QStorageInfo &v : QStorageInfo::mountedVolumes()) {
         if (!v.isValid() || !v.isReady())
             continue;
@@ -218,35 +252,50 @@ QVariantList DriveManager::scan()
         if (seenRoots.contains(key.toLower()))
             continue;
 #else
-        if (seenRoots.contains(key) || root == QLatin1String("/"))
+        if (seenRoots.contains(key) || root == QLatin1String("/") || root.startsWith(QLatin1String("/boot"))
+            || root.startsWith(QLatin1String("/snap")) || root.startsWith(QLatin1String("/sys")) || root.startsWith(QLatin1String("/proc")))
             continue;
 #endif
         const QVariantMap info = inspectRoot(root);
-        if (!info.value("isBluray").toBool())
+        auto addEntry = [&](const QVariantMap &inf, const QString &path, const QString &label) {
+            QVariantMap d = inf;
+            const QByteArray fs = v.fileSystemType();
+            d["optical"] = fs.startsWith("udf") || fs == "UDF" || fs == "CDFS" || fs == "iso9660";
+            d["device"] = path;
+            d["path"] = path;
+            d["hasDisc"] = true;
+            d["label"] = label;
+            d["filesystem"] = QString::fromLatin1(fs);
+            d["mountDevice"] = QString::fromLocal8Bit(v.device());
+            out.append(d);
+        };
+        if (!info.value("kind").toString().isEmpty()) {
+            addEntry(info, root, v.name());
             continue;
-        QVariantMap d = info;
-        d["optical"] = v.fileSystemType().startsWith("udf") || v.fileSystemType() == "UDF";
-        d["device"] = root;
-        d["path"] = root;
-        d["hasDisc"] = true;
-        d["label"] = v.name();
-        d["filesystem"] = QString::fromLatin1(v.fileSystemType());
-        d["mountDevice"] = QString::fromLocal8Bit(v.device());
-        out.append(d);
+        }
+        if (key.toLower() == systemRoot)
+            continue;
+        // DCP-Auslieferung (Kino-Festplatte): ein Ordner je Paket
+        const QStringList dirs = QDir(root).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (int i = 0; i < dirs.size() && i < 64; ++i) {
+            const QString sub = QDir(root).filePath(dirs[i]);
+            if (Dcp::isDcp(sub))
+                addEntry(QVariantMap{{"kind", QStringLiteral("dcp")}}, sub, dirs[i]);
+        }
     }
 
     for (auto &v : out) {
         QVariantMap d = v.toMap();
         const QString hw = QStringList{d.value("vendor").toString(), d.value("model").toString()}.join(QLatin1Char(' ')).trimmed();
         QString disc;
+        const QString kl = kindLabel(d);
         if (!d.value("hasDisc").toBool())
             disc = QStringLiteral("leer");
-        else if (d.value("isUhd").toBool())
-            disc = QStringLiteral("UHD · ") + d.value("label").toString();
-        else if (d.value("isBluray").toBool())
-            disc = QStringLiteral("BD · ") + d.value("label").toString();
+        else if (!kl.isEmpty())
+            disc = kl + QStringLiteral(" · ") + d.value("label").toString();
         else
             disc = d.value("label").toString();
+        d["kindLabel"] = kl;
         d["title"] = QStringLiteral("%1  %2").arg(QDir::toNativeSeparators(d.value("device").toString()), disc);
         d["hardware"] = hw;
         v = d;

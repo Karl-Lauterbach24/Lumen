@@ -4,7 +4,7 @@ project(Lumen VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui OpenGL Qml Quick QuickControls2)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui OpenGL Qml Quick QuickControls2 Xml)
 qt_standard_project_setup(REQUIRES 6.5)
 
 # ---------------------------------------------------------------------------
@@ -60,6 +60,39 @@ if(LUMEN_WITH_LIBBLURAY)
 endif()
 message(STATUS "Lumen: libbluray Disc-Infos: ${LUMEN_HAVE_BLURAY}")
 
+# ---------------------------------------------------------------------------
+# Weitere Formate (alle optional)
+#   OpenSSL    – verschlüsselte DCPs: KDM (RSA-OAEP), Essenz (AES-128), Zertifikate
+#   libdvdnav  – DVD-Video mit Menüs (ohne: mpv "dvd://", nur Titel)
+#   libcdio    – Video-CD/SVCD von Laufwerk und CUE/BIN/NRG-Abbildern
+# ---------------------------------------------------------------------------
+option(LUMEN_WITH_OPENSSL "Verschlüsselte DCPs (OpenSSL)" ON)
+option(LUMEN_WITH_DVDNAV "DVD-Menüs (libdvdnav)" ON)
+option(LUMEN_WITH_CDIO "Video-CD sektorgenau (libcdio)" ON)
+if(LUMEN_WITH_OPENSSL)
+    find_package(OpenSSL 1.1 COMPONENTS Crypto)
+    set(LUMEN_HAVE_OPENSSL ${OPENSSL_FOUND})
+endif()
+if(PKG_CONFIG_FOUND)
+    if(LUMEN_WITH_DVDNAV)
+        pkg_check_modules(DVDNAV QUIET IMPORTED_TARGET dvdnav>=6.0)
+        set(LUMEN_HAVE_DVDNAV ${DVDNAV_FOUND})
+    endif()
+    if(LUMEN_WITH_CDIO)
+        pkg_check_modules(CDIO QUIET IMPORTED_TARGET libcdio libiso9660)
+        set(LUMEN_HAVE_CDIO ${CDIO_FOUND})
+    endif()
+endif()
+message(STATUS "Lumen: OpenSSL (DCP-Entschlüsselung): ${LUMEN_HAVE_OPENSSL} · libdvdnav: ${LUMEN_HAVE_DVDNAV} · libcdio: ${LUMEN_HAVE_CDIO}")
+
+# DCP-Kern (ohne GUI, auch für das Testprogramm)
+set(LUMEN_DCP_SOURCES
+    src/DcpPackage.h        src/DcpPackage.cpp
+    src/DcpCrypto.h         src/DcpCrypto.cpp
+    src/DcpStream.h         src/DcpStream.cpp
+    src/DcpSubtitles.h      src/DcpSubtitles.cpp
+)
+
 qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/main.cpp
     src/MpvController.h     src/MpvController.cpp
@@ -70,6 +103,10 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/BlurayNav.h         src/BlurayNav.cpp
     src/PlayerWindow.h      src/PlayerWindow.cpp
     src/PathUtil.h
+    src/DvdNav.h            src/DvdNav.cpp
+    src/OpticalMedia.h      src/OpticalMedia.cpp
+    src/DcpManager.h        src/DcpManager.cpp
+    ${LUMEN_DCP_SOURCES}
 )
 
 set(LUMEN_QML
@@ -84,6 +121,7 @@ set(LUMEN_QML
     qml/Toggle.qml
     qml/SectionLabel.qml
     qml/ProfileEditor.qml
+    qml/CinemaPane.qml
 )
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Alle QML-Dateien ins Modul-Wurzelverzeichnis legen (gemeinsames qmldir -> Singleton "Theme")
@@ -109,8 +147,24 @@ qt_add_qml_module(lumen
 target_compile_definitions(lumen PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(lumen PRIVATE
-    Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Qml Qt6::Quick Qt6::QuickControls2
+    Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Xml
     lumen_mpv)
+
+function(lumen_optional_libs target)
+    if(LUMEN_HAVE_OPENSSL)
+        target_link_libraries(${target} PRIVATE OpenSSL::Crypto)
+        target_compile_definitions(${target} PRIVATE LUMEN_HAVE_OPENSSL=1)
+    endif()
+    if(LUMEN_HAVE_DVDNAV)
+        target_link_libraries(${target} PRIVATE PkgConfig::DVDNAV)
+        target_compile_definitions(${target} PRIVATE LUMEN_HAVE_DVDNAV=1)
+    endif()
+    if(LUMEN_HAVE_CDIO)
+        target_link_libraries(${target} PRIVATE PkgConfig::CDIO)
+        target_compile_definitions(${target} PRIVATE LUMEN_HAVE_CDIO=1)
+    endif()
+endfunction()
+lumen_optional_libs(lumen)
 
 if(LUMEN_HAVE_BLURAY)
     target_link_libraries(lumen PRIVATE lumen_bluray)
@@ -167,6 +221,13 @@ option(LUMEN_BUILD_TESTS "Test-Programme bauen" OFF)
 if(LUMEN_BUILD_TESTS AND LUMEN_HAVE_BLURAY)
     add_executable(mvcmerge_test tests/mvcmerge_test.cpp src/MvcMerger.cpp src/MvcMerger.h)
     target_link_libraries(mvcmerge_test PRIVATE Qt6::Core lumen_bluray)
+endif()
+# Test: DCP lesen, KDM auspacken, Spurdateien entschlüsseln, Untertitel wandeln
+if(LUMEN_BUILD_TESTS)
+    add_executable(dcp_test tests/dcp_test.cpp ${LUMEN_DCP_SOURCES})
+    target_include_directories(dcp_test PRIVATE src)
+    target_link_libraries(dcp_test PRIVATE Qt6::Core Qt6::Xml lumen_mpv)
+    lumen_optional_libs(dcp_test)
 endif()
 
 include(GNUInstallDirs)

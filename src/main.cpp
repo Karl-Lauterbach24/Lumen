@@ -10,7 +10,9 @@
 #include <clocale>
 
 #include "BlurayNav.h"
+#include "DcpManager.h"
 #include "DiscScanner.h"
+#include "DvdNav.h"
 #include "DisplayManager.h"
 #include "DriveManager.h"
 #include "MpvController.h"
@@ -34,9 +36,19 @@ int main(int argc, char *argv[])
     ProfileManager profiles;
     DiscScanner scanner;
     BlurayNav nav;
+    DvdNav dvd;
     MpvController player(&displays, &nav);
+    player.setDvdNav(&dvd);
 
     player.initialize(profiles.currentProfile());
+    DcpManager dcp(&player, &displays);
+    QObject::connect(&player, &MpvController::dcpRequested, &dcp, [&](const QString &path, int cpl) {
+        // Bereits geladenes Paket: direkt die gewünschte CPL, sonst einlesen und starten
+        if (QDir::cleanPath(dcp.root()) == QDir::cleanPath(path) && !dcp.cpls().isEmpty())
+            dcp.play(cpl < 0 ? 0 : cpl);
+        else
+            dcp.open(path, true);
+    });
 
     QObject::connect(&profiles, &ProfileManager::currentProfileChanged, &player,
                      [&] { player.applyProfile(profiles.currentProfile()); });
@@ -52,26 +64,32 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Displays", &displays);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Disc", &scanner);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Nav", &nav);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "DvdNav", &dvd);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Dcp", &dcp);
 
     QQmlApplicationEngine engine;
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
     engine.loadFromModule("Lumen", "Main");
 
-    // lumen [--menu] <datei|iso|ordner|laufwerk>
+    // lumen [--menu] [--kdm <datei>] <datei|iso|ordner|laufwerk|dcp|cue>
     QStringList args = app.arguments().mid(1);
     const bool withMenu = args.removeAll(QStringLiteral("--menu")) > 0;
+    for (int i = args.indexOf(QStringLiteral("--kdm")); i >= 0 && i + 1 < args.size(); i = args.indexOf(QStringLiteral("--kdm"))) {
+        dcp.loadKdm(QUrl::fromLocalFile(QFileInfo(args.at(i + 1)).absoluteFilePath()));
+        args.remove(i, 2);
+    }
     if (!args.isEmpty()) {
         const QString target = args.constFirst();
         const QFileInfo fi(target);
-        const bool disc = fi.suffix().compare(QLatin1String("iso"), Qt::CaseInsensitive) == 0
-                          || QFileInfo::exists(target + QStringLiteral("/BDMV/index.bdmv"));
-        if (disc)
-            scanner.scan(fi.absoluteFilePath());
-        if (disc && withMenu)
-            player.openDiscMenu(fi.absoluteFilePath());
-        else
+        if (fi.exists()) {
+            const QString kind = MpvController::detectKind(fi.absoluteFilePath());
+            if (kind != QLatin1String("file") && kind != QLatin1String("dcp"))
+                scanner.scan(fi.absoluteFilePath());
+            player.openSource(fi.absoluteFilePath(), withMenu ? QStringLiteral("menu") : QStringLiteral("main"));
+        } else {
             player.openLocation(target);
+        }
     }
 
     // Entwickler-Hilfe: LUMEN_SNAPSHOT=<datei.png> speichert das Steuerfenster nach 2,5 s (LUMEN_SNAPSHOT_DELAY in ms)
