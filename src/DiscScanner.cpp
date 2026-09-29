@@ -1,0 +1,167 @@
+#include "DiscScanner.h"
+#include "PathUtil.h"
+
+#include <QCoreApplication>
+#include <QPointer>
+#include <QThreadPool>
+
+#ifdef LUMEN_HAVE_BLURAY
+#include <libbluray/bluray.h>
+#endif
+
+namespace {
+
+#ifdef LUMEN_HAVE_BLURAY
+QString videoCodec(uint8_t t)
+{
+    switch (t) {
+    case 0x01: case 0x02: return QStringLiteral("MPEG-2");
+    case 0x1b: return QStringLiteral("AVC");
+    case 0x20: return QStringLiteral("MVC 3D");
+    case 0x24: return QStringLiteral("HEVC");
+    case 0xea: return QStringLiteral("VC-1");
+    default: return QStringLiteral("?");
+    }
+}
+
+QString videoFormat(uint8_t f)
+{
+    switch (f) {
+    case 1: return QStringLiteral("480i");
+    case 2: return QStringLiteral("576i");
+    case 3: return QStringLiteral("480p");
+    case 4: return QStringLiteral("1080i");
+    case 5: return QStringLiteral("720p");
+    case 6: return QStringLiteral("1080p");
+    case 7: return QStringLiteral("576p");
+    case 8: return QStringLiteral("2160p");
+    default: return QString();
+    }
+}
+
+QString audioCodec(uint8_t t)
+{
+    switch (t) {
+    case 0x80: return QStringLiteral("LPCM");
+    case 0x81: return QStringLiteral("AC-3");
+    case 0x82: return QStringLiteral("DTS");
+    case 0x83: return QStringLiteral("TrueHD");
+    case 0x84: case 0xa1: return QStringLiteral("E-AC-3");
+    case 0x85: return QStringLiteral("DTS-HD HR");
+    case 0x86: return QStringLiteral("DTS-HD MA");
+    case 0xa2: return QStringLiteral("DTS-HD");
+    default: return QStringLiteral("?");
+    }
+}
+#endif
+
+} // namespace
+
+DiscScanner::DiscScanner(QObject *parent)
+    : QObject(parent)
+{
+}
+
+DiscScanner::~DiscScanner()
+{
+    ++m_generation;
+}
+
+bool DiscScanner::available() const
+{
+#ifdef LUMEN_HAVE_BLURAY
+    return true;
+#else
+    return false;
+#endif
+}
+
+void DiscScanner::clear()
+{
+    ++m_generation;
+    m_info.clear();
+    emit infoChanged();
+}
+
+void DiscScanner::scan(const QString &device)
+{
+    if (!available() || device.isEmpty())
+        return;
+    const int gen = ++m_generation;
+    m_busy = true;
+    emit busyChanged();
+    QPointer<DiscScanner> self(this);
+    QThreadPool::globalInstance()->start([self, device, gen] {
+        const QVariantMap info = scanBlocking(device);
+        QMetaObject::invokeMethod(QCoreApplication::instance(), [self, info, gen] {
+            if (!self || gen != self->m_generation)
+                return;
+            self->m_info = info;
+            self->m_busy = false;
+            emit self->busyChanged();
+            emit self->infoChanged();
+        }, Qt::QueuedConnection);
+    });
+}
+
+QVariantMap DiscScanner::scanBlocking(const QString &device)
+{
+    QVariantMap m;
+    m["device"] = device;
+#ifdef LUMEN_HAVE_BLURAY
+    BLURAY *bd = bd_open(blurayPath(device).toUtf8().constData(), nullptr);
+    if (!bd) {
+        m["error"] = QStringLiteral("libbluray konnte die Disc nicht öffnen");
+        return m;
+    }
+    if (const BLURAY_DISC_INFO *di = bd_get_disc_info(bd)) {
+        m["discName"] = di->disc_name ? QString::fromUtf8(di->disc_name) : QString();
+        m["volumeId"] = di->udf_volume_id ? QString::fromUtf8(di->udf_volume_id) : QString();
+        m["aacsDetected"] = bool(di->aacs_detected);
+        m["aacsLibrary"] = bool(di->libaacs_detected);
+        m["aacsHandled"] = bool(di->aacs_handled);
+        m["aacsError"] = int(di->aacs_error_code);
+        m["bdplusDetected"] = bool(di->bdplus_detected);
+        m["bdplusHandled"] = bool(di->bdplus_handled);
+        m["bdjDetected"] = bool(di->bdj_detected);
+        m["has3d"] = bool(di->content_exist_3D);
+        m["hdmvTitles"] = int(di->num_hdmv_titles);
+        m["bdjTitles"] = int(di->num_bdj_titles);
+    }
+
+    // Titel mit mind. 60 s – Menü-Loops und Trailer-Schnipsel ausblenden
+    const uint32_t count = bd_get_titles(bd, TITLES_RELEVANT, 60);
+    const int mainTitle = bd_get_main_title(bd);
+    QVariantList titles;
+    for (uint32_t i = 0; i < count; ++i) {
+        BLURAY_TITLE_INFO *ti = bd_get_title_info(bd, i, 0);
+        if (!ti)
+            continue;
+        QVariantMap t;
+        t["index"] = int(i);
+        t["playlist"] = int(ti->playlist);
+        t["duration"] = double(ti->duration) / 90000.0;
+        t["chapters"] = int(ti->chapter_count);
+        t["angles"] = int(ti->angle_count);
+        t["main"] = int(i) == mainTitle;
+        if (ti->clip_count > 0) {
+            const BLURAY_CLIP_INFO &c = ti->clips[0];
+            if (c.video_stream_count > 0)
+                t["video"] = QStringLiteral("%1 %2").arg(videoFormat(c.video_streams[0].format), videoCodec(c.video_streams[0].coding_type)).trimmed();
+            QStringList audio;
+            for (int a = 0; a < c.audio_stream_count && a < 6; ++a)
+                audio << QStringLiteral("%1 %2").arg(QString::fromLatin1(reinterpret_cast<const char *>(c.audio_streams[a].lang), 3).toUpper(),
+                                                     audioCodec(c.audio_streams[a].coding_type));
+            t["audio"] = audio.join(QStringLiteral(" · "));
+            t["subtitles"] = int(c.pg_stream_count);
+        }
+        titles.append(t);
+        bd_free_title_info(ti);
+    }
+    m["titles"] = titles;
+    bd_close(bd);
+#else
+    m["error"] = QStringLiteral("Ohne libbluray gebaut");
+#endif
+    return m;
+}
