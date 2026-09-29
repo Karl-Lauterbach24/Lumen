@@ -1,4 +1,5 @@
 #include "DcpSubtitles.h"
+#include "Tr.h"
 #include "DcpStream.h"
 
 #include <QDir>
@@ -389,7 +390,7 @@ SubtitleResult buildSubtitles(const QList<SubtitleSource> &sources, const QStrin
         }
         QDomDocument doc;
         if (xml.isEmpty() || !doc.setContent(xml)) {
-            res.error = QStringLiteral("Untertitel nicht lesbar: %1").arg(QFileInfo(src.file).fileName());
+            res.error = LTR("Untertitel nicht lesbar: %1").arg(QFileInfo(src.file).fileName());
             continue;
         }
         const QDomElement root = doc.documentElement();
@@ -456,7 +457,7 @@ SubtitleResult buildSubtitles(const QList<SubtitleSource> &sources, const QStrin
 
     if (events.isEmpty()) {
         if (res.error.isEmpty() && res.imageEvents.isEmpty())
-            res.error = QStringLiteral("Keine Untertitel");
+            res.error = LTR("Keine Untertitel");
         return res;
     }
     std::stable_sort(events.begin(), events.end(), [](const Event &a, const Event &b) { return a.start < b.start; });
@@ -476,7 +477,7 @@ SubtitleResult buildSubtitles(const QList<SubtitleSource> &sources, const QStrin
     res.assFile = QDir(outDir).filePath(name + QStringLiteral(".ass"));
     QFile f(res.assFile);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        res.error = QStringLiteral("ASS-Datei konnte nicht geschrieben werden");
+        res.error = LTR("ASS-Datei konnte nicht geschrieben werden");
         res.assFile.clear();
         return res;
     }

@@ -13,6 +13,7 @@
 #include "DcpManager.h"
 #include "DiscScanner.h"
 #include "DvdNav.h"
+#include "I18n.h"
 #include "DisplayManager.h"
 #include "DriveManager.h"
 #include "MpvController.h"
@@ -31,6 +32,7 @@ int main(int argc, char *argv[])
     std::setlocale(LC_NUMERIC, "C");
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
+    I18n i18n; // vor allen anderen: Texte der Objekte sind dann schon übersetzt
     DisplayManager displays;
     DriveManager drives;
     ProfileManager profiles;
@@ -66,8 +68,11 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Nav", &nav);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "DvdNav", &dvd);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Dcp", &dcp);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "I18n", &i18n);
+    QObject::connect(&i18n, &I18n::languageChanged, &profiles, &ProfileManager::retranslate);
 
     QQmlApplicationEngine engine;
+    i18n.setEngine(&engine);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
     engine.loadFromModule("Lumen", "Main");

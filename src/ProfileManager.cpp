@@ -1,4 +1,6 @@
 #include "ProfileManager.h"
+#include "Tr.h"
+#include "Tr.h"
 
 #include <QDir>
 #include <QFile>
@@ -28,6 +30,17 @@ QVariantList readArray(const QString &file)
 
 QString yesNo(bool b) { return b ? QStringLiteral("yes") : QStringLiteral("no"); }
 
+// Unveränderte Vorlagen in der Oberflächensprache zeigen (gespeichert bleibt Deutsch)
+QVariantMap localized(QVariantMap p)
+{
+    if (p.value("builtin").toBool() && !p.value("modified").toBool()) {
+        p["name"] = ltrDynamic(p.value("name").toString());
+        if (!p.value("description").toString().isEmpty())
+            p["description"] = ltrDynamic(p.value("description").toString());
+    }
+    return p;
+}
+
 } // namespace
 
 ProfileManager::ProfileManager(QObject *parent)
@@ -40,7 +53,7 @@ QVariantMap ProfileManager::defaults() const
 {
     return {
         {"id", QString()},
-        {"name", QStringLiteral("Neues Profil")},
+        {"name", LTR("Neues Profil")},
         {"description", QString()},
         {"builtin", false},
         // Ausgabegerät
@@ -153,6 +166,21 @@ void ProfileManager::setCurrentId(const QString &id)
     m_currentId = id;
     QSettings().setValue(QStringLiteral("profile/current"), id);
     emit currentProfileChanged();
+    emit currentDisplayChanged();
+}
+
+QVariantList ProfileManager::profiles() const
+{
+    QVariantList out;
+    for (const auto &v : m_profiles)
+        out.append(localized(v.toMap()));
+    return out;
+}
+
+void ProfileManager::retranslate()
+{
+    emit profilesChanged();
+    emit currentDisplayChanged();
 }
 
 QVariantMap ProfileManager::currentProfile() const
@@ -165,7 +193,7 @@ QVariantMap ProfileManager::profileById(const QString &id) const
     for (const auto &v : m_profiles) {
         const QVariantMap p = v.toMap();
         if (p.value("id").toString() == id)
-            return p;
+            return localized(p);
     }
     return {};
 }
@@ -198,6 +226,7 @@ QString ProfileManager::saveProfile(const QVariantMap &profile)
     emit profilesChanged();
     if (id == m_currentId)
         emit currentProfileChanged();
+    emit currentDisplayChanged();
     return id;
 }
 
@@ -243,6 +272,7 @@ void ProfileManager::resetBuiltin(const QString &id)
         emit profilesChanged();
         if (id == m_currentId)
             emit currentProfileChanged();
+    emit currentDisplayChanged();
         return;
     }
 }

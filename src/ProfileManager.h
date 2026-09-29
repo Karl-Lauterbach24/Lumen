@@ -12,12 +12,12 @@ class ProfileManager : public QObject
     Q_OBJECT
     Q_PROPERTY(QVariantList profiles READ profiles NOTIFY profilesChanged)
     Q_PROPERTY(QString currentId READ currentId WRITE setCurrentId NOTIFY currentProfileChanged)
-    Q_PROPERTY(QVariantMap current READ currentProfile NOTIFY currentProfileChanged)
+    Q_PROPERTY(QVariantMap current READ currentProfile NOTIFY currentDisplayChanged)
 
 public:
     explicit ProfileManager(QObject *parent = nullptr);
 
-    QVariantList profiles() const { return m_profiles; }
+    QVariantList profiles() const;
     QString currentId() const { return m_currentId; }
     void setCurrentId(const QString &id);
     QVariantMap currentProfile() const;
@@ -35,9 +35,13 @@ public:
 
     static QVariantMap toMpvOptions(const QVariantMap &profile);
 
+    // Sprache gewechselt: Namen/Beschreibungen der Vorlagen neu anzeigen
+    void retranslate();
+
 signals:
     void profilesChanged();
     void currentProfileChanged();
+    void currentDisplayChanged();
 
 private:
     void load();

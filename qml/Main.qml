@@ -13,7 +13,7 @@ ApplicationWindow {
     minimumWidth: 900
     minimumHeight: 560
     visible: true
-    title: "Lumen"
+    title: qsTr("Lumen")
     color: Theme.bg
     font.family: Theme.font
     font.pixelSize: 13
@@ -65,8 +65,8 @@ ApplicationWindow {
     function setChapter(i) { if (navMode) nav.setChapter(i); else Player.setChapter(i) }
 
     function kindLabel(k) {
-        return ({ bluray: "Blu-ray", dvd: "DVD-Video", hddvd: "HD DVD", vcd: "Video-CD", svcd: "Super Video-CD",
-                  cdda: "Audio-CD", dcp: "Digital Cinema Package", file: "Datei" })[k] || "Datei"
+        return ({ bluray: qsTr("Blu-ray"), dvd: qsTr("DVD-Video"), hddvd: qsTr("HD DVD"), vcd: qsTr("Video-CD"), svcd: qsTr("Super Video-CD"),
+                  cdda: qsTr("Audio-CD"), dcp: qsTr("Digital Cinema Package"), file: qsTr("Datei") })[k] || qsTr("Datei")
     }
     function localPath(url) {
         return decodeURIComponent(url.toString().replace(/^file:\/{2,3}/, Qt.platform.os === "windows" ? "" : "/"))
@@ -81,9 +81,9 @@ ApplicationWindow {
     }
 
     function stereoLabel(v) {
-        return ({ none: "2D", fp: "HDMI Frame Packing", sbs2l: "Side-by-Side Half", sbsl: "Side-by-Side Full",
-                  ab2l: "Top-and-Bottom Half", abl: "Top-and-Bottom Full", irl: "Zeilenverschachtelt",
-                  arcd: "Anaglyph" })[v || "none"] || v
+        return ({ none: "2D", fp: qsTr("HDMI Frame Packing"), sbs2l: qsTr("Side-by-Side Half"), sbsl: qsTr("Side-by-Side Full"),
+                  ab2l: qsTr("Top-and-Bottom Half"), abl: qsTr("Top-and-Bottom Full"), irl: qsTr("Zeilenverschachtelt"),
+                  arcd: qsTr("Anaglyph") })[v || "none"] || v
     }
 
     function playDrive(drive, withMenu) {
@@ -116,14 +116,14 @@ ApplicationWindow {
 
     FileDialog {
         id: fileDialog
-        title: "Datei oder ISO öffnen"
-        nameFilters: ["Medien (*.iso *.mkv *.m2ts *.mts *.ts *.mp4 *.mov *.webm *.bdmv *.vob *.ifo *.evo *.mpg *.dat *.cue *.bin *.nrg *.mxf *.xml)",
-                      "Disc-Abbilder (*.iso *.cue *.bin *.nrg)", "Alle Dateien (*)"]
+        title: qsTr("Datei oder ISO öffnen")
+        nameFilters: [qsTr("Medien (*.iso *.mkv *.m2ts *.mts *.ts *.mp4 *.mov *.webm *.bdmv *.vob *.ifo *.evo *.mpg *.dat *.cue *.bin *.nrg *.mxf *.xml)"),
+                      qsTr("Disc-Abbilder (*.iso *.cue *.bin *.nrg)"), qsTr("Alle Dateien (*)")]
         onAccepted: win.openPath(win.localPath(selectedFile), settings.startWithMenu)
     }
     FolderDialog {
         id: folderDialog
-        title: "Disc- oder DCP-Ordner öffnen (BDMV, VIDEO_TS, HVDVD_TS, MPEGAV, ASSETMAP)"
+        title: qsTr("Disc- oder DCP-Ordner öffnen (BDMV, VIDEO_TS, HVDVD_TS, MPEGAV, ASSETMAP)")
         onAccepted: win.openPath(win.localPath(selectedFolder), settings.startWithMenu)
     }
 
@@ -182,7 +182,7 @@ ApplicationWindow {
                     spacing: 8
                     Layout.rightMargin: 18
                     Rectangle { width: 10; height: 10; radius: 5; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
-                    Text { text: "LUMEN"; color: Theme.text; font.pixelSize: 15; font.weight: Font.Bold; font.letterSpacing: 4 }
+                    Text { text: qsTr("LUMEN"); color: Theme.text; font.pixelSize: 15; font.weight: Font.Bold; font.letterSpacing: 4 }
                 }
 
                 Select {
@@ -191,39 +191,39 @@ ApplicationWindow {
                     model: Drives.drives
                     textRole: "title"
                     popupWidth: 380
-                    placeholder: Drives.scanning ? "Suche Laufwerke …" : "Kein Laufwerk gefunden"
+                    placeholder: Drives.scanning ? qsTr("Suche Laufwerke …") : qsTr("Kein Laufwerk gefunden")
                     onActivated: if (win.selectedDrive && win.selectedDrive.kind && win.selectedDrive.kind !== "dcp") Disc.scan(win.selectedDrive.path)
                 }
                 IconButton {
                     iconName: "disc"
-                    tip: "Hauptfilm direkt abspielen"
+                    tip: qsTr("Hauptfilm direkt abspielen")
                     enabled: !!win.selectedDrive && !!win.selectedDrive.hasDisc
                     onClicked: win.playDrive(win.selectedDrive, false)
                 }
                 IconButton {
                     iconName: "menu"
-                    tip: "Mit Disc-Menü starten (Blu-ray, DVD)"
+                    tip: qsTr("Mit Disc-Menü starten (Blu-ray, DVD)")
                     enabled: !!win.selectedDrive && !!win.selectedDrive.hasDisc
                              && (win.selectedDrive.kind === "bluray" ? Nav.available : win.selectedDrive.kind === "dvd")
                     onClicked: win.playDrive(win.selectedDrive, true)
                 }
-                IconButton { iconName: "eject"; tip: "Auswerfen (Strg+E)"; enabled: !!win.selectedDrive; onClicked: win.ejectSelected() }
+                IconButton { iconName: "eject"; tip: qsTr("Auswerfen (Strg+E)"); enabled: !!win.selectedDrive; onClicked: win.ejectSelected() }
                 IconButton {
                     iconName: "folder"
-                    tip: "Datei, Abbild, Disc- oder DCP-Ordner öffnen"
+                    tip: qsTr("Datei, Abbild, Disc- oder DCP-Ordner öffnen")
                     onClicked: openMenu.popup()
                     Menu {
                         id: openMenu
-                        MenuItem { text: "Datei oder Abbild (ISO, CUE/BIN) …"; onTriggered: fileDialog.open() }
-                        MenuItem { text: "Disc-Ordner (Blu-ray, DVD, HD DVD, VCD) …"; onTriggered: folderDialog.open() }
-                        MenuItem { text: "DCP (Kino) …"; onTriggered: folderDialog.open() }
+                        MenuItem { text: qsTr("Datei oder Abbild (ISO, CUE/BIN) …"); onTriggered: fileDialog.open() }
+                        MenuItem { text: qsTr("Disc-Ordner (Blu-ray, DVD, HD DVD, VCD) …"); onTriggered: folderDialog.open() }
+                        MenuItem { text: qsTr("DCP (Kino) …"); onTriggered: folderDialog.open() }
                         background: Rectangle { implicitWidth: 220; color: Theme.raised; border.color: Theme.line; radius: Theme.radiusSmall }
                     }
                 }
 
                 Item { Layout.fillWidth: true }
 
-                Text { text: "Ausgabe"; color: Theme.textFaint; font.pixelSize: 12 }
+                Text { text: qsTr("Ausgabe"); color: Theme.textFaint; font.pixelSize: 12 }
                 Select {
                     id: profileSelect
                     Layout.preferredWidth: 300
@@ -234,7 +234,7 @@ ApplicationWindow {
                     currentIndex: indexFor(Profiles.currentId)
                     onActivated: Profiles.currentId = currentValue
                 }
-                IconButton { iconName: "tune"; tip: "Profil bearbeiten"; onClicked: editor.openFor(Profiles.current) }
+                IconButton { iconName: "tune"; tip: qsTr("Profil bearbeiten"); onClicked: editor.openFor(Profiles.current) }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
         }
@@ -276,15 +276,15 @@ ApplicationWindow {
                         text: {
                             const parts = []
                             if (win.navMode) {
-                                parts.push(!win.nav.menuMode ? "Titel" : win.nav.menuVisible ? "Disc-Menü" : "Menümodus")
+                                parts.push(!win.nav.menuMode ? qsTr("Titel") : win.nav.menuVisible ? qsTr("Disc-Menü") : qsTr("Menümodus"))
                                 if (win.nav.playlist >= 0) parts.push(("0000" + win.nav.playlist).slice(-5) + ".mpls")
-                                if (win.isDvd && DvdNav.title > 0) parts.push("Titel " + DvdNav.title + " / " + DvdNav.titles)
+                                if (win.isDvd && DvdNav.title > 0) parts.push(qsTr("Titel ") + DvdNav.title + " / " + DvdNav.titles)
                             } else if (Player.isDisc && Player.currentTitle >= 0) {
-                                parts.push("Titel " + (Player.currentTitle + 1))
+                                parts.push(qsTr("Titel ") + (Player.currentTitle + 1))
                             }
-                            if (win.curChapters.length) parts.push("Kapitel " + (win.curChapter + 1) + " / " + win.curChapters.length)
+                            if (win.curChapters.length) parts.push(qsTr("Kapitel ") + (win.curChapter + 1) + " / " + win.curChapters.length)
                             if (Player.sourceKind === "file") parts.push(Player.path)
-                            else if (Dcp.active) parts.push(Dcp.current.standard + " · " + Dcp.current.reels + " Rolle(n)")
+                            else if (Dcp.active) parts.push(Dcp.current.standard + " · " + Dcp.current.reels + qsTr(" Rolle(n)"))
                             return parts.join("   ·   ")
                         }
                         color: Theme.textDim
@@ -298,24 +298,24 @@ ApplicationWindow {
                         Chip { text: win.vinfo.range || ""; tint: win.vinfo.range === "SDR" ? Theme.textDim : Theme.hdr; filled: !!win.vinfo.range && win.vinfo.range !== "SDR" }
                         Chip { text: win.vinfo.height >= 2000 ? "4K" : win.vinfo.height >= 1000 ? "1080p" : win.vinfo.height > 0 ? win.vinfo.height + "p" : "" }
                         Chip { text: win.vinfo.codec || "" }
-                        Chip { text: win.vinfo.fps > 0 ? win.vinfo.fps.toFixed(3) + " fps" : "" }
+                        Chip { text: win.vinfo.fps > 0 ? win.vinfo.fps.toFixed(3) + qsTr(" fps") : "" }
                         Chip { text: (win.ainfo.codec || "") + (win.ainfo.channels ? " " + win.ainfo.channels : "") }
-                        Chip { text: win.ainfo.passthrough ? "BITSTREAM" : ""; tint: Theme.good }
+                        Chip { text: win.ainfo.passthrough ? qsTr("BITSTREAM") : ""; tint: Theme.good }
                         Chip {
-                            text: Player.mvcActive ? "3D MVC → " + win.stereoLabel(Profiles.current.stereoOut)
+                            text: Player.mvcActive ? qsTr("3D MVC → ") + win.stereoLabel(Profiles.current.stereoOut)
                                 : Player.stereoInput !== "none" ? "3D"
-                                : Disc.info.has3d ? "3D-Disc (2D)" : ""
+                                : Disc.info.has3d ? qsTr("3D-Disc (2D)") : ""
                             tint: Theme.accent
                             filled: Player.mvcActive
                         }
-                        Chip { text: Player.buffering ? "Puffert …" : ""; tint: Theme.warn }
+                        Chip { text: Player.buffering ? qsTr("Puffert …") : ""; tint: Theme.warn }
                         Chip { text: Player.speed !== 1 ? Player.speed.toFixed(2) + "×" : ""; tint: Theme.accent }
-                        Chip { text: Player.embedded ? "Eingebettet · SDR" : ""; tint: Theme.textDim }
-                        Chip { text: Dcp.active && Dcp.current.encrypted ? "Entschlüsselt (KDM)" : ""; tint: Theme.good }
-                        Chip { text: Dcp.active && Dcp.reduction > 0 ? "J2K 1/" + Math.pow(2, Dcp.reduction) : ""; tint: Theme.warn }
-                        Chip { text: Dcp.active && Dcp.fader !== 7 ? "Fader " + Dcp.fader.toFixed(1) : ""; tint: Theme.textDim }
-                        Chip { text: Player.droppedFrames > 0 && !Player.idle ? Player.droppedFrames + (Player.droppedFrames === 1 ? " Bild verworfen" : " Bilder verworfen") : ""; tint: Theme.warn }
-                        Chip { text: win.isDvd && DvdNav.angles > 1 ? "Winkel " + DvdNav.angle + "/" + DvdNav.angles : ""; tint: Theme.accent }
+                        Chip { text: Player.embedded ? qsTr("Eingebettet · SDR") : ""; tint: Theme.textDim }
+                        Chip { text: Dcp.active && Dcp.current.encrypted ? qsTr("Entschlüsselt (KDM)") : ""; tint: Theme.good }
+                        Chip { text: Dcp.active && Dcp.reduction > 0 ? qsTr("J2K 1/") + Math.pow(2, Dcp.reduction) : ""; tint: Theme.warn }
+                        Chip { text: Dcp.active && Dcp.fader !== 7 ? qsTr("Fader ") + Dcp.fader.toFixed(1) : ""; tint: Theme.textDim }
+                        Chip { text: Player.droppedFrames > 0 && !Player.idle ? Player.droppedFrames + (Player.droppedFrames === 1 ? qsTr(" Bild verworfen") : qsTr(" Bilder verworfen")) : ""; tint: Theme.warn }
+                        Chip { text: win.isDvd && DvdNav.angles > 1 ? qsTr("Winkel ") + DvdNav.angle + "/" + DvdNav.angles : ""; tint: Theme.accent }
                     }
 
                     // Fernbedienung für Disc-Menüs
@@ -328,33 +328,33 @@ ApplicationWindow {
                             columns: 3
                             spacing: 4
                             Item { width: 36; height: 36 }
-                            IconButton { iconName: "up"; tip: "Hoch"; onClicked: win.nav.key("up") }
+                            IconButton { iconName: "up"; tip: qsTr("Hoch"); onClicked: win.nav.key("up") }
                             Item { width: 36; height: 36 }
-                            IconButton { iconName: "left"; tip: "Links"; onClicked: win.nav.key("left") }
+                            IconButton { iconName: "left"; tip: qsTr("Links"); onClicked: win.nav.key("left") }
                             Button {
                                 width: 36; height: 36
-                                text: "OK"
+                                text: qsTr("OK")
                                 focusPolicy: Qt.NoFocus
                                 font.pixelSize: 11; font.weight: Font.Bold
                                 onClicked: win.nav.key("enter")
                                 contentItem: Text { text: parent.text; color: Theme.bg; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                                 background: Rectangle { radius: 18; color: parent.down ? "#c9ccd6" : Theme.text }
                             }
-                            IconButton { iconName: "right"; tip: "Rechts"; onClicked: win.nav.key("right") }
+                            IconButton { iconName: "right"; tip: qsTr("Rechts"); onClicked: win.nav.key("right") }
                             Item { width: 36; height: 36 }
-                            IconButton { iconName: "down"; tip: "Runter"; onClicked: win.nav.key("down") }
+                            IconButton { iconName: "down"; tip: qsTr("Runter"); onClicked: win.nav.key("down") }
                             Item { width: 36; height: 36 }
                         }
                         ColumnLayout {
                             spacing: 6
                             Button {
-                                text: "Hauptmenü"
+                                text: qsTr("Hauptmenü")
                                 flat: true
                                 palette.windowText: Theme.text
                                 onClicked: win.nav.key("menu")
                             }
                             Button {
-                                text: win.isDvd ? "Titelmenü" : "Pop-up-Menü"
+                                text: win.isDvd ? qsTr("Titelmenü") : qsTr("Pop-up-Menü")
                                 flat: true
                                 enabled: win.nav.popupAvailable
                                 palette.windowText: Theme.text
@@ -363,18 +363,18 @@ ApplicationWindow {
                             RowLayout {
                                 visible: win.isDvd
                                 spacing: 2
-                                Button { text: "Ton"; flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("audio") }
-                                Button { text: "Untertitel"; flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("subtitle") }
-                                Button { text: "Zurück"; flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("back") }
+                                Button { text: qsTr("Ton"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("audio") }
+                                Button { text: qsTr("Untertitel"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("subtitle") }
+                                Button { text: qsTr("Zurück"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("back") }
                                 Button {
-                                    text: "Winkel " + DvdNav.angle
+                                    text: qsTr("Winkel ") + DvdNav.angle
                                     visible: DvdNav.angles > 1
                                     flat: true; palette.windowText: Theme.accent
                                     onClicked: DvdNav.setAngle(DvdNav.angle % DvdNav.angles + 1)
                                 }
                             }
                             Text {
-                                text: "Pfeile/Enter/Maus funktionieren auch im Player-Fenster · Pos1 = Hauptmenü · Ende = " + (win.isDvd ? "Titelmenü" : "Pop-up")
+                                text: qsTr("Pfeile/Enter/Maus funktionieren auch im Player-Fenster · Pos1 = Hauptmenü · Ende = ") + (win.isDvd ? qsTr("Titelmenü") : qsTr("Pop-up"))
                                 color: Theme.textFaint
                                 font.pixelSize: 11
                             }
@@ -395,10 +395,10 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     visible: Player.idle
                     spacing: 14
-                    SectionLabel { text: "Bereit" }
+                    SectionLabel { text: qsTr("Bereit") }
                     Text {
-                        text: Drives.drives.some(d => d.kind === "dcp") && !Drives.drives.some(d => d.kind && d.kind !== "dcp") ? "DCP gefunden – bereit zur Vorführung"
-                            : Drives.drives.some(d => !!d.kind) ? "Disc erkannt – bereit zur Wiedergabe" : "Disc einlegen oder Datei öffnen"
+                        text: Drives.drives.some(d => d.kind === "dcp") && !Drives.drives.some(d => d.kind && d.kind !== "dcp") ? qsTr("DCP gefunden – bereit zur Vorführung")
+                            : Drives.drives.some(d => !!d.kind) ? qsTr("Disc erkannt – bereit zur Wiedergabe") : qsTr("Disc einlegen oder Datei öffnen")
                         color: Theme.text
                         font.pixelSize: 26
                         font.weight: Font.DemiBold
@@ -427,7 +427,7 @@ ApplicationWindow {
                                         Text { Layout.fillWidth: true; text: modelData.label || modelData.device; color: Theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; elide: Text.ElideRight }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: (modelData.kindLabel || "Disc") + (modelData.is3d ? " · 3D" : "") + (modelData.hardware ? " · " + modelData.hardware : "")
+                                            text: (modelData.kindLabel || qsTr("Disc")) + (modelData.is3d ? qsTr(" · 3D") : "") + (modelData.hardware ? " · " + modelData.hardware : "")
                                             color: Theme.textDim; font.pixelSize: 11; elide: Text.ElideRight
                                         }
                                     }
@@ -436,14 +436,14 @@ ApplicationWindow {
                         }
                     }
                     Toggle {
-                        label: "Discs beim Einlegen automatisch abspielen"
+                        label: qsTr("Discs beim Einlegen automatisch abspielen")
                         checked: settings.autoPlay
                         onToggled: settings.autoPlay = checked
                         implicitWidth: 360
                     }
                     Toggle {
-                        label: "Mit Disc-Menü starten"
-                        hint: "Aus: Hauptfilm direkt abspielen"
+                        label: qsTr("Mit Disc-Menü starten")
+                        hint: qsTr("Aus: Hauptfilm direkt abspielen")
                         checked: settings.startWithMenu
                         onToggled: settings.startWithMenu = checked
                         implicitWidth: 360
@@ -498,22 +498,22 @@ ApplicationWindow {
                             RowLayout {
                                 spacing: 2
                                 Layout.preferredWidth: 220
-                                IconButton { iconName: "frame-back"; tip: "Einzelbild zurück (,)"; onClicked: Player.frameBackStep() }
-                                IconButton { iconName: "frame-fwd"; tip: "Einzelbild vor (.)"; onClicked: Player.frameStep() }
+                                IconButton { iconName: "frame-back"; tip: qsTr("Einzelbild zurück (,)"); onClicked: Player.frameBackStep() }
+                                IconButton { iconName: "frame-fwd"; tip: qsTr("Einzelbild vor (.)"); onClicked: Player.frameStep() }
                                 IconButton {
                                     iconName: "loop"
                                     active: Player.loopA >= 0
-                                    tip: Player.loopB >= 0 ? "A-B-Schleife aufheben (L)" : Player.loopA >= 0 ? "Punkt B setzen (L)" : "Punkt A setzen (L)"
+                                    tip: Player.loopB >= 0 ? qsTr("A-B-Schleife aufheben (L)") : Player.loopA >= 0 ? qsTr("Punkt B setzen (L)") : qsTr("Punkt A setzen (L)")
                                     onClicked: Player.cycleAbLoop()
                                 }
-                                IconButton { iconName: "camera"; tip: "Screenshot (S)"; onClicked: Player.screenshot() }
+                                IconButton { iconName: "camera"; tip: qsTr("Screenshot (S)"); onClicked: Player.screenshot() }
                             }
 
                             Item { Layout.fillWidth: true }
 
                             // Mitte: Transport
-                            IconButton { iconName: "prev"; tip: "Vorheriges Kapitel (Bild ab)"; onClicked: win.prevChapter() }
-                            IconButton { iconName: "rewind"; tip: "−10 s (←)"; onClicked: win.seekRel(-10) }
+                            IconButton { iconName: "prev"; tip: qsTr("Vorheriges Kapitel (Bild ab)"); onClicked: win.prevChapter() }
+                            IconButton { iconName: "rewind"; tip: qsTr("−10 s (←)"); onClicked: win.seekRel(-10) }
                             IconButton {
                                 iconName: Player.paused || Player.idle ? "play" : "pause"
                                 primary: true
@@ -521,15 +521,15 @@ ApplicationWindow {
                                 iconSize: 26
                                 Layout.leftMargin: 8
                                 Layout.rightMargin: 8
-                                tip: "Wiedergabe / Pause (Leertaste)"
+                                tip: qsTr("Wiedergabe / Pause (Leertaste)")
                                 onClicked: {
                                     if (Player.idle && win.selectedDrive && win.selectedDrive.hasDisc) win.playDrive(win.selectedDrive)
                                     else Player.togglePause()
                                 }
                             }
-                            IconButton { iconName: "forward"; tip: "+10 s (→)"; onClicked: win.seekRel(10) }
-                            IconButton { iconName: "next"; tip: "Nächstes Kapitel (Bild auf)"; onClicked: win.nextChapter() }
-                            IconButton { iconName: "stop"; tip: "Stopp"; enabled: !Player.idle; onClicked: Player.stop() }
+                            IconButton { iconName: "forward"; tip: qsTr("+10 s (→)"); onClicked: win.seekRel(10) }
+                            IconButton { iconName: "next"; tip: qsTr("Nächstes Kapitel (Bild auf)"); onClicked: win.nextChapter() }
+                            IconButton { iconName: "stop"; tip: qsTr("Stopp"); enabled: !Player.idle; onClicked: Player.stop() }
 
                             Item { Layout.fillWidth: true }
 
@@ -537,7 +537,7 @@ ApplicationWindow {
                             RowLayout {
                                 spacing: 2
                                 Layout.preferredWidth: 220
-                                IconButton { iconName: Player.muted || Player.volume === 0 ? "mute" : "volume"; tip: "Stumm (M)"; onClicked: Player.setMuted(!Player.muted) }
+                                IconButton { iconName: Player.muted || Player.volume === 0 ? "mute" : "volume"; tip: qsTr("Stumm (M)"); onClicked: Player.setMuted(!Player.muted) }
                                 Slider {
                                     id: vol
                                     Layout.preferredWidth: 96
@@ -556,8 +556,8 @@ ApplicationWindow {
                                         width: 12; height: 12; radius: 6; color: Theme.text
                                     }
                                 }
-                                IconButton { iconName: "fullscreen"; active: Player.fullscreen; tip: "Vollbild im Player-Fenster (F)"; onClicked: Player.toggleFullscreen() }
-                                IconButton { iconName: "info"; tip: "Statistik im Bild (I)"; onClicked: Player.toggleStats() }
+                                IconButton { iconName: "fullscreen"; active: Player.fullscreen; tip: qsTr("Vollbild im Player-Fenster (F)"); onClicked: Player.toggleFullscreen() }
+                                IconButton { iconName: "info"; tip: qsTr("Statistik im Bild (I)"); onClicked: Player.toggleStats() }
                             }
                         }
                     }
@@ -583,7 +583,7 @@ ApplicationWindow {
                         Layout.topMargin: 10
                         spacing: 2
                         Repeater {
-                            model: ["Titel", "Kapitel", "Ton", "Untertitel", "Bild", "Kino", "Ausgabe"]
+                            model: [qsTr("Titel"), qsTr("Kapitel"), qsTr("Ton"), qsTr("Untertitel"), qsTr("Bild"), qsTr("Kino"), qsTr("Ausgabe")]
                             delegate: AbstractButton {
                                 id: tabBtn
                                 required property string modelData
@@ -637,7 +637,7 @@ ApplicationWindow {
                                     readonly property var i: Disc.info
                                     Text {
                                         visible: Disc.busy
-                                        text: "Lese Disc-Struktur …"
+                                        text: qsTr("Lese Disc-Struktur …")
                                         color: Theme.textDim; font.pixelSize: 12
                                     }
                                     Text {
@@ -651,43 +651,43 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         spacing: 6
                                         Chip { text: win.kindLabel(discStatus.i.kind || "") }
-                                        Chip { text: discStatus.i.regions ? "Region " + discStatus.i.regions : "" }
-                                        Chip { text: (discStatus.i.titles || []).length + " Titel" }
-                                        Chip { text: discStatus.i.aacs ? "AACS – nicht entschlüsselt" : ""; tint: Theme.bad }
+                                        Chip { text: discStatus.i.regions ? qsTr("Region ") + discStatus.i.regions : "" }
+                                        Chip { text: (discStatus.i.titles || []).length + qsTr(" Titel") }
+                                        Chip { text: discStatus.i.aacs ? qsTr("AACS – nicht entschlüsselt") : ""; tint: Theme.bad }
                                     }
                                     Flow {
                                         visible: !Disc.busy && !discStatus.i.error && (discStatus.i.kind || "bluray") === "bluray"
                                         Layout.fillWidth: true
                                         spacing: 6
                                         Chip {
-                                            text: !discStatus.i.aacsDetected ? "Kein AACS"
-                                                : discStatus.i.aacsHandled ? "AACS · extern gelöst"
-                                                : !discStatus.i.aacsLibrary ? "AACS · keine externe Bibliothek"
-                                                : "AACS · Fehler " + discStatus.i.aacsError
+                                            text: !discStatus.i.aacsDetected ? qsTr("Kein AACS")
+                                                : discStatus.i.aacsHandled ? qsTr("AACS · extern gelöst")
+                                                : !discStatus.i.aacsLibrary ? qsTr("AACS · keine externe Bibliothek")
+                                                : qsTr("AACS · Fehler ") + discStatus.i.aacsError
                                             tint: !discStatus.i.aacsDetected || discStatus.i.aacsHandled ? Theme.good : Theme.bad
                                         }
                                         Chip {
-                                            text: discStatus.i.bdplusDetected ? (discStatus.i.bdplusHandled ? "BD+ · extern gelöst" : "BD+ · nicht gelöst") : ""
+                                            text: discStatus.i.bdplusDetected ? (discStatus.i.bdplusHandled ? qsTr("BD+ · extern gelöst") : qsTr("BD+ · nicht gelöst")) : ""
                                             tint: discStatus.i.bdplusHandled ? Theme.good : Theme.warn
                                         }
-                                        Chip { text: discStatus.i.bdjDetected ? "BD-J-Menü" : ""; tint: Theme.textDim }
-                                        Chip { text: discStatus.i.has3d ? "3D-Inhalt" : ""; tint: Theme.accent }
+                                        Chip { text: discStatus.i.bdjDetected ? qsTr("BD-J-Menü") : ""; tint: Theme.textDim }
+                                        Chip { text: discStatus.i.has3d ? qsTr("3D-Inhalt") : ""; tint: Theme.accent }
                                     }
                                     Text {
                                         visible: !Disc.busy && !!discStatus.i.aacsDetected && !discStatus.i.aacsHandled
                                         Layout.fillWidth: true
                                         wrapMode: Text.WordWrap
                                         color: Theme.textFaint; font.pixelSize: 11
-                                        text: "Lumen entschlüsselt nicht selbst. Die Disc muss über ein LibreDrive-Laufwerk mit einer vom System bereitgestellten AACS-Bibliothek lesbar sein."
+                                        text: qsTr("Lumen entschlüsselt nicht selbst. Die Disc muss über ein LibreDrive-Laufwerk mit einer vom System bereitgestellten AACS-Bibliothek lesbar sein.")
                                     }
                                 }
                             }
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                SectionLabel { text: "Titel / Playlists"; Layout.fillWidth: true }
+                                SectionLabel { text: qsTr("Titel / Playlists"); Layout.fillWidth: true }
                                 Button {
-                                    text: "Disc-Menü"
+                                    text: qsTr("Disc-Menü")
                                     flat: true
                                     visible: win.currentDevice.length > 0 && Player.sourceKind !== "dcp"
                                              && (Disc.info.kind === "dvd" || (Disc.info.kind === "bluray" && Nav.available))
@@ -695,7 +695,7 @@ ApplicationWindow {
                                     onClicked: Player.openSource(win.currentDevice, "menu", -1)
                                 }
                                 Button {
-                                    text: "Hauptfilm"
+                                    text: qsTr("Hauptfilm")
                                     flat: true
                                     visible: win.currentDevice.length > 0 && Player.sourceKind !== "dcp" && !!Disc.info.kind
                                              && Disc.info.kind !== "dcp" && Disc.info.kind !== "file"
@@ -714,16 +714,16 @@ ApplicationWindow {
                             SelectList {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                emptyText: Player.sourceKind === "dcp" ? "Digital Cinema Package: Kompositionen, Schlüssel und Programm im Tab „Kino“."
-                                         : Nav.available ? "Keine Disc geladen.\nStart mit Disc-Menü oder Titel hier direkt wählen."
-                                                         : "Keine Disc geladen.\nOhne libbluray gebaut – Titel werden direkt gewählt."
+                                emptyText: Player.sourceKind === "dcp" ? qsTr("Digital Cinema Package: Kompositionen, Schlüssel und Programm im Tab „Kino“.")
+                                         : Nav.available ? qsTr("Keine Disc geladen.\nStart mit Disc-Menü oder Titel hier direkt wählen.")
+                                                         : qsTr("Keine Disc geladen.\nOhne libbluray gebaut – Titel werden direkt gewählt.")
                                 model: {
                                     const t = Disc.info.titles
                                     const kind = Disc.info.kind || "bluray"
                                     if (t && t.length && kind !== "bluray")
                                         return t.map(x => ({
-                                            label: (x.label || ("Titel " + (x.title || x.index + 1))) + (x.main ? "   ★ Hauptfilm" : ""),
-                                            detail: [x.chapters ? x.chapters + " Kap." : ""].filter(s => s).join("  ·  "),
+                                            label: (x.label || (qsTr("Titel ") + (x.title || x.index + 1))) + (x.main ? qsTr("   ★ Hauptfilm") : ""),
+                                            detail: [x.chapters ? x.chapters + qsTr(" Kap.") : ""].filter(s => s).join("  ·  "),
                                             trailing: x.duration > 0 ? Theme.time(x.duration) : "",
                                             selected: win.isDvd ? DvdNav.title === x.title : false,
                                             titleIndex: x.index,
@@ -731,14 +731,14 @@ ApplicationWindow {
                                         }))
                                     if (Disc.available && t && t.length)
                                         return t.map(x => ({
-                                            label: "Titel " + (x.index + 1) + (x.main ? "   ★ Hauptfilm" : ""),
-                                            detail: [x.video, x.audio, x.chapters + " Kap.", ("0000" + x.playlist).slice(-5) + ".mpls"].filter(s => s).join("  ·  "),
+                                            label: qsTr("Titel ") + (x.index + 1) + (x.main ? qsTr("   ★ Hauptfilm") : ""),
+                                            detail: [x.video, x.audio, x.chapters + qsTr(" Kap."), ("0000" + x.playlist).slice(-5) + ".mpls"].filter(s => s).join("  ·  "),
                                             trailing: Theme.time(x.duration),
                                             selected: (win.navMode && Nav.playlist === x.playlist) || Player.path === "bd://mpls/" + x.playlist || (Player.path === "bd://longest" && x.main),
                                             playlist: x.playlist
                                         }))
                                     return Player.titles.map(x => ({
-                                        label: "Titel " + (x.index + 1),
+                                        label: qsTr("Titel ") + (x.index + 1),
                                         trailing: x.duration > 0 ? Theme.time(x.duration) : "",
                                         selected: x.index === Player.currentTitle,
                                         index: x.index
@@ -755,7 +755,7 @@ ApplicationWindow {
 
                         // ---- Kapitel ----
                         SelectList {
-                            emptyText: "Keine Kapitel"
+                            emptyText: qsTr("Keine Kapitel")
                             model: win.curChapters.map(c => ({
                                 label: c.title,
                                 trailing: Theme.time(c.time),
@@ -767,32 +767,32 @@ ApplicationWindow {
                         // ---- Ton ----
                         ColumnLayout {
                             spacing: 10
-                            SectionLabel { text: "Tonspur" }
+                            SectionLabel { text: qsTr("Tonspur") }
                             SelectList {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                emptyText: "Keine Tonspuren"
+                                emptyText: qsTr("Keine Tonspuren")
                                 model: Player.audioTracks.map(t => ({ label: t.label, selected: t.id === Player.audioId, id: t.id }))
                                 onPicked: (i, item) => Player.setAudioId(item.id)
                             }
                             Text {
                                 Layout.fillWidth: true
                                 visible: !!win.ainfo.format
-                                text: win.ainfo.passthrough ? "Bitstream an Receiver: " + win.ainfo.format.replace("spdif-", "").toUpperCase()
-                                                            : "PCM " + (win.ainfo.channels || "") + (win.ainfo.samplerate ? " · " + (win.ainfo.samplerate / 1000) + " kHz" : "")
+                                text: win.ainfo.passthrough ? qsTr("Bitstream an Receiver: ") + win.ainfo.format.replace("spdif-", "").toUpperCase()
+                                                            : qsTr("PCM ") + (win.ainfo.channels || "") + (win.ainfo.samplerate ? " · " + (win.ainfo.samplerate / 1000) + qsTr(" kHz") : "")
                                 color: win.ainfo.passthrough ? Theme.good : Theme.textDim
                                 font.pixelSize: 12
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
-                                label: "Audio-Verzögerung"
-                                from: -2; to: 2; stepSize: 0.01; decimals: 2; unit: " s"
+                                label: qsTr("Audio-Verzögerung")
+                                from: -2; to: 2; stepSize: 0.01; decimals: 2; unit: qsTr(" s")
                                 value: Player.audioDelay
                                 onMoved: v => Player.setAudioDelay(v)
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
-                                label: "Geschwindigkeit"
+                                label: qsTr("Geschwindigkeit")
                                 from: 0.25; to: 2; stepSize: 0.05; decimals: 2; unit: "×"; defaultValue: 1
                                 value: Player.speed
                                 onMoved: v => Player.setSpeed(v)
@@ -805,49 +805,49 @@ ApplicationWindow {
                             spacing: 10
                             property real subScale: 1
                             property real subPos: 100
-                            SectionLabel { text: "Untertitel" }
+                            SectionLabel { text: qsTr("Untertitel") }
                             SelectList {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 model: win.isDvd
-                                       ? [{ label: "Aus (nur erzwungene)", selected: DvdNav.subtitleStream < 0, id: -1 }]
+                                       ? [{ label: qsTr("Aus (nur erzwungene)"), selected: DvdNav.subtitleStream < 0, id: -1 }]
                                          .concat(DvdNav.subtitleStreams.map(t => ({ label: t.label, selected: t.id === DvdNav.subtitleStream, id: t.id })))
-                                       : [{ label: "Aus", selected: Player.subtitleId === 0, id: 0 }]
+                                       : [{ label: qsTr("Aus"), selected: Player.subtitleId === 0, id: 0 }]
                                          .concat(Player.subtitleTracks.map(t => ({ label: t.label, selected: t.id === Player.subtitleId, id: t.id })))
                                 onPicked: (i, item) => win.isDvd ? DvdNav.selectSubtitle(item.id) : Player.setSubtitleId(item.id)
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
                                 visible: Nav.mvcActive
-                                label: "3D-Tiefe (Untertitel & Menü)"
-                                from: -40; to: 40; stepSize: 1; unit: " px"
+                                label: qsTr("3D-Tiefe (Untertitel & Menü)")
+                                from: -40; to: 40; stepSize: 1; unit: qsTr(" px")
                                 value: Nav.subtitleDepth
                                 onMoved: v => Nav.subtitleDepth = Math.round(v)
                             }
                             Toggle {
                                 Layout.fillWidth: true
                                 visible: !Nav.mvcActive && !win.isDvd
-                                label: "Nur erzwungene Untertitel"
-                                hint: "Zeigt nur als 'forced' markierte Einblendungen (PGS)"
+                                label: qsTr("Nur erzwungene Untertitel")
+                                hint: qsTr("Zeigt nur als 'forced' markierte Einblendungen (PGS)")
                                 onToggled: Player.setOption("sub-forced-events-only", checked)
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
-                                label: "Verzögerung"
-                                from: -5; to: 5; stepSize: 0.05; decimals: 2; unit: " s"
+                                label: qsTr("Verzögerung")
+                                from: -5; to: 5; stepSize: 0.05; decimals: 2; unit: qsTr(" s")
                                 value: Player.subDelay
                                 onMoved: v => Player.setSubDelay(v)
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
-                                label: "Größe"
+                                label: qsTr("Größe")
                                 from: 0.5; to: 2; stepSize: 0.05; decimals: 2; unit: "×"; defaultValue: 1
                                 value: subsPane.subScale
                                 onMoved: v => { subsPane.subScale = v; Player.setOption("sub-scale", v) }
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
-                                label: "Position (für 2.39:1-Leinwände nach oben ziehen)"
+                                label: qsTr("Position (für 2.39:1-Leinwände nach oben ziehen)")
                                 from: 50; to: 100; stepSize: 1; unit: " %"; defaultValue: 100
                                 value: subsPane.subPos
                                 onMoved: v => { subsPane.subPos = v; Player.setOption("sub-pos", Math.round(v)) }
@@ -871,11 +871,11 @@ ApplicationWindow {
                                 width: picPane.availableWidth
                                 spacing: 10
 
-                                SectionLabel { text: "Seitenverhältnis & Ausschnitt" }
+                                SectionLabel { text: qsTr("Seitenverhältnis & Ausschnitt") }
                                 Select {
                                     Layout.fillWidth: true
                                     model: [
-                                        { value: "no", text: "Original" },
+                                        { value: "no", text: qsTr("Original") },
                                         { value: "16:9", text: "16:9" },
                                         { value: "4:3", text: "4:3" },
                                         { value: "1.85:1", text: "1.85:1" },
@@ -887,26 +887,26 @@ ApplicationWindow {
                                 }
                                 ValueSlider {
                                     Layout.fillWidth: true
-                                    label: "Pan & Scan (Balken wegschneiden)"
+                                    label: qsTr("Pan & Scan (Balken wegschneiden)")
                                     from: 0; to: 1; stepSize: 0.05; decimals: 2
                                     value: picPane.panscan
                                     onMoved: v => { picPane.panscan = v; Player.setOption("panscan", v) }
                                 }
                                 ValueSlider {
                                     Layout.fillWidth: true
-                                    label: "Zoom"
+                                    label: qsTr("Zoom")
                                     from: -0.5; to: 0.5; stepSize: 0.01; decimals: 2
                                     value: picPane.zoom
                                     onMoved: v => { picPane.zoom = v; Player.setOption("video-zoom", v) }
                                 }
 
-                                SectionLabel { text: "Bildregler" }
+                                SectionLabel { text: qsTr("Bildregler") }
                                 Repeater {
                                     model: [
-                                        { key: "brightness", label: "Helligkeit" },
-                                        { key: "contrast", label: "Kontrast" },
-                                        { key: "saturation", label: "Sättigung" },
-                                        { key: "gamma", label: "Gamma" }
+                                        { key: "brightness", label: qsTr("Helligkeit") },
+                                        { key: "contrast", label: qsTr("Kontrast") },
+                                        { key: "saturation", label: qsTr("Sättigung") },
+                                        { key: "gamma", label: qsTr("Gamma") }
                                     ]
                                     delegate: ValueSlider {
                                         required property var modelData
@@ -919,22 +919,22 @@ ApplicationWindow {
                                 }
                                 Toggle {
                                     Layout.fillWidth: true
-                                    label: "Deinterlacing"
-                                    hint: "Für 1080i-Material (Konzerte, Doku)"
+                                    label: qsTr("Deinterlacing")
+                                    hint: qsTr("Für 1080i-Material (Konzerte, Doku)")
                                     onToggled: Player.setOption("deinterlace", checked)
                                 }
 
-                                SectionLabel { text: "3D-Quelle" }
+                                SectionLabel { text: qsTr("3D-Quelle") }
                                 Select {
                                     Layout.fillWidth: true
                                     enabled: !Player.mvcActive
                                     model: [
                                         { value: "none", text: "2D" },
-                                        { value: "sbsl", text: Player.mvcActive ? "Blu-ray 3D (MVC) – automatisch" : "Side-by-Side (Full)" },
-                                        { value: "sbsr", text: "Blu-ray 3D (MVC, Basis rechts) – automatisch" },
-                                        { value: "sbs2l", text: "Side-by-Side (Half)" },
-                                        { value: "abl", text: "Top-and-Bottom (Full)" },
-                                        { value: "ab2l", text: "Top-and-Bottom (Half)" }
+                                        { value: "sbsl", text: Player.mvcActive ? qsTr("Blu-ray 3D (MVC) – automatisch") : qsTr("Side-by-Side (Full)") },
+                                        { value: "sbsr", text: qsTr("Blu-ray 3D (MVC, Basis rechts) – automatisch") },
+                                        { value: "sbs2l", text: qsTr("Side-by-Side (Half)") },
+                                        { value: "abl", text: qsTr("Top-and-Bottom (Full)") },
+                                        { value: "ab2l", text: qsTr("Top-and-Bottom (Half)") }
                                     ]
                                     textRole: "text"; valueRole: "value"
                                     currentIndex: indexFor(Player.stereoInput)
@@ -945,13 +945,13 @@ ApplicationWindow {
                                     wrapMode: Text.WordWrap
                                     color: Theme.textFaint
                                     font.pixelSize: 11
-                                    text: (Player.mvcActive ? "Beide Ansichten der Blu-ray werden dekodiert. " : "")
-                                          + "Ausgabe im Format des Profils: " + win.stereoLabel(Profiles.current.stereoOut)
-                                          + (Profiles.current.stereoOut && Profiles.current.stereoOut !== "none" ? "." : " – 3D-Quellen werden als 2D (linkes Auge) gezeigt.")
+                                    text: (Player.mvcActive ? qsTr("Beide Ansichten der Blu-ray werden dekodiert. ") : "")
+                                          + qsTr("Ausgabe im Format des Profils: ") + win.stereoLabel(Profiles.current.stereoOut)
+                                          + (Profiles.current.stereoOut && Profiles.current.stereoOut !== "none" ? "." : qsTr(" – 3D-Quellen werden als 2D (linkes Auge) gezeigt."))
                                 }
 
                                 Button {
-                                    text: "Alles zurücksetzen"
+                                    text: qsTr("Alles zurücksetzen")
                                     flat: true
                                     palette.windowText: Theme.textDim
                                     onClicked: {
@@ -977,7 +977,17 @@ ApplicationWindow {
                                 width: outPane.availableWidth
                                 spacing: 10
 
-                                SectionLabel { text: "Aktives Profil" }
+                                SectionLabel { text: qsTr("Sprache der Oberfläche") }
+                                Select {
+                                    Layout.fillWidth: true
+                                    model: [{ code: "", name: qsTr("Systemsprache") }].concat(I18n.languages)
+                                    textRole: "name"
+                                    valueRole: "code"
+                                    currentIndex: indexFor(I18n.language)
+                                    onActivated: I18n.language = currentValue
+                                }
+
+                                SectionLabel { text: qsTr("Aktives Profil") }
                                 Rectangle {
                                     Layout.fillWidth: true
                                     implicitHeight: profCol.implicitHeight + 24
@@ -993,17 +1003,17 @@ ApplicationWindow {
                                         Flow {
                                             Layout.fillWidth: true
                                             spacing: 6
-                                            Chip { text: Profiles.current.fullscreen ? "Vollbild" : "Fenster" }
-                                            Chip { text: Profiles.current.hdr === "passthrough" ? "HDR-Passthrough" : Profiles.current.hdr === "tonemap" ? "Tonemapping" + (Profiles.current.targetPeak ? " " + Profiles.current.targetPeak + " nits" : "") : "HDR auto"; tint: Theme.hdr }
-                                            Chip { text: Profiles.current.matchRefreshRate ? "Bildrate-Anpassung" : "" }
-                                            Chip { text: (Profiles.current.audioPassthrough || []).length ? "Bitstream" : ""; tint: Theme.good }
-                                            Chip { text: Profiles.current.stereoOut && Profiles.current.stereoOut !== "none" ? "3D · " + win.stereoLabel(Profiles.current.stereoOut) : ""; tint: Theme.accent }
-                                            Chip { text: Profiles.current.stereoOut && Profiles.current.stereoOut !== "none" && !Player.mvcCapable ? "Kein MVC-Decoder" : ""; tint: Theme.warn }
+                                            Chip { text: Profiles.current.fullscreen ? qsTr("Vollbild") : qsTr("Fenster") }
+                                            Chip { text: Profiles.current.hdr === "passthrough" ? qsTr("HDR-Passthrough") : Profiles.current.hdr === "tonemap" ? qsTr("Tonemapping") + (Profiles.current.targetPeak ? " " + Profiles.current.targetPeak + qsTr(" nits") : "") : qsTr("HDR auto"); tint: Theme.hdr }
+                                            Chip { text: Profiles.current.matchRefreshRate ? qsTr("Bildrate-Anpassung") : "" }
+                                            Chip { text: (Profiles.current.audioPassthrough || []).length ? qsTr("Bitstream") : ""; tint: Theme.good }
+                                            Chip { text: Profiles.current.stereoOut && Profiles.current.stereoOut !== "none" ? qsTr("3D · ") + win.stereoLabel(Profiles.current.stereoOut) : ""; tint: Theme.accent }
+                                            Chip { text: Profiles.current.stereoOut && Profiles.current.stereoOut !== "none" && !Player.mvcCapable ? qsTr("Kein MVC-Decoder") : ""; tint: Theme.warn }
                                         }
                                         RowLayout {
-                                            Button { text: "Bearbeiten"; flat: true; palette.windowText: Theme.accent; onClicked: editor.openFor(Profiles.current) }
-                                            Button { text: "Duplizieren"; flat: true; palette.windowText: Theme.textDim; onClicked: Profiles.currentId = Profiles.duplicateProfile(Profiles.currentId) }
-                                            Button { text: "Neu"; flat: true; palette.windowText: Theme.textDim; onClicked: editor.openFor(Profiles.defaults()) }
+                                            Button { text: qsTr("Bearbeiten"); flat: true; palette.windowText: Theme.accent; onClicked: editor.openFor(Profiles.current) }
+                                            Button { text: qsTr("Duplizieren"); flat: true; palette.windowText: Theme.textDim; onClicked: Profiles.currentId = Profiles.duplicateProfile(Profiles.currentId) }
+                                            Button { text: qsTr("Neu"); flat: true; palette.windowText: Theme.textDim; onClicked: editor.openFor(Profiles.defaults()) }
                                         }
                                     }
                                 }
@@ -1017,8 +1027,8 @@ ApplicationWindow {
 
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    SectionLabel { text: "Ausgabegeräte"; Layout.fillWidth: true }
-                                    IconButton { iconName: "refresh"; size: 28; iconSize: 16; tip: "Neu einlesen"; onClicked: Displays.refresh() }
+                                    SectionLabel { text: qsTr("Ausgabegeräte"); Layout.fillWidth: true }
+                                    IconButton { iconName: "refresh"; size: 28; iconSize: 16; tip: qsTr("Neu einlesen"); onClicked: Displays.refresh() }
                                 }
                                 Repeater {
                                     model: Displays.outputs
@@ -1034,17 +1044,17 @@ ApplicationWindow {
                                             anchors.fill: parent
                                             anchors.margins: 10
                                             spacing: 2
-                                            Text { text: modelData.name + (modelData.primary ? "  (Haupt)" : ""); color: Theme.text; font.pixelSize: 13; Layout.fillWidth: true; elide: Text.ElideRight }
+                                            Text { text: modelData.name + (modelData.primary ? qsTr("  (Haupt)") : ""); color: Theme.text; font.pixelSize: 13; Layout.fillWidth: true; elide: Text.ElideRight }
                                             Text {
-                                                text: modelData.width + "×" + modelData.height + " @ " + modelData.refresh + " Hz"
-                                                      + (modelData.hdrSupported ? (modelData.hdrEnabled ? " · HDR an" : " · HDR-fähig") : "")
+                                                text: modelData.width + "×" + modelData.height + " @ " + modelData.refresh + qsTr(" Hz")
+                                                      + (modelData.hdrSupported ? (modelData.hdrEnabled ? qsTr(" · HDR an") : qsTr(" · HDR-fähig")) : "")
                                                 color: Theme.textDim; font.pixelSize: 11; font.family: Theme.mono
                                             }
                                         }
                                     }
                                 }
 
-                                SectionLabel { text: "Effektive mpv-Optionen" }
+                                SectionLabel { text: qsTr("Effektive mpv-Optionen") }
                                 TextArea {
                                     Layout.fillWidth: true
                                     readOnly: true
@@ -1085,14 +1095,14 @@ ApplicationWindow {
                 }
                 Text {
                     visible: !Player.idle && Player.cacheSeconds > 0
-                    text: "Puffer " + Player.cacheSeconds.toFixed(0) + " s"
+                    text: qsTr("Puffer ") + Player.cacheSeconds.toFixed(0) + qsTr(" s")
                     color: Theme.textFaint; font.pixelSize: 11; font.family: Theme.mono
                 }
                 Text {
-                    text: win.vinfo.displayFps > 0 ? "Anzeige " + win.vinfo.displayFps.toFixed(3) + " Hz" : ""
+                    text: win.vinfo.displayFps > 0 ? qsTr("Anzeige ") + win.vinfo.displayFps.toFixed(3) + qsTr(" Hz") : ""
                     color: Theme.textFaint; font.pixelSize: 11; font.family: Theme.mono
                 }
-                Text { text: "Lumen " + Qt.application.version; color: Theme.textFaint; font.pixelSize: 11 }
+                Text { text: qsTr("Lumen ") + Qt.application.version; color: Theme.textFaint; font.pixelSize: 11 }
             }
         }
     }

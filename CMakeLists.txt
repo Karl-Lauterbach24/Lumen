@@ -112,6 +112,8 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/DvdNav.h            src/DvdNav.cpp
     src/OpticalMedia.h      src/OpticalMedia.cpp
     src/DcpManager.h        src/DcpManager.cpp
+    src/I18n.h              src/I18n.cpp
+    src/Tr.h
     ${LUMEN_DCP_SOURCES}
 )
 
@@ -148,6 +150,7 @@ qt_add_qml_module(lumen
         icons/frame-back.svg icons/frame-fwd.svg icons/refresh.svg
         icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg
         profiles/presets.json
+        i18n/en.json i18n/fr.json i18n/es.json i18n/it.json i18n/pt.json i18n/nl.json i18n/pl.json
 )
 
 target_compile_definitions(lumen PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")

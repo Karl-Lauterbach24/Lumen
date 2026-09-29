@@ -1,4 +1,5 @@
 #include "MpvController.h"
+#include "Tr.h"
 
 #include "BlurayNav.h"
 #include "DcpPackage.h"
@@ -151,7 +152,7 @@ QString channelLabel(int n)
 {
     switch (n) {
     case 0: return {};
-    case 1: return QStringLiteral("Mono");
+    case 1: return LTR("Mono");
     case 2: return QStringLiteral("2.0");
     case 6: return QStringLiteral("5.1");
     case 8: return QStringLiteral("7.1");
@@ -210,7 +211,7 @@ void MpvController::onMvcChanged()
         const int sid = m_sid;
         setOptionRaw(QStringLiteral("sid"), QStringLiteral("no"), false);
         m_sid = sid;
-        m_outputStatus = QStringLiteral("Blu-ray 3D (MVC) → %1").arg(stereoOutLabel(m_profile.value("stereoOut").toString()));
+        m_outputStatus = LTR("Blu-ray 3D (MVC) → %1").arg(stereoOutLabel(m_profile.value("stereoOut").toString()));
         emit outputStatusChanged();
     } else if (m_autoStereo) {
         m_autoStereo = false;
@@ -223,12 +224,13 @@ void MpvController::onMvcChanged()
 
 QString MpvController::stereoOutLabel(const QString &out)
 {
-    static const QHash<QString, QString> labels = {
-        {"none", "2D"}, {"sbs2l", "Side-by-Side Half"}, {"sbsl", "Side-by-Side Full"},
-        {"ab2l", "Top-and-Bottom Half"}, {"abl", "Top-and-Bottom Full"},
-        {"fp", "HDMI Frame Packing 1080p"}, {"irl", "Zeilenverschachtelt"}, {"arcd", "Anaglyph"},
+    static const QHash<QString, const char *> labels = {
+        {"none", "2D"}, {"sbs2l", QT_TRANSLATE_NOOP("Lumen", "Side-by-Side Half")}, {"sbsl", QT_TRANSLATE_NOOP("Lumen", "Side-by-Side Full")},
+        {"ab2l", QT_TRANSLATE_NOOP("Lumen", "Top-and-Bottom Half")}, {"abl", QT_TRANSLATE_NOOP("Lumen", "Top-and-Bottom Full")},
+        {"fp", QT_TRANSLATE_NOOP("Lumen", "HDMI Frame Packing 1080p")}, {"irl", QT_TRANSLATE_NOOP("Lumen", "Zeilenverschachtelt")},
+        {"arcd", QT_TRANSLATE_NOOP("Lumen", "Anaglyph")},
     };
-    return labels.value(out, out);
+    return labels.contains(out) ? LTR(labels.value(out)) : out;
 }
 
 bool MpvController::want3D() const
@@ -325,7 +327,7 @@ bool MpvController::create(const QVariantMap &options)
 {
     m_mpv = mpv_create();
     if (!m_mpv) {
-        setError(QStringLiteral("libmpv konnte nicht initialisiert werden"));
+        setError(LTR("libmpv konnte nicht initialisiert werden"));
         return false;
     }
 
@@ -387,7 +389,7 @@ bool MpvController::create(const QVariantMap &options)
     if (mpv_initialize(m_mpv) < 0) {
         mpv_terminate_destroy(m_mpv);
         m_mpv = nullptr;
-        setError(QStringLiteral("mpv-Initialisierung fehlgeschlagen (Renderer/Optionen prüfen)"));
+        setError(LTR("mpv-Initialisierung fehlgeschlagen (Renderer/Optionen prüfen)"));
         return false;
     }
     observeAll();
@@ -1034,7 +1036,7 @@ void MpvController::advanceQueue()
     if (m_queueIndex + 1 >= m_queue.size()) {
         m_queueActive = false;
         emit queueChanged();
-        showText(QStringLiteral("Programm beendet"), 3000);
+        showText(LTR("Programm beendet"), 3000);
         return;
     }
     queueStart(m_queueIndex + 1);
@@ -1223,7 +1225,7 @@ void MpvController::applyProfile(const QVariantMap &profile)
 
     m_hdrState = -1;
     m_matchedFps = 0;
-    m_outputStatus = QStringLiteral("Profil „%1“ aktiv").arg(profile.value("name").toString());
+    m_outputStatus = LTR("Profil „%1“ aktiv").arg(profile.value("name").toString());
     emit outputStatusChanged();
     emit profileApplied();
     onContentFormatKnown();
@@ -1243,7 +1245,7 @@ void MpvController::onContentFormatKnown()
         QString info;
         if (m_displays->matchRefreshRate(out, m_containerFps, &info, framePacking ? QSize(1920, 2205) : QSize())) {
             m_matchedFps = m_containerFps;
-            status << QStringLiteral("Bildrate %1").arg(info);
+            status << LTR("Bildrate %1").arg(info);
         } else if (!info.isEmpty()) {
             status << info;
         }
@@ -1255,7 +1257,7 @@ void MpvController::onContentFormatKnown()
         if (int(hdr) != m_hdrState) {
             m_hdrState = hdr;
             if (m_displays->setHdr(out, hdr))
-                status << (hdr ? QStringLiteral("System-HDR an") : QStringLiteral("System-HDR aus"));
+                status << (hdr ? LTR("System-HDR an") : LTR("System-HDR aus"));
         }
     }
 
@@ -1308,13 +1310,13 @@ void MpvController::handleEvent(mpv_event *ev)
     case MPV_EVENT_END_FILE: {
         auto *e = static_cast<mpv_event_end_file *>(ev->data);
         if (e->reason == MPV_END_FILE_REASON_ERROR) {
-            QString msg = QStringLiteral("Wiedergabe fehlgeschlagen: %1").arg(QString::fromUtf8(mpv_error_string(e->error)));
+            QString msg = LTR("Wiedergabe fehlgeschlagen: %1").arg(QString::fromUtf8(mpv_error_string(e->error)));
             if (m_sourceKind == QLatin1String("bluray"))
-                msg += QStringLiteral(" – ist die Disc für libbluray lesbar (LibreDrive-Laufwerk + externe AACS-Bibliothek)?");
+                msg += LTR(" – ist die Disc für libbluray lesbar (LibreDrive-Laufwerk + externe AACS-Bibliothek)?");
             else if (m_sourceKind == QLatin1String("dvd"))
-                msg += QStringLiteral(" – ist die DVD für libdvdread lesbar?");
+                msg += LTR(" – ist die DVD für libdvdread lesbar?");
             else if (m_sourceKind == QLatin1String("dcp"))
-                msg += QStringLiteral(" – Spurdateien vollständig und Schlüssel (KDM) passend?");
+                msg += LTR(" – Spurdateien vollständig und Schlüssel (KDM) passend?");
             setError(msg);
         }
         break;
@@ -1402,7 +1404,7 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
             const QVariantMap m = c.toMap();
             QString title = m.value("title").toString();
             if (title.isEmpty() || title.startsWith(QLatin1String("Chapter")))
-                title = QStringLiteral("Kapitel %1").arg(i + 1);
+                title = LTR("Kapitel %1").arg(i + 1);
             m_chapters.append(QVariantMap{{"index", i++}, {"title", title}, {"time", m.value("time").toDouble()}});
         }
         emit chaptersChanged();
@@ -1531,7 +1533,7 @@ void MpvController::rebuildTracks(const QVariantList &list)
                 parts = QStringList{label};
         }
         if (t.value("forced").toBool())
-            parts << QStringLiteral("erzwungen");
+            parts << LTR("erzwungen");
 
         QVariantMap e{
             {"id", t.value("id").toInt()},
@@ -1564,7 +1566,7 @@ void MpvController::updateVideoInfo()
     // Dolby Vision: gpu-next wendet die RPU-Metadaten beim Tonemapping an; über
     // HDMI geht bei Passthrough die HDR10-Basis (echtes DV-Signal kann kein PC-Player)
     if (m_dvProfile > 0)
-        range = QStringLiteral("Dolby Vision P%1").arg(m_dvProfile);
+        range = LTR("Dolby Vision P%1").arg(m_dvProfile);
     // Digitalkino: JPEG 2000 in CIE XYZ (DCI-P3, Gamma 2.6)
     if (m_videoParams.value("pixelformat").toString().startsWith(QLatin1String("xyz")))
         range = QStringLiteral("DCI XYZ");
@@ -1589,7 +1591,7 @@ void MpvController::updateVideoInfo()
     if (!prim.isEmpty())
         parts << prim.toUpper();
     if (m_containerFps > 0)
-        parts << QStringLiteral("%1 fps").arg(m_containerFps, 0, 'f', 3);
+        parts << LTR("%1 fps").arg(m_containerFps, 0, 'f', 3);
     if (!m_hwdec.isEmpty() && m_hwdec != QLatin1String("no"))
         parts << m_hwdec;
     v["summary"] = parts.join(QStringLiteral(" · "));

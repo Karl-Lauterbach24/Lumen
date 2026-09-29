@@ -1,4 +1,5 @@
 #include "DriveManager.h"
+#include "Tr.h"
 #include "DcpPackage.h"
 #include "DvdNav.h"
 #include "OpticalMedia.h"
@@ -32,11 +33,12 @@ QString kindLabel(const QVariantMap &d)
     const QString k = d.value("kind").toString();
     if (k == QLatin1String("bluray"))
         return d.value("isUhd").toBool() ? QStringLiteral("UHD Blu-ray") : QStringLiteral("Blu-ray");
-    static const QHash<QString, QString> labels = {
-        {"dvd", "DVD-Video"}, {"hddvd", "HD DVD"}, {"vcd", "Video-CD"}, {"svcd", "Super Video-CD"},
-        {"cdda", "Audio-CD"}, {"dcp", "DCP"},
+    static const QHash<QString, const char *> labels = {
+        {"dvd", QT_TRANSLATE_NOOP("Lumen", "DVD-Video")}, {"hddvd", QT_TRANSLATE_NOOP("Lumen", "HD DVD")},
+        {"vcd", QT_TRANSLATE_NOOP("Lumen", "Video-CD")}, {"svcd", QT_TRANSLATE_NOOP("Lumen", "Super Video-CD")},
+        {"cdda", QT_TRANSLATE_NOOP("Lumen", "Audio-CD")}, {"dcp", QT_TRANSLATE_NOOP("Lumen", "DCP")},
     };
-    return labels.value(k);
+    return labels.contains(k) ? LTR(labels.value(k)) : QString();
 }
 
 // Disc-/Paketstruktur erkennen. Blu-ray: Header von BDMV/index.bdmv
@@ -290,7 +292,7 @@ QVariantList DriveManager::scan()
         QString disc;
         const QString kl = kindLabel(d);
         if (!d.value("hasDisc").toBool())
-            disc = QStringLiteral("leer");
+            disc = LTR("leer");
         else if (!kl.isEmpty())
             disc = kl + QStringLiteral(" · ") + d.value("label").toString();
         else

@@ -1,4 +1,5 @@
 #include "DcpSignature.h"
+#include "Tr.h"
 
 #if defined(LUMEN_HAVE_LIBXML2) && defined(LUMEN_HAVE_OPENSSL)
 #include <libxml/c14n.h>
@@ -196,20 +197,20 @@ Result verify(const QByteArray &xml)
     Result r;
     Doc doc(xml);
     if (!doc.d) {
-        r.error = QStringLiteral("XML nicht lesbar");
+        r.error = LTR("XML nicht lesbar");
         return r;
     }
     xmlNodePtr root = xmlDocGetRootElement(doc.d);
     xmlNodePtr sigEl = find(root, "Signature");
     if (!sigEl) {
-        r.error = QStringLiteral("KDM ist nicht signiert");
+        r.error = LTR("KDM ist nicht signiert");
         return r;
     }
     r.present = true;
     xmlNodePtr signedInfo = find(sigEl, "SignedInfo");
     xmlNodePtr sigValue = find(sigEl, "SignatureValue");
     if (!signedInfo || !sigValue) {
-        r.error = QStringLiteral("Signatur unvollständig");
+        r.error = LTR("Signatur unvollständig");
         return r;
     }
 
@@ -217,18 +218,18 @@ Result verify(const QByteArray &xml)
     std::vector<xmlNodePtr> refs;
     findAll(signedInfo, "Reference", &refs);
     if (refs.empty()) {
-        r.error = QStringLiteral("Signatur ohne Referenzen");
+        r.error = LTR("Signatur ohne Referenzen");
         return r;
     }
     for (xmlNodePtr ref : refs) {
         const QString uri = attr(ref, "URI");
         if (!uri.startsWith(QLatin1Char('#'))) {
-            r.error = QStringLiteral("Nicht unterstützte Referenz %1").arg(uri);
+            r.error = LTR("Nicht unterstützte Referenz %1").arg(uri);
             return r;
         }
         xmlNodePtr target = findById(root, uri.mid(1));
         if (!target) {
-            r.error = QStringLiteral("Referenziertes Element %1 fehlt").arg(uri);
+            r.error = LTR("Referenziertes Element %1 fehlt").arg(uri);
             return r;
         }
         QString algo = QStringLiteral("http://www.w3.org/TR/2001/REC-xml-c14n-20010315");
@@ -239,18 +240,18 @@ Result verify(const QByteArray &xml)
             if (a.contains(QLatin1String("c14n")))
                 algo = a;
             else if (!a.endsWith(QLatin1String("enveloped-signature"))) {
-                r.error = QStringLiteral("Nicht unterstützte Transformation %1").arg(a);
+                r.error = LTR("Nicht unterstützte Transformation %1").arg(a);
                 return r;
             }
         }
         const EVP_MD *md = digestFor(attr(find(ref, "DigestMethod"), "Algorithm"));
         if (!md) {
-            r.error = QStringLiteral("Unbekanntes Digest-Verfahren");
+            r.error = LTR("Unbekanntes Digest-Verfahren");
             return r;
         }
         const QByteArray expected = QByteArray::fromBase64(text(find(ref, "DigestValue")).simplified().remove(QLatin1Char(' ')).toLatin1());
         if (digest(md, c14n(doc.d, target, algo)) != expected) {
-            r.error = QStringLiteral("Inhalt verändert: Prüfsumme von %1 stimmt nicht").arg(uri);
+            r.error = LTR("Inhalt verändert: Prüfsumme von %1 stimmt nicht").arg(uri);
             return r;
         }
     }
@@ -260,7 +261,7 @@ Result verify(const QByteArray &xml)
     const QString sigAlgo = attr(find(signedInfo, "SignatureMethod"), "Algorithm");
     const EVP_MD *md = digestFor(sigAlgo);
     if (!md) {
-        r.error = QStringLiteral("Unbekanntes Signaturverfahren %1").arg(sigAlgo);
+        r.error = LTR("Unbekanntes Signaturverfahren %1").arg(sigAlgo);
         return r;
     }
     const QByteArray canon = c14n(doc.d, signedInfo, c14nAlgo);
@@ -280,11 +281,11 @@ Result verify(const QByteArray &xml)
             r.signer = subjectOf(c.get());
             r.chainValid = chainOk(c.get(), certs);
             if (!r.chainValid)
-                r.error = QStringLiteral("Signatur gültig, Zertifikatskette unvollständig");
+                r.error = LTR("Signatur gültig, Zertifikatskette unvollständig");
             return r;
         }
     }
-    r.error = certs.empty() ? QStringLiteral("Kein Zertifikat des Unterzeichners im KDM") : QStringLiteral("Signatur ungültig");
+    r.error = certs.empty() ? LTR("Kein Zertifikat des Unterzeichners im KDM") : LTR("Signatur ungültig");
     return r;
 }
 
@@ -300,7 +301,7 @@ bool sign(const QByteArray &xml, const QStringList &ids, const QByteArray &keyPe
     EVP_PKEY *key = PEM_read_bio_PrivateKey(kb, nullptr, nullptr, nullptr);
     BIO_free(kb);
     if (!key)
-        return fail(QStringLiteral("Privater Schlüssel nicht lesbar"));
+        return fail(LTR("Privater Schlüssel nicht lesbar"));
     QString certsXml;
     BIO *cb = BIO_new_mem_buf(chainPem.constData(), int(chainPem.size()));
     while (X509 *x = PEM_read_bio_X509(cb, nullptr, nullptr, nullptr)) {
@@ -320,13 +321,13 @@ bool sign(const QByteArray &xml, const QStringList &ids, const QByteArray &keyPe
         Doc doc(xml);
         if (!doc.d) {
             EVP_PKEY_free(key);
-            return fail(QStringLiteral("XML nicht lesbar"));
+            return fail(LTR("XML nicht lesbar"));
         }
         for (const QString &id : ids) {
             xmlNodePtr n = findById(xmlDocGetRootElement(doc.d), id);
             if (!n) {
                 EVP_PKEY_free(key);
-                return fail(QStringLiteral("Element %1 fehlt").arg(id));
+                return fail(LTR("Element %1 fehlt").arg(id));
             }
             refs += QStringLiteral("<ds:Reference URI=\"#%1\"><ds:DigestMethod Algorithm=\"http://www.w3.org/2001/04/xmlenc#sha256\"/>"
                                    "<ds:DigestValue>%2</ds:DigestValue></ds:Reference>")
@@ -342,7 +343,7 @@ bool sign(const QByteArray &xml, const QStringList &ids, const QByteArray &keyPe
     const int close = int(withSig.lastIndexOf("</"));
     if (close < 0) {
         EVP_PKEY_free(key);
-        return fail(QStringLiteral("Kein Wurzelelement"));
+        return fail(LTR("Kein Wurzelelement"));
     }
     withSig.insert(close, signature.toUtf8());
 
@@ -363,7 +364,7 @@ bool sign(const QByteArray &xml, const QStringList &ids, const QByteArray &keyPe
     EVP_MD_CTX_free(ctx);
     EVP_PKEY_free(key);
     if (canon.isEmpty() || sig.isEmpty())
-        return fail(QStringLiteral("Signieren fehlgeschlagen"));
+        return fail(LTR("Signieren fehlgeschlagen"));
     withSig.replace("@@SIG@@", sig.toBase64());
     *out = withSig;
     return true;
@@ -375,13 +376,13 @@ bool available() { return false; }
 Result verify(const QByteArray &)
 {
     Result r;
-    r.error = QStringLiteral("Ohne libxml2/OpenSSL gebaut – Signatur nicht geprüft");
+    r.error = LTR("Ohne libxml2/OpenSSL gebaut – Signatur nicht geprüft");
     return r;
 }
 bool sign(const QByteArray &, const QStringList &, const QByteArray &, const QByteArray &, QByteArray *, QString *error)
 {
     if (error)
-        *error = QStringLiteral("Ohne libxml2/OpenSSL gebaut");
+        *error = LTR("Ohne libxml2/OpenSSL gebaut");
     return false;
 }
 

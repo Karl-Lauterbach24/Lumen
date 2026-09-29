@@ -1,4 +1,5 @@
 #include "OpticalMedia.h"
+#include "Tr.h"
 
 #include <QCollator>
 #include <QDir>
@@ -478,7 +479,7 @@ QVariantMap scan(const QString &path, const QString &kind)
         }
         m["aacs"] = !findCaseInsensitive(QDir(path), QStringLiteral("AACS")).isEmpty();
         if (list.isEmpty())
-            m["error"] = QStringLiteral("Keine abspielbaren EVO-Dateien gefunden");
+            m["error"] = LTR("Keine abspielbaren EVO-Dateien gefunden");
         m["titles"] = titles;
         return m;
     }
@@ -487,7 +488,7 @@ QVariantMap scan(const QString &path, const QString &kind)
     if (kind != QLatin1String("hddvd") && (isImage(path) || isDriveRoot(path))) {
         Cdio c(path);
         if (!c) {
-            m["error"] = QStringLiteral("libcdio konnte die Disc/das Abbild nicht öffnen");
+            m["error"] = LTR("libcdio konnte die Disc/das Abbild nicht öffnen");
             return m;
         }
         m["discName"] = volumeId(c.p);
@@ -508,7 +509,7 @@ QVariantMap scan(const QString &path, const QString &kind)
                 chapters += e.track == t;
             if (secs > longest)
                 longest = secs, main = int(titles.size());
-            titles.append(QVariantMap{{"index", int(titles.size())}, {"title", int(t)}, {"label", QStringLiteral("Track %1").arg(t)},
+            titles.append(QVariantMap{{"index", int(titles.size())}, {"title", int(t)}, {"label", LTR("Track %1").arg(t)},
                                       {"duration", secs}, {"chapters", std::max(1, chapters)}});
         }
         if (main >= 0 && kind != QLatin1String("cdda")) {
@@ -533,7 +534,7 @@ QVariantMap scan(const QString &path, const QString &kind)
         titles.clear();
         const QStringList cda = d.entryList({QStringLiteral("*.cda")}, QDir::Files, QDir::Name);
         for (int i = 0; i < cda.size(); ++i)
-            titles.append(QVariantMap{{"index", i}, {"title", i + 1}, {"label", QStringLiteral("Track %1").arg(i + 1)}, {"duration", -1}, {"chapters", 1}});
+            titles.append(QVariantMap{{"index", i}, {"title", i + 1}, {"label", LTR("Track %1").arg(i + 1)}, {"duration", -1}, {"chapters", 1}});
     }
     m["titles"] = titles;
     return m;
@@ -559,7 +560,7 @@ Prepared prepare(const QString &path, const QString &kind, int title)
     if (kind == QLatin1String("hddvd")) {
         const QList<HdTitle> titles = hdTitles(path);
         if (titles.isEmpty()) {
-            p.error = QStringLiteral("HD DVD: keine abspielbaren EVO-Dateien");
+            p.error = LTR("HD DVD: keine abspielbaren EVO-Dateien");
             return p;
         }
         int idx = title;
@@ -583,14 +584,14 @@ Prepared prepare(const QString &path, const QString &kind, int title)
         if (!t.chapters.isEmpty()) {
             QList<QPair<double, QString>> ch;
             for (int i = 0; i < t.chapters.size(); ++i)
-                ch.append({t.chapters[i], QStringLiteral("Kapitel %1").arg(i + 1)});
+                ch.append({t.chapters[i], LTR("Kapitel %1").arg(i + 1)});
             const QString cf = chapterFile(dir, ch, t.duration);
             if (!cf.isEmpty())
                 p.options["chapters-file"] = cf;
         }
         p.options["force-media-title"] = label.isEmpty() ? QStringLiteral("HD DVD") : label;
         if (!findCaseInsensitive(QDir(path), QStringLiteral("AACS")).isEmpty())
-            p.error = QStringLiteral("HD DVD mit AACS-Verzeichnis – Lumen entschlüsselt nicht; nur ungeschützte bzw. bereits entschlüsselte Inhalte sind abspielbar");
+            p.error = LTR("HD DVD mit AACS-Verzeichnis – Lumen entschlüsselt nicht; nur ungeschützte bzw. bereits entschlüsselte Inhalte sind abspielbar");
         return p;
     }
 
@@ -606,7 +607,7 @@ Prepared prepare(const QString &path, const QString &kind, int title)
         }
         Cdio c(source);
         if (!c) {
-            p.error = QStringLiteral("libcdio konnte die Video-CD nicht öffnen");
+            p.error = LTR("libcdio konnte die Video-CD nicht öffnen");
             return p;
         }
         const track_t first = cdio_get_first_track_num(c.p);
@@ -631,13 +632,13 @@ Prepared prepare(const QString &path, const QString &kind, int title)
             for (const Entry &en : entries)
                 if (en.track == t)
                     chapters.append({t0 + std::max(0, en.lsn - a) / kSectorsPerSecond,
-                                     QStringLiteral("Track %1 · Einsprung %2").arg(t).arg(++e)});
+                                     LTR("Track %1 · Einsprung %2").arg(t).arg(++e)});
             if (!e)
-                chapters.append({t0, QStringLiteral("Track %1").arg(t)});
+                chapters.append({t0, LTR("Track %1").arg(t)});
             t0 += (b - a + 1) / kSectorsPerSecond;
         }
         if (n == 0) {
-            p.error = QStringLiteral("Keine MPEG-Tracks auf der Video-CD");
+            p.error = LTR("Keine MPEG-Tracks auf der Video-CD");
             return p;
         }
         writeText(QDir(dir).filePath(QStringLiteral("vcd.edl")), edl);
@@ -647,7 +648,7 @@ Prepared prepare(const QString &path, const QString &kind, int title)
         if (!cf.isEmpty())
             p.options["chapters-file"] = cf;
         const QString vol = volumeId(c.p);
-        p.options["force-media-title"] = vol.isEmpty() ? (svcd ? QStringLiteral("Super Video-CD") : QStringLiteral("Video-CD")) : vol;
+        p.options["force-media-title"] = vol.isEmpty() ? (svcd ? LTR("Super Video-CD") : QStringLiteral("Video-CD")) : vol;
         return p;
     }
 #endif
@@ -655,7 +656,7 @@ Prepared prepare(const QString &path, const QString &kind, int title)
     const QVariantMap info = scan(path, kind);
     const QVariantList titles = info.value("titles").toList();
     if (titles.isEmpty()) {
-        p.error = QStringLiteral("Keine Videodateien auf der Video-CD gefunden");
+        p.error = LTR("Keine Videodateien auf der Video-CD gefunden");
         return p;
     }
     const QString dir = tempDir(QStringLiteral("vcdfs"));
@@ -668,7 +669,7 @@ Prepared prepare(const QString &path, const QString &kind, int title)
     }
     writeText(QDir(dir).filePath(QStringLiteral("vcd.edl")), edl);
     p.url = edlUrl(edl);
-    p.options["force-media-title"] = kind == QLatin1String("svcd") ? QStringLiteral("Super Video-CD") : QStringLiteral("Video-CD");
+    p.options["force-media-title"] = kind == QLatin1String("svcd") ? LTR("Super Video-CD") : QStringLiteral("Video-CD");
     return p;
 }
 

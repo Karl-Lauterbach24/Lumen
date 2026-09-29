@@ -1,4 +1,5 @@
 #include "DcpPackage.h"
+#include "Tr.h"
 
 #include <QDir>
 #include <QDomDocument>
@@ -516,7 +517,7 @@ Package scan(const QString &input, const QStringList &extraRoots)
     root = QDir::cleanPath(root);
     pkg.root = root;
     if (!isDcp(root)) {
-        pkg.error = QStringLiteral("Kein DCP: ASSETMAP fehlt");
+        pkg.error = LTR("Kein DCP: ASSETMAP fehlt");
         return pkg;
     }
 
@@ -573,7 +574,7 @@ Package scan(const QString &input, const QStringList &extraRoots)
         return (ka < 0 ? 99 : ka) < (kb < 0 ? 99 : kb);
     });
     if (pkg.cpls.isEmpty())
-        pkg.error = QStringLiteral("Keine Composition Playlist (CPL) gefunden");
+        pkg.error = LTR("Keine Composition Playlist (CPL) gefunden");
     return pkg;
 }
 

@@ -1,4 +1,5 @@
 #include "DcpCrypto.h"
+#include "Tr.h"
 #include "DcpSignature.h"
 
 #include <QDir>
@@ -288,7 +289,7 @@ bool createIdentity(const QString &dir, const QString &organisation, QString *er
     Ptr<EVP_PKEY> leafKey(EVP_RSA_gen(2048));
     if (!rootKey || !interKey || !leafKey) {
         if (error)
-            *error = QStringLiteral("RSA-Schlüssel konnten nicht erzeugt werden: ") + sslError();
+            *error = LTR("RSA-Schlüssel konnten nicht erzeugt werden: ") + sslError();
         return false;
     }
     const QString org = organisation.isEmpty() ? QStringLiteral("Lumen") : organisation;
@@ -297,7 +298,7 @@ bool createIdentity(const QString &dir, const QString &organisation, QString *er
     Ptr<X509> leaf = inter ? makeCert(leafKey.get(), interKey.get(), inter.get(), org, QStringLiteral("CS.lumen.smpte-430-2.LEAF"), -1) : Ptr<X509>();
     if (!leaf) {
         if (error)
-            *error = QStringLiteral("Zertifikate konnten nicht signiert werden: ") + sslError();
+            *error = LTR("Zertifikate konnten nicht signiert werden: ") + sslError();
         return false;
     }
     const QByteArray leafPem = certPem(leaf.get()), interPem = certPem(inter.get()), rootPem = certPem(root.get());
@@ -310,7 +311,7 @@ bool createIdentity(const QString &dir, const QString &organisation, QString *er
         QFile::setPermissions(QDir(dir).filePath(QStringLiteral("leaf.key")), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
         // Die CA-Schlüssel werden nicht benötigt (keine weiteren Zertifikate) und nicht gespeichert
     } else if (error) {
-        *error = QStringLiteral("Zertifikate konnten nicht gespeichert werden (%1)").arg(dir);
+        *error = LTR("Zertifikate konnten nicht gespeichert werden (%1)").arg(dir);
     }
     return ok;
 }
@@ -323,12 +324,12 @@ bool importIdentity(const QString &dir, const QString &certFile, const QString &
     Ptr<EVP_PKEY> key = loadKey(keyData);
     if (!cert || !key) {
         if (error)
-            *error = QStringLiteral("Zertifikat oder Schlüssel ist kein gültiges PEM");
+            *error = LTR("Zertifikat oder Schlüssel ist kein gültiges PEM");
         return false;
     }
     if (X509_check_private_key(cert.get(), key.get()) != 1) {
         if (error)
-            *error = QStringLiteral("Privater Schlüssel passt nicht zum Zertifikat");
+            *error = LTR("Privater Schlüssel passt nicht zum Zertifikat");
         return false;
     }
     QDir().mkpath(dir);
@@ -339,7 +340,7 @@ bool importIdentity(const QString &dir, const QString &certFile, const QString &
                     && writeFile(QDir(dir).filePath(QStringLiteral("chain.pem")), chain)
                     && writeFile(QDir(dir).filePath(QStringLiteral("leaf.key")), keyPem(key.get()));
     if (!ok && error)
-        *error = QStringLiteral("Speichern fehlgeschlagen (%1)").arg(dir);
+        *error = LTR("Speichern fehlgeschlagen (%1)").arg(dir);
     return ok;
 }
 
@@ -352,7 +353,7 @@ Kdm decryptKdm(const QString &file, const QString &privateKeyFile)
         QFile f(file);
         const QByteArray data = f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
         if (data.isEmpty() || !doc.setContent(data)) {
-            kdm.error = QStringLiteral("KDM ist kein gültiges XML");
+            kdm.error = LTR("KDM ist kein gültiges XML");
             return kdm;
         }
         // XML-Signatur (Aussteller, Unverändertheit) prüfen
@@ -363,13 +364,13 @@ Kdm decryptKdm(const QString &file, const QString &privateKeyFile)
         kdm.signer = sig.signer;
         kdm.signatureError = sig.error;
         if (sig.present && !sig.valid && DcpSignature::available()) {
-            kdm.error = QStringLiteral("KDM-Signatur ungültig (%1) – Schlüssel werden nicht verwendet").arg(sig.error);
+            kdm.error = LTR("KDM-Signatur ungültig (%1) – Schlüssel werden nicht verwendet").arg(sig.error);
             return kdm;
         }
     }
     const QDomElement root = doc.documentElement();
     if (localName(root) != QLatin1String("DCinemaSecurityMessage")) {
-        kdm.error = QStringLiteral("Keine KDM-Datei (DCinemaSecurityMessage erwartet)");
+        kdm.error = LTR("Keine KDM-Datei (DCinemaSecurityMessage erwartet)");
         return kdm;
     }
     kdm.smpte = !root.attribute(QStringLiteral("xmlns")).contains(QLatin1String("digicine"));
@@ -388,7 +389,7 @@ Kdm decryptKdm(const QString &file, const QString &privateKeyFile)
 
     Ptr<EVP_PKEY> key = loadKey(readFile(privateKeyFile));
     if (!key) {
-        kdm.error = QStringLiteral("Kein privater Schlüssel – zuerst ein Zertifikat für Lumen erzeugen oder importieren");
+        kdm.error = LTR("Kein privater Schlüssel – zuerst ein Zertifikat für Lumen erzeugen oder importieren");
         return kdm;
     }
 
@@ -432,10 +433,10 @@ Kdm decryptKdm(const QString &file, const QString &privateKeyFile)
     }
     ERR_clear_error();
     if (kdm.keys.isEmpty())
-        kdm.error = ciphers.isEmpty() ? QStringLiteral("KDM enthält keine Schlüssel")
-                                      : QStringLiteral("KDM ist nicht für dieses Zertifikat ausgestellt (Schlüssel lassen sich nicht auspacken)");
+        kdm.error = ciphers.isEmpty() ? LTR("KDM enthält keine Schlüssel")
+                                      : LTR("KDM ist nicht für dieses Zertifikat ausgestellt (Schlüssel lassen sich nicht auspacken)");
     else if (failed)
-        kdm.error = QStringLiteral("%1 von %2 Schlüsseln nicht lesbar").arg(failed).arg(ciphers.size());
+        kdm.error = LTR("%1 von %2 Schlüsseln nicht lesbar").arg(failed).arg(ciphers.size());
     return kdm;
 }
 
@@ -491,7 +492,7 @@ Identity loadIdentity(const QString &dir) { Identity i; i.dir = dir; return i; }
 bool createIdentity(const QString &, const QString &, QString *error)
 {
     if (error)
-        *error = QStringLiteral("Ohne OpenSSL gebaut");
+        *error = LTR("Ohne OpenSSL gebaut");
     return false;
 }
 bool importIdentity(const QString &, const QString &, const QString &, QString *error) { return createIdentity({}, {}, error); }
@@ -499,7 +500,7 @@ Kdm decryptKdm(const QString &file, const QString &)
 {
     Kdm k;
     k.file = file;
-    k.error = QStringLiteral("Ohne OpenSSL gebaut – verschlüsselte DCPs werden nicht unterstützt");
+    k.error = LTR("Ohne OpenSSL gebaut – verschlüsselte DCPs werden nicht unterstützt");
     return k;
 }
 AesCbc::AesCbc() = default;

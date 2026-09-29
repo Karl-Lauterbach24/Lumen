@@ -1,4 +1,5 @@
 #include "DcpManager.h"
+#include "Tr.h"
 
 #include "DcpStream.h"
 #include "DcpSubtitles.h"
@@ -28,15 +29,15 @@ namespace {
 
 QString markerLabel(const QString &m)
 {
-    static const QHash<QString, QString> names = {
-        {"FFOC", "Erstes Bild des Inhalts"}, {"LFOC", "Letztes Bild des Inhalts"},
-        {"FFTC", "Titel-Anfang"}, {"LFTC", "Titel-Ende"},
-        {"FFOI", "Pause – Anfang"}, {"LFOI", "Pause – Ende"},
-        {"FFEC", "Abspann"}, {"LFEC", "Abspann – Ende"},
-        {"FFMC", "Laufender Abspann"}, {"LFMC", "Laufender Abspann – Ende"},
-        {"FFOB", "Erstes Bild nach Leader"}, {"LFOB", "Letztes Bild vor Tail"},
+    static const QHash<QString, const char *> names = {
+        {"FFOC", QT_TRANSLATE_NOOP("Lumen", "Erstes Bild des Inhalts")}, {"LFOC", QT_TRANSLATE_NOOP("Lumen", "Letztes Bild des Inhalts")},
+        {"FFTC", QT_TRANSLATE_NOOP("Lumen", "Titel-Anfang")}, {"LFTC", QT_TRANSLATE_NOOP("Lumen", "Titel-Ende")},
+        {"FFOI", QT_TRANSLATE_NOOP("Lumen", "Pause – Anfang")}, {"LFOI", QT_TRANSLATE_NOOP("Lumen", "Pause – Ende")},
+        {"FFEC", QT_TRANSLATE_NOOP("Lumen", "Abspann")}, {"LFEC", QT_TRANSLATE_NOOP("Lumen", "Abspann – Ende")},
+        {"FFMC", QT_TRANSLATE_NOOP("Lumen", "Laufender Abspann")}, {"LFMC", QT_TRANSLATE_NOOP("Lumen", "Laufender Abspann – Ende")},
+        {"FFOB", QT_TRANSLATE_NOOP("Lumen", "Erstes Bild nach Leader")}, {"LFOB", QT_TRANSLATE_NOOP("Lumen", "Letztes Bild vor Tail")},
     };
-    return names.contains(m) ? QStringLiteral("%1 (%2)").arg(names.value(m), m) : m;
+    return names.contains(m) ? QStringLiteral("%1 (%2)").arg(LTR(names.value(m)), m) : m;
 }
 
 // %Länge%-Maskierung für EDL-Einträge
@@ -130,7 +131,7 @@ void DcpManager::open(const QString &path, bool autoplay)
     const int gen = ++m_generation;
     m_busy = true;
     emit busyChanged();
-    setStatus(QStringLiteral("Lese DCP …"));
+    setStatus(LTR("Lese DCP …"));
     QPointer<DcpManager> self(this);
     QThreadPool::globalInstance()->start([self, path, gen, autoplay] {
         Dcp::Package pkg = Dcp::scan(path);
@@ -143,7 +144,7 @@ void DcpManager::open(const QString &path, bool autoplay)
             emit self->packageChanged();
             self->m_verifyResult.clear();
             emit self->verifyChanged();
-            self->setStatus(pkg.error.isEmpty() ? QStringLiteral("%1 Composition Playlist(s)").arg(pkg.cpls.size()) : pkg.error);
+            self->setStatus(pkg.error.isEmpty() ? LTR("%1 Composition Playlist(s)").arg(pkg.cpls.size()) : pkg.error);
             if (autoplay && !pkg.cpls.isEmpty())
                 self->play(0);
         }, Qt::QueuedConnection);
@@ -181,13 +182,13 @@ QVariantMap DcpManager::keyStatus(const Dcp::Cpl &cpl) const
     if (!cpl.missing.isEmpty()) {
         m["playable"] = false;
         m["keyState"] = QStringLiteral("missing");
-        m["keyText"] = QStringLiteral("%1 Spurdatei(en) fehlen (Version File ohne Original?)").arg(cpl.missing.size());
+        m["keyText"] = LTR("%1 Spurdatei(en) fehlen (Version File ohne Original?)").arg(cpl.missing.size());
         return m;
     }
     if (!cpl.encrypted()) {
         m["playable"] = true;
         m["keyState"] = QStringLiteral("open");
-        m["keyText"] = QStringLiteral("Unverschlüsselt");
+        m["keyText"] = LTR("Unverschlüsselt");
         return m;
     }
     const QDateTime now = QDateTime::currentDateTimeUtc();
@@ -217,19 +218,19 @@ QVariantMap DcpManager::keyStatus(const Dcp::Cpl &cpl) const
     m["playable"] = have == need;
     if (have == need) {
         m["keyState"] = QStringLiteral("valid");
-        m["keyText"] = until.isValid() ? QStringLiteral("KDM gültig bis %1").arg(QLocale().toString(until.toLocalTime(), QLocale::ShortFormat))
-                                       : QStringLiteral("Schlüssel vorhanden");
+        m["keyText"] = until.isValid() ? LTR("KDM gültig bis %1").arg(QLocale().toString(until.toLocalTime(), QLocale::ShortFormat))
+                                       : LTR("Schlüssel vorhanden");
         m["validUntil"] = until;
     } else if (notYet) {
         m["keyState"] = QStringLiteral("notyet");
-        m["keyText"] = QStringLiteral("KDM noch nicht gültig");
+        m["keyText"] = LTR("KDM noch nicht gültig");
     } else if (expired) {
         m["keyState"] = QStringLiteral("expired");
-        m["keyText"] = QStringLiteral("KDM abgelaufen");
+        m["keyText"] = LTR("KDM abgelaufen");
     } else {
         m["keyState"] = QStringLiteral("nokdm");
-        m["keyText"] = have ? QStringLiteral("%1 von %2 Schlüsseln – KDM unvollständig").arg(have).arg(need)
-                            : QStringLiteral("Verschlüsselt – KDM erforderlich");
+        m["keyText"] = have ? LTR("%1 von %2 Schlüsseln – KDM unvollständig").arg(have).arg(need)
+                            : LTR("Verschlüsselt – KDM erforderlich");
     }
     return m;
 }
@@ -278,8 +279,8 @@ QVariantList DcpManager::kdms() const
             {"chainValid", k.chainValid},
             {"signer", k.signer},
             {"signatureText", !k.signed_ ? QStringLiteral("unsigniert")
-                              : k.signatureValid ? (k.chainValid ? QStringLiteral("Signatur geprüft") : QStringLiteral("Signatur gültig, Kette unvollständig"))
-                                                 : QStringLiteral("Signatur ungültig")},
+                              : k.signatureValid ? (k.chainValid ? LTR("Signatur geprüft") : LTR("Signatur gültig, Kette unvollständig"))
+                                                 : LTR("Signatur ungültig")},
             {"error", k.error},
         });
     }
@@ -319,7 +320,7 @@ void DcpManager::loadKdm(const QUrl &file)
 {
     const QString path = file.isLocalFile() ? file.toLocalFile() : file.toString();
     if (!m_identity.valid) {
-        setStatus(QStringLiteral("Zuerst ein Zertifikat für Lumen erzeugen oder importieren – KDMs werden dafür ausgestellt"));
+        setStatus(LTR("Zuerst ein Zertifikat für Lumen erzeugen oder importieren – KDMs werden dafür ausgestellt"));
         return;
     }
     DcpCrypto::Kdm kdm = DcpCrypto::decryptKdm(path, m_identity.keyFile);
@@ -341,7 +342,7 @@ void DcpManager::loadKdm(const QUrl &file)
             m_kdms.removeAt(i--);
     m_kdms.prepend(kdm);
     rebuildKeys();
-    setStatus(QStringLiteral("KDM geladen: %1 Schlüssel für „%2“%3")
+    setStatus(LTR("KDM geladen: %1 Schlüssel für „%2“%3")
                   .arg(kdm.keys.size()).arg(kdm.title.isEmpty() ? kdm.cplId : kdm.title,
                                             kdm.error.isEmpty() ? QString() : QStringLiteral(" (") + kdm.error + QLatin1Char(')')));
 }
@@ -385,7 +386,7 @@ int DcpManager::importKeys(const QUrl &file)
         if (p.size() >= 2 && addKey(p[0], p[1]))
             ++n;
     }
-    setStatus(QStringLiteral("%1 Schlüssel übernommen (nur für diese Sitzung)").arg(n));
+    setStatus(LTR("%1 Schlüssel übernommen (nur für diese Sitzung)").arg(n));
     return n;
 }
 
@@ -399,7 +400,7 @@ bool DcpManager::createIdentity(const QString &organisation)
     m_identity = DcpCrypto::loadIdentity(configDir());
     emit identityChanged();
     loadStoredKdms(); // alte KDMs passen nicht mehr zum neuen Schlüssel
-    setStatus(QStringLiteral("Neues Zertifikat erzeugt – Leaf-Zertifikat exportieren und an den KDM-Aussteller senden"));
+    setStatus(LTR("Neues Zertifikat erzeugt – Leaf-Zertifikat exportieren und an den KDM-Aussteller senden"));
     return true;
 }
 
@@ -413,7 +414,7 @@ bool DcpManager::importIdentity(const QUrl &cert, const QUrl &key)
     m_identity = DcpCrypto::loadIdentity(configDir());
     emit identityChanged();
     loadStoredKdms();
-    setStatus(QStringLiteral("Zertifikat übernommen"));
+    setStatus(LTR("Zertifikat übernommen"));
     return true;
 }
 
@@ -424,8 +425,8 @@ bool DcpManager::exportCertificate(const QUrl &target, bool chain)
     const QString dst = target.toLocalFile();
     QFile::remove(dst);
     const bool ok = QFile::copy(chain ? m_identity.chainFile : m_identity.leafFile, dst);
-    setStatus(ok ? QStringLiteral("Zertifikat gespeichert: %1").arg(QDir::toNativeSeparators(dst))
-                 : QStringLiteral("Zertifikat konnte nicht gespeichert werden"));
+    setStatus(ok ? LTR("Zertifikat gespeichert: %1").arg(QDir::toNativeSeparators(dst))
+                 : LTR("Zertifikat konnte nicht gespeichert werden"));
     return ok;
 }
 
@@ -563,7 +564,7 @@ bool DcpManager::play(int index, double start)
         const double len = reel.seconds();
         if (len <= 0)
             continue;
-        chapters.append({t, QStringLiteral("Rolle %1").arg(reelNo)});
+        chapters.append({t, LTR("Rolle %1").arg(reelNo)});
         for (const Dcp::Marker &m : reel.markers)
             chapters.append({t + (reel.editRate.valid() ? m.offset / reel.editRate.value() : 0), markerLabel(m.label)});
 
@@ -602,13 +603,13 @@ bool DcpManager::play(int index, double start)
         t += len;
     }
     if (pic[0].isEmpty()) {
-        setStatus(QStringLiteral("CPL enthält keine abspielbaren Rollen"));
+        setStatus(LTR("CPL enthält keine abspielbaren Rollen"));
         return false;
     }
 
     QString edl = QStringLiteral("# mpv EDL v0\n!no_chapters\n");
     for (int eye = 0; eye < (want3d ? 2 : 1); ++eye) {
-        edl += QStringLiteral("!new_stream\n!track_meta,title=%1\n").arg(want3d ? (eye ? QStringLiteral("Rechtes Auge") : QStringLiteral("Linkes Auge")) : QStringLiteral("Bild"));
+        edl += QStringLiteral("!new_stream\n!track_meta,title=%1\n").arg(want3d ? (eye ? LTR("Rechtes Auge") : LTR("Linkes Auge")) : LTR("Bild"));
         edl += pic[eye].join(QLatin1Char('\n')) + QLatin1Char('\n');
     }
     edl += QStringLiteral("!new_stream\n!track_meta,title=DCP-Ton\n") + snd.join(QLatin1Char('\n')) + QLatin1Char('\n');
@@ -616,7 +617,7 @@ bool DcpManager::play(int index, double start)
     {
         QFile f(edlPath);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            setStatus(QStringLiteral("Temporäre Wiedergabeliste nicht schreibbar"));
+            setStatus(LTR("Temporäre Wiedergabeliste nicht schreibbar"));
             return false;
         }
         f.write(edl.toUtf8());
@@ -686,21 +687,21 @@ bool DcpManager::play(int index, double start)
             subFiles << sr.assFile;
             opts["sub-fonts-dir"] = sr.fontsDir;
             opts["sid"] = "1";
-            subInfo = QStringLiteral(" · Untertitel %1").arg(sr.language);
+            subInfo = LTR(" · Untertitel %1").arg(sr.language);
         } else if (!sr.error.isEmpty() && sr.imageEvents.isEmpty()) {
             subInfo = QStringLiteral(" · ") + sr.error;
         }
         m_imageSubs = sr.imageEvents;
         if (!m_imageSubs.isEmpty())
-            subInfo += QStringLiteral(" · %1 Bilduntertitel").arg(m_imageSubs.size());
+            subInfo += LTR(" · %1 Bilduntertitel").arg(m_imageSubs.size());
     }
     if (!captions.isEmpty()) {
-        const Dcp::SubtitleResult cr = Dcp::buildSubtitles(captions, dir, QStringLiteral("Closed Captions ") + captions.first().language);
+        const Dcp::SubtitleResult cr = Dcp::buildSubtitles(captions, dir, LTR("Closed Captions ") + captions.first().language);
         if (!cr.assFile.isEmpty()) {
             subFiles << cr.assFile;
             if (!opts.contains("sub-fonts-dir"))
                 opts["sub-fonts-dir"] = cr.fontsDir;
-            subInfo += QStringLiteral(" · Closed Captions");
+            subInfo += LTR(" · Closed Captions");
         }
     }
     if (!subFiles.isEmpty()) {
@@ -726,11 +727,11 @@ bool DcpManager::play(int index, double start)
     emit packageChanged();
     QStringList parts{cpl.title};
     if (cpl.encrypted())
-        parts << QStringLiteral("entschlüsselt");
+        parts << LTR("entschlüsselt");
     if (m_reduction)
-        parts << QStringLiteral("J2K 1/%1 Auflösung").arg(1 << m_reduction);
+        parts << LTR("J2K 1/%1 Auflösung").arg(1 << m_reduction);
     if (stereo)
-        parts << (want3d ? QStringLiteral("3D") : QStringLiteral("3D-DCP als 2D"));
+        parts << (want3d ? QStringLiteral("3D") : LTR("3D-DCP als 2D"));
     setStatus(parts.join(QStringLiteral(" · ")) + subInfo);
     return true;
 }
@@ -817,7 +818,7 @@ void DcpManager::onDroppedFrames()
     m_forceReduction = next;
     play(m_playing, m_player->position());
     m_adapted = true;
-    m_player->showText(QStringLiteral("JPEG 2000: CPU zu langsam – dekodiere mit 1/%1 Auflösung").arg(1 << next), 4000);
+    m_player->showText(LTR("JPEG 2000: CPU zu langsam – dekodiere mit 1/%1 Auflösung").arg(1 << next), 4000);
 }
 
 // --------------------------------------------------------------------------
@@ -863,11 +864,11 @@ void DcpManager::verify(int index)
                 break;
             QFile f(i.path);
             if (!f.open(QIODevice::ReadOnly)) {
-                bad << i.name + QStringLiteral(" (nicht lesbar)");
+                bad << i.name + LTR(" (nicht lesbar)");
                 continue;
             }
             if (i.size >= 0 && f.size() != i.size) {
-                bad << i.name + QStringLiteral(" (Größe)");
+                bad << i.name + LTR(" (Größe)");
                 done += f.size();
                 continue;
             }
@@ -891,7 +892,7 @@ void DcpManager::verify(int index)
             else if (QString::fromLatin1(h.result().toBase64()) == i.hash)
                 ++ok;
             else
-                bad << i.name + QStringLiteral(" (Prüfsumme)");
+                bad << i.name + LTR(" (Prüfsumme)");
         }
         const QVariantMap result{{"ok", bad.isEmpty() && !*cancel}, {"checked", ok}, {"failed", bad},
                                  {"noHash", noHash}, {"cancelled", bool(*cancel)}};
@@ -902,9 +903,9 @@ void DcpManager::verify(int index)
             self->m_verifyProgress = 1;
             self->m_verifyResult = result;
             emit self->verifyChanged();
-            self->setStatus(result.value("cancelled").toBool() ? QStringLiteral("Prüfung abgebrochen")
-                            : result.value("ok").toBool() ? QStringLiteral("DCP geprüft: %1 Dateien in Ordnung").arg(result.value("checked").toInt())
-                                                          : QStringLiteral("DCP beschädigt: %1").arg(result.value("failed").toStringList().join(QStringLiteral(", "))));
+            self->setStatus(result.value("cancelled").toBool() ? LTR("Prüfung abgebrochen")
+                            : result.value("ok").toBool() ? LTR("DCP geprüft: %1 Dateien in Ordnung").arg(result.value("checked").toInt())
+                                                          : LTR("DCP beschädigt: %1").arg(result.value("failed").toStringList().join(QStringLiteral(", "))));
         }, Qt::QueuedConnection);
     });
 }

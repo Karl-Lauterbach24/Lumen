@@ -1,4 +1,5 @@
 #include "DisplayManager.h"
+#include "Tr.h"
 
 #include <QGuiApplication>
 #include <QJsonArray>
@@ -366,9 +367,9 @@ bool DisplayManager::matchRefreshRate(const QString &outputId, double fps, QStri
     auto noMode = [&] {
         if (info) {
             *info = size.isValid()
-                ? QStringLiteral("Kein %1×%2-Modus mit %3 fps – im Grafiktreiber als benutzerdefinierte Auflösung anlegen")
+                ? LTR("Kein %1×%2-Modus mit %3 fps – im Grafiktreiber als benutzerdefinierte Auflösung anlegen")
                       .arg(size.width()).arg(size.height()).arg(fps, 0, 'f', 3)
-                : QStringLiteral("Kein passender Anzeigemodus für %1 fps").arg(fps, 0, 'f', 3);
+                : LTR("Kein passender Anzeigemodus für %1 fps").arg(fps, 0, 'f', 3);
         }
         return false;
     };

@@ -48,10 +48,10 @@ Popup {
         return d
     }
 
-    readonly property var outputModel: [{ id: "", label: "Hauptbildschirm" }].concat(Displays.outputs)
+    readonly property var outputModel: [{ id: "", label: qsTr("Hauptbildschirm") }].concat(Displays.outputs)
     readonly property var audioDeviceModel: Player.audioDevices.length
         ? Player.audioDevices.map(d => ({ id: d.name, label: d.description || d.name }))
-        : [{ id: "auto", label: "Automatisch" }]
+        : [{ id: "auto", label: qsTr("Automatisch") }]
 
     component Field: ColumnLayout {
         property string title
@@ -85,7 +85,7 @@ Popup {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                SectionLabel { text: editor.draft.builtin ? "Vorlage" : "Eigenes Profil" }
+                SectionLabel { text: editor.draft.builtin ? qsTr("Vorlage") : qsTr("Eigenes Profil") }
                 TextField {
                     id: nameField
                     Layout.fillWidth: true
@@ -99,7 +99,7 @@ Popup {
                     selectByMouse: true
                 }
             }
-            IconButton { iconName: "stop"; iconSize: 14; tip: "Schließen"; onClicked: editor.close() }
+            IconButton { iconName: "stop"; iconSize: 14; tip: qsTr("Schließen"); onClicked: editor.close() }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.line }
 
@@ -118,10 +118,10 @@ Popup {
                 rowSpacing: 14
 
                 // ---------------- Gerät ----------------
-                SectionLabel { text: "Ausgabegerät"; Layout.columnSpan: 2 }
+                SectionLabel { text: qsTr("Ausgabegerät"); Layout.columnSpan: 2 }
 
                 Field {
-                    title: "Bildschirm / Projektor"
+                    title: qsTr("Bildschirm / Projektor")
                     Select {
                         width: parent.width
                         model: editor.outputModel
@@ -132,195 +132,195 @@ Popup {
                     }
                 }
                 Field {
-                    title: "Beschreibung"
+                    title: qsTr("Beschreibung")
                     TextField {
                         width: parent.width
                         text: editor.draft.description || ""
                         onTextEdited: editor.set("description", text)
                         color: Theme.text
-                        placeholderText: "z. B. Wohnzimmer-Beamer, HDMI 2"
+                        placeholderText: qsTr("z. B. Wohnzimmer-Beamer, HDMI 2")
                         placeholderTextColor: Theme.textFaint
                         background: Rectangle { radius: Theme.radiusSmall; color: Theme.raised; border.color: Theme.line }
                     }
                 }
 
-                Toggle { label: "Vollbild"; hint: "Player-Fenster fest auf diesem Gerät"; checked: !!editor.draft.fullscreen; onToggled: editor.set("fullscreen", checked); Layout.fillWidth: true }
-                Toggle { label: "Bildrate anpassen"; hint: Displays.canSwitchRefresh ? "z. B. 23.976 fps → 23/24 Hz" : "auf dieser Plattform noch nicht verfügbar"; enabled: Displays.canSwitchRefresh; checked: !!editor.draft.matchRefreshRate; onToggled: editor.set("matchRefreshRate", checked); Layout.fillWidth: true }
-                Toggle { label: "Fensterrahmen"; checked: editor.draft.border !== false; onToggled: editor.set("border", checked); Layout.fillWidth: true }
-                Toggle { label: "System-HDR automatisch schalten"; hint: Displays.canSwitchHdr ? "HDR an bei HDR-Inhalt, sonst aus" : "wird vom System/Compositor gesteuert"; enabled: Displays.canSwitchHdr; checked: !!editor.draft.osHdrSwitch; onToggled: editor.set("osHdrSwitch", checked); Layout.fillWidth: true }
-                Toggle { label: "Immer im Vordergrund"; checked: !!editor.draft.ontop; onToggled: editor.set("ontop", checked); Layout.fillWidth: true }
+                Toggle { label: qsTr("Vollbild"); hint: qsTr("Player-Fenster fest auf diesem Gerät"); checked: !!editor.draft.fullscreen; onToggled: editor.set("fullscreen", checked); Layout.fillWidth: true }
+                Toggle { label: qsTr("Bildrate anpassen"); hint: Displays.canSwitchRefresh ? qsTr("z. B. 23.976 fps → 23/24 Hz") : qsTr("auf dieser Plattform noch nicht verfügbar"); enabled: Displays.canSwitchRefresh; checked: !!editor.draft.matchRefreshRate; onToggled: editor.set("matchRefreshRate", checked); Layout.fillWidth: true }
+                Toggle { label: qsTr("Fensterrahmen"); checked: editor.draft.border !== false; onToggled: editor.set("border", checked); Layout.fillWidth: true }
+                Toggle { label: qsTr("System-HDR automatisch schalten"); hint: Displays.canSwitchHdr ? qsTr("HDR an bei HDR-Inhalt, sonst aus") : qsTr("wird vom System/Compositor gesteuert"); enabled: Displays.canSwitchHdr; checked: !!editor.draft.osHdrSwitch; onToggled: editor.set("osHdrSwitch", checked); Layout.fillWidth: true }
+                Toggle { label: qsTr("Immer im Vordergrund"); checked: !!editor.draft.ontop; onToggled: editor.set("ontop", checked); Layout.fillWidth: true }
                 Field {
-                    title: "Player-Fenster"
+                    title: qsTr("Player-Fenster")
                     EnumSelect {
                         key: "playerWindow"
                         options: [
-                            { value: "auto", text: Qt.platform.os === "osx" ? "Automatisch (macOS: eingebettet)" : "Automatisch (nativ)" },
-                            { value: "native", text: "Nativ – HDR-Ausgabe, beste Qualität" },
-                            { value: "embedded", text: "Eingebettet – Qt-Fenster, nur SDR" }
+                            { value: "auto", text: Qt.platform.os === "osx" ? qsTr("Automatisch (macOS: eingebettet)") : qsTr("Automatisch (nativ)") },
+                            { value: "native", text: qsTr("Nativ – HDR-Ausgabe, beste Qualität") },
+                            { value: "embedded", text: qsTr("Eingebettet – Qt-Fenster, nur SDR") }
                         ]
                     }
                 }
 
                 // ---------------- Bild ----------------
-                SectionLabel { text: "Bild & HDR"; Layout.columnSpan: 2 }
+                SectionLabel { text: qsTr("Bild & HDR"); Layout.columnSpan: 2 }
 
                 Field {
-                    title: "Dynamikumfang"
+                    title: qsTr("Dynamikumfang")
                     EnumSelect {
                         key: "hdr"
                         options: [
-                            { value: "auto", text: "Automatisch" },
-                            { value: "passthrough", text: "HDR durchreichen (Gerät mappt)" },
-                            { value: "tonemap", text: "Im Player tone-mappen" }
+                            { value: "auto", text: qsTr("Automatisch") },
+                            { value: "passthrough", text: qsTr("HDR durchreichen (Gerät mappt)") },
+                            { value: "tonemap", text: qsTr("Im Player tone-mappen") }
                         ]
                     }
                 }
                 Field {
-                    title: "Tonemapping-Kurve"
+                    title: qsTr("Tonemapping-Kurve")
                     EnumSelect {
                         key: "toneMapping"
                         enabled: editor.draft.hdr === "tonemap"
                         options: [
-                            { value: "auto", text: "Automatisch" },
-                            { value: "bt.2390", text: "BT.2390 (Referenz)" },
-                            { value: "spline", text: "Spline (weich)" },
-                            { value: "bt.2446a", text: "BT.2446a" },
-                            { value: "st2094-40", text: "ST 2094-40 (HDR10+)" },
-                            { value: "clip", text: "Clip (keins)" }
+                            { value: "auto", text: qsTr("Automatisch") },
+                            { value: "bt.2390", text: qsTr("BT.2390 (Referenz)") },
+                            { value: "spline", text: qsTr("Spline (weich)") },
+                            { value: "bt.2446a", text: qsTr("BT.2446a") },
+                            { value: "st2094-40", text: qsTr("ST 2094-40 (HDR10+)") },
+                            { value: "clip", text: qsTr("Clip (keins)") }
                         ]
                     }
                 }
                 Field {
-                    title: "Zielfarbraum"
+                    title: qsTr("Zielfarbraum")
                     EnumSelect {
                         key: "targetPrim"
                         options: [
-                            { value: "auto", text: "Automatisch" },
-                            { value: "bt.709", text: "BT.709 (SDR / HD)" },
-                            { value: "dci-p3", text: "DCI-P3" },
-                            { value: "display-p3", text: "Display P3" },
-                            { value: "bt.2020", text: "BT.2020 (HDR)" }
+                            { value: "auto", text: qsTr("Automatisch") },
+                            { value: "bt.709", text: qsTr("BT.709 (SDR / HD)") },
+                            { value: "dci-p3", text: qsTr("DCI-P3") },
+                            { value: "display-p3", text: qsTr("Display P3") },
+                            { value: "bt.2020", text: qsTr("BT.2020 (HDR)") }
                         ]
                     }
                 }
                 Field {
-                    title: "Ziel-Transferkurve"
+                    title: qsTr("Ziel-Transferkurve")
                     EnumSelect {
                         key: "targetTrc"
                         options: [
-                            { value: "auto", text: "Automatisch" },
-                            { value: "bt.1886", text: "BT.1886 / Gamma 2.4 (Beamer, dunkler Raum)" },
-                            { value: "gamma2.6", text: "Gamma 2.6 (Digitalkino, DCI)" },
-                            { value: "gamma2.4", text: "Gamma 2.4 (reine Potenzfunktion)" },
-                            { value: "gamma2.2", text: "Gamma 2.2 (heller Raum)" },
+                            { value: "auto", text: qsTr("Automatisch") },
+                            { value: "bt.1886", text: qsTr("BT.1886 / Gamma 2.4 (Beamer, dunkler Raum)") },
+                            { value: "gamma2.6", text: qsTr("Gamma 2.6 (Digitalkino, DCI)") },
+                            { value: "gamma2.4", text: qsTr("Gamma 2.4 (reine Potenzfunktion)") },
+                            { value: "gamma2.2", text: qsTr("Gamma 2.2 (heller Raum)") },
                             { value: "srgb", text: "sRGB" },
-                            { value: "pq", text: "PQ (HDR10-Ausgabe)" },
-                            { value: "hlg", text: "HLG" }
+                            { value: "pq", text: qsTr("PQ (HDR10-Ausgabe)") },
+                            { value: "hlg", text: qsTr("HLG") }
                         ]
                     }
                 }
                 ValueSlider {
                     Layout.fillWidth: true
-                    label: "Spitzenhelligkeit des Geräts (0 = automatisch)"
-                    from: 0; to: 1500; stepSize: 10; unit: " nits"
+                    label: qsTr("Spitzenhelligkeit des Geräts (0 = automatisch)")
+                    from: 0; to: 1500; stepSize: 10; unit: qsTr(" nits")
                     value: editor.draft.targetPeak || 0
                     onMoved: v => editor.set("targetPeak", v)
                 }
                 Field {
-                    title: "Skalierungsqualität"
+                    title: qsTr("Skalierungsqualität")
                     EnumSelect {
                         key: "quality"
                         options: [
-                            { value: "fast", text: "Schnell (geringe GPU-Last)" },
-                            { value: "balanced", text: "Ausgewogen" },
-                            { value: "high", text: "Hoch (EWA Lanczos, lineares Downscaling)" },
-                            { value: "reference", text: "Referenz (Lanczos 4, Error Diffusion, HDR-Kontrast)" }
+                            { value: "fast", text: qsTr("Schnell (geringe GPU-Last)") },
+                            { value: "balanced", text: qsTr("Ausgewogen") },
+                            { value: "high", text: qsTr("Hoch (EWA Lanczos, lineares Downscaling)") },
+                            { value: "reference", text: qsTr("Referenz (Lanczos 4, Error Diffusion, HDR-Kontrast)") }
                         ]
                     }
                 }
                 Field {
-                    title: "Synchronisation"
+                    title: qsTr("Synchronisation")
                     EnumSelect {
                         key: "videoSync"
                         options: [
-                            { value: "display-resample", text: "An Anzeige (ruckelfrei, empfohlen)" },
-                            { value: "audio", text: "An Audio (für Bitstream sicherer)" }
+                            { value: "display-resample", text: qsTr("An Anzeige (ruckelfrei, empfohlen)") },
+                            { value: "audio", text: qsTr("An Audio (für Bitstream sicherer)") }
                         ]
                     }
                 }
                 Field {
-                    title: "Hardware-Decoding"
+                    title: qsTr("Hardware-Decoding")
                     EnumSelect {
                         key: "hwdec"
                         options: [
-                            { value: "auto-safe", text: "Automatisch" },
-                            { value: "no", text: "Aus (Software)" },
-                            { value: "d3d11va", text: "D3D11VA (Windows)" },
-                            { value: "nvdec", text: "NVDEC (NVIDIA)" },
-                            { value: "vaapi", text: "VA-API (Linux)" },
-                            { value: "videotoolbox", text: "VideoToolbox (macOS)" }
+                            { value: "auto-safe", text: qsTr("Automatisch") },
+                            { value: "no", text: qsTr("Aus (Software)") },
+                            { value: "d3d11va", text: qsTr("D3D11VA (Windows)") },
+                            { value: "nvdec", text: qsTr("NVDEC (NVIDIA)") },
+                            { value: "vaapi", text: qsTr("VA-API (Linux)") },
+                            { value: "videotoolbox", text: qsTr("VideoToolbox (macOS)") }
                         ]
                     }
                 }
                 // ---------------- Kalibrierung ----------------
-                SectionLabel { text: "Kalibrierung"; Layout.columnSpan: 2 }
-                Toggle { label: "ICC-Profil des Systems"; hint: "Farbprofil des Bildschirms automatisch verwenden"; checked: !!editor.draft.iccAuto; onToggled: editor.set("iccAuto", checked); Layout.fillWidth: true }
+                SectionLabel { text: qsTr("Kalibrierung"); Layout.columnSpan: 2 }
+                Toggle { label: qsTr("ICC-Profil des Systems"); hint: qsTr("Farbprofil des Bildschirms automatisch verwenden"); checked: !!editor.draft.iccAuto; onToggled: editor.set("iccAuto", checked); Layout.fillWidth: true }
                 Field {
-                    title: "Eigenes ICC-Profil (Pfad, optional)"
+                    title: qsTr("Eigenes ICC-Profil (Pfad, optional)")
                     TextField {
                         width: parent.width
                         text: editor.draft.iccProfile || ""
                         onTextEdited: editor.set("iccProfile", text)
-                        color: Theme.text; placeholderText: "z. B. C:/Kalibrierung/beamer.icc"; placeholderTextColor: Theme.textFaint
+                        color: Theme.text; placeholderText: qsTr("z. B. C:/Kalibrierung/beamer.icc"); placeholderTextColor: Theme.textFaint
                         background: Rectangle { radius: Theme.radiusSmall; color: Theme.raised; border.color: Theme.line }
                     }
                 }
                 Field {
-                    title: "3D-LUT der Anzeige (.cube, z. B. aus DisplayCAL/Calman)"
+                    title: qsTr("3D-LUT der Anzeige (.cube, z. B. aus DisplayCAL/Calman)")
                     TextField {
                         width: parent.width
                         text: editor.draft.targetLut || ""
                         onTextEdited: editor.set("targetLut", text)
-                        color: Theme.text; placeholderText: "leer = keine"; placeholderTextColor: Theme.textFaint
+                        color: Theme.text; placeholderText: qsTr("leer = keine"); placeholderTextColor: Theme.textFaint
                         background: Rectangle { radius: Theme.radiusSmall; color: Theme.raised; border.color: Theme.line }
                     }
                 }
                 ValueSlider {
                     Layout.fillWidth: true
-                    label: "Nativer Kontrast des Geräts (0 = automatisch)"
+                    label: qsTr("Nativer Kontrast des Geräts (0 = automatisch)")
                     from: 0; to: 20000; stepSize: 100; unit: ":1"
                     value: editor.draft.targetContrast || 0
                     onMoved: v => editor.set("targetContrast", v)
                 }
                 Field {
-                    title: "Dithering"
+                    title: qsTr("Dithering")
                     RowLayout {
                         width: parent.width
                         EnumSelect {
                             key: "dither"
                             Layout.fillWidth: true
                             options: [
-                                { value: "auto", text: "Automatisch" },
-                                { value: "error-diffusion", text: "Error Diffusion (beste)" },
-                                { value: "ordered", text: "Geordnet" },
-                                { value: "no", text: "Aus" }
+                                { value: "auto", text: qsTr("Automatisch") },
+                                { value: "error-diffusion", text: qsTr("Error Diffusion (beste)") },
+                                { value: "ordered", text: qsTr("Geordnet") },
+                                { value: "no", text: qsTr("Aus") }
                             ]
                         }
                         EnumSelect {
                             key: "ditherDepth"
                             Layout.fillWidth: true
                             options: [
-                                { value: "auto", text: "Tiefe: auto" },
-                                { value: "8", text: "8 Bit" },
-                                { value: "10", text: "10 Bit" },
-                                { value: "12", text: "12 Bit" }
+                                { value: "auto", text: qsTr("Tiefe: auto") },
+                                { value: "8", text: qsTr("8 Bit") },
+                                { value: "10", text: qsTr("10 Bit") },
+                                { value: "12", text: qsTr("12 Bit") }
                             ]
                         }
                     }
                 }
                 Field {
                     Layout.columnSpan: 2
-                    title: "GLSL-Shader (je Zeile ein Pfad, z. B. FSRCNNX, KrigBilateral)"
+                    title: qsTr("GLSL-Shader (je Zeile ein Pfad, z. B. FSRCNNX, KrigBilateral)")
                     TextArea {
                         width: parent.width
                         height: 54
@@ -331,25 +331,25 @@ Popup {
                     }
                 }
 
-                Toggle { label: "Zwischenbildberechnung"; hint: "Glättet 24p auf 60 Hz – nicht nötig bei 24-Hz-Modus"; checked: !!editor.draft.interpolation; onToggled: editor.set("interpolation", checked); Layout.fillWidth: true }
-                Toggle { label: "Debanding"; hint: "Entfernt Farbabstufungen"; checked: editor.draft.deband !== false; onToggled: editor.set("deband", checked); Layout.fillWidth: true }
+                Toggle { label: qsTr("Zwischenbildberechnung"); hint: qsTr("Glättet 24p auf 60 Hz – nicht nötig bei 24-Hz-Modus"); checked: !!editor.draft.interpolation; onToggled: editor.set("interpolation", checked); Layout.fillWidth: true }
+                Toggle { label: qsTr("Debanding"); hint: qsTr("Entfernt Farbabstufungen"); checked: editor.draft.deband !== false; onToggled: editor.set("deband", checked); Layout.fillWidth: true }
                 Field {
-                    title: "Renderer / Grafik-API"
+                    title: qsTr("Renderer / Grafik-API")
                     RowLayout {
                         width: parent.width
                         EnumSelect {
                             key: "vo"
                             Layout.fillWidth: true
-                            options: [ { value: "gpu-next", text: "gpu-next" }, { value: "gpu", text: "gpu (alt)" } ]
+                            options: [ { value: "gpu-next", text: "gpu-next" }, { value: "gpu", text: qsTr("gpu (alt)") } ]
                         }
                         EnumSelect {
                             key: "gpuApi"
                             Layout.fillWidth: true
                             options: [
-                                { value: "auto", text: "API: auto" },
-                                { value: "d3d11", text: "Direct3D 11" },
-                                { value: "vulkan", text: "Vulkan" },
-                                { value: "opengl", text: "OpenGL" }
+                                { value: "auto", text: qsTr("API: auto") },
+                                { value: "d3d11", text: qsTr("Direct3D 11") },
+                                { value: "vulkan", text: qsTr("Vulkan") },
+                                { value: "opengl", text: qsTr("OpenGL") }
                             ]
                         }
                     }
@@ -358,18 +358,18 @@ Popup {
                 // ---------------- 3D ----------------
                 SectionLabel { text: "3D"; Layout.columnSpan: 2 }
                 Field {
-                    title: "3D-Format, das das Gerät erwartet"
+                    title: qsTr("3D-Format, das das Gerät erwartet")
                     EnumSelect {
                         key: "stereoOut"
                         options: [
-                            { value: "none", text: "Kein 3D (3D-Quellen als 2D)" },
-                            { value: "fp", text: "HDMI Frame Packing 1080p (1920×2205) – volle Auflösung je Auge" },
-                            { value: "sbs2l", text: "Side-by-Side Half" },
-                            { value: "sbsl", text: "Side-by-Side Full" },
-                            { value: "ab2l", text: "Top-and-Bottom Half" },
-                            { value: "abl", text: "Top-and-Bottom Full" },
-                            { value: "irl", text: "Zeilenverschachtelt (passiv)" },
-                            { value: "arcd", text: "Anaglyph Rot/Cyan" }
+                            { value: "none", text: qsTr("Kein 3D (3D-Quellen als 2D)") },
+                            { value: "fp", text: qsTr("HDMI Frame Packing 1080p (1920×2205) – volle Auflösung je Auge") },
+                            { value: "sbs2l", text: qsTr("Side-by-Side Half") },
+                            { value: "sbsl", text: qsTr("Side-by-Side Full") },
+                            { value: "ab2l", text: qsTr("Top-and-Bottom Half") },
+                            { value: "abl", text: qsTr("Top-and-Bottom Full") },
+                            { value: "irl", text: qsTr("Zeilenverschachtelt (passiv)") },
+                            { value: "arcd", text: qsTr("Anaglyph Rot/Cyan") }
                         ]
                     }
                 }
@@ -379,21 +379,21 @@ Popup {
                     color: Theme.textFaint
                     font.pixelSize: 11
                     text: Player.mvcCapable
-                          ? "Blu-ray 3D (MVC) wird mit beiden Ansichten dekodiert. Frame Packing: Beamer erkennt 3D automatisch, erfordert einen 1920×2205-Anzeigemodus (im Grafiktreiber anlegen). SBS/TAB: 3D-Modus am Beamer wählen."
-                          : "Geladenes FFmpeg kann kein MVC – Blu-ray 3D läuft in 2D. Lumen mit FFmpeg-mvc bauen (tools/build_ffmpeg_mvc.sh)."
+                          ? qsTr("Blu-ray 3D (MVC) wird mit beiden Ansichten dekodiert. Frame Packing: Beamer erkennt 3D automatisch, erfordert einen 1920×2205-Anzeigemodus (im Grafiktreiber anlegen). SBS/TAB: 3D-Modus am Beamer wählen.")
+                          : qsTr("Geladenes FFmpeg kann kein MVC – Blu-ray 3D läuft in 2D. Lumen mit FFmpeg-mvc bauen (tools/build_ffmpeg_mvc.sh).")
                 }
                 ValueSlider {
                     Layout.fillWidth: true
-                    label: "Untertitel-/Menütiefe (3D)"
-                    from: -40; to: 40; stepSize: 1; unit: " px"
+                    label: qsTr("Untertitel-/Menütiefe (3D)")
+                    from: -40; to: 40; stepSize: 1; unit: qsTr(" px")
                     value: editor.draft.subtitleDepth || 0
                     onMoved: v => editor.set("subtitleDepth", v)
                 }
 
                 // ---------------- Audio ----------------
-                SectionLabel { text: "Audio"; Layout.columnSpan: 2 }
+                SectionLabel { text: qsTr("Audio"); Layout.columnSpan: 2 }
                 Field {
-                    title: "Audiogerät"
+                    title: qsTr("Audiogerät")
                     Select {
                         width: parent.width
                         model: editor.audioDeviceModel
@@ -404,35 +404,35 @@ Popup {
                     }
                 }
                 Field {
-                    title: "Kanäle (PCM)"
+                    title: qsTr("Kanäle (PCM)")
                     EnumSelect {
                         key: "audioChannels"
                         options: [
-                            { value: "auto-safe", text: "Automatisch" },
-                            { value: "7.1,5.1,stereo", text: "7.1 / 5.1 / Stereo" },
-                            { value: "5.1,stereo", text: "max. 5.1" },
-                            { value: "stereo", text: "Stereo (Downmix)" }
+                            { value: "auto-safe", text: qsTr("Automatisch") },
+                            { value: "7.1,5.1,stereo", text: qsTr("7.1 / 5.1 / Stereo") },
+                            { value: "5.1,stereo", text: qsTr("max. 5.1") },
+                            { value: "stereo", text: qsTr("Stereo (Downmix)") }
                         ]
                     }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 0
-                    Text { text: "Bitstream / Passthrough (HDMI zum AV-Receiver)"; color: Theme.textDim; font.pixelSize: 12 }
-                    Toggle { Layout.fillWidth: true; label: "Dolby TrueHD / Atmos"; checked: editor.hasCodec("truehd"); onToggled: editor.toggleCodec("truehd", checked) }
-                    Toggle { Layout.fillWidth: true; label: "DTS-HD MA / DTS:X"; checked: editor.hasCodec("dts-hd"); onToggled: editor.toggleCodec("dts-hd", checked) }
-                    Toggle { Layout.fillWidth: true; label: "DTS Core"; checked: editor.hasCodec("dts"); onToggled: editor.toggleCodec("dts", checked) }
-                    Toggle { Layout.fillWidth: true; label: "Dolby Digital Plus"; checked: editor.hasCodec("eac3"); onToggled: editor.toggleCodec("eac3", checked) }
-                    Toggle { Layout.fillWidth: true; label: "Dolby Digital"; checked: editor.hasCodec("ac3"); onToggled: editor.toggleCodec("ac3", checked) }
+                    Text { text: qsTr("Bitstream / Passthrough (HDMI zum AV-Receiver)"); color: Theme.textDim; font.pixelSize: 12 }
+                    Toggle { Layout.fillWidth: true; label: qsTr("Dolby TrueHD / Atmos"); checked: editor.hasCodec("truehd"); onToggled: editor.toggleCodec("truehd", checked) }
+                    Toggle { Layout.fillWidth: true; label: qsTr("DTS-HD MA / DTS:X"); checked: editor.hasCodec("dts-hd"); onToggled: editor.toggleCodec("dts-hd", checked) }
+                    Toggle { Layout.fillWidth: true; label: qsTr("DTS Core"); checked: editor.hasCodec("dts"); onToggled: editor.toggleCodec("dts", checked) }
+                    Toggle { Layout.fillWidth: true; label: qsTr("Dolby Digital Plus"); checked: editor.hasCodec("eac3"); onToggled: editor.toggleCodec("eac3", checked) }
+                    Toggle { Layout.fillWidth: true; label: qsTr("Dolby Digital"); checked: editor.hasCodec("ac3"); onToggled: editor.toggleCodec("ac3", checked) }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignTop
-                    Toggle { Layout.fillWidth: true; label: "Exklusiver Modus"; hint: "WASAPI exklusiv – empfohlen für Bitstream"; checked: !!editor.draft.audioExclusive; onToggled: editor.set("audioExclusive", checked) }
+                    Toggle { Layout.fillWidth: true; label: qsTr("Exklusiver Modus"); hint: qsTr("WASAPI exklusiv – empfohlen für Bitstream"); checked: !!editor.draft.audioExclusive; onToggled: editor.set("audioExclusive", checked) }
                 }
 
                 // ---------------- Experte ----------------
-                SectionLabel { text: "Experte – zusätzliche mpv-Optionen (key=value)"; Layout.columnSpan: 2 }
+                SectionLabel { text: qsTr("Experte – zusätzliche mpv-Optionen (key=value)"); Layout.columnSpan: 2 }
                 TextArea {
                     Layout.columnSpan: 2
                     Layout.fillWidth: true
@@ -442,7 +442,7 @@ Popup {
                     color: Theme.text
                     font.family: Theme.mono
                     font.pixelSize: 12
-                    placeholderText: "z. B.\nicc-profile-auto=yes\nblend-subtitles=video"
+                    placeholderText: qsTr("z. B.\nicc-profile-auto=yes\nblend-subtitles=video")
                     placeholderTextColor: Theme.textFaint
                     background: Rectangle { radius: Theme.radiusSmall; color: Theme.raised; border.color: Theme.line }
                 }
@@ -459,7 +459,7 @@ Popup {
             spacing: 8
 
             Button {
-                text: editor.draft.builtin ? "Vorlage zurücksetzen" : "Löschen"
+                text: editor.draft.builtin ? qsTr("Vorlage zurücksetzen") : qsTr("Löschen")
                 visible: !!editor.draft.id
                 enabled: !editor.draft.builtin || !!editor.draft.modified
                 flat: true
@@ -472,7 +472,7 @@ Popup {
             }
             Item { Layout.fillWidth: true }
             Button {
-                text: "Als neues Profil"
+                text: qsTr("Als neues Profil")
                 flat: true
                 palette.windowText: Theme.text
                 onClicked: {
@@ -484,7 +484,7 @@ Popup {
                 }
             }
             Button {
-                text: "Speichern & anwenden"
+                text: qsTr("Speichern & anwenden")
                 highlighted: true
                 palette.highlight: Theme.accent
                 palette.highlightedText: Theme.bg

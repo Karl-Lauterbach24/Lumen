@@ -1,4 +1,5 @@
 #include "DiscScanner.h"
+#include "Tr.h"
 #include "DvdNav.h"
 #include "MpvController.h"
 #include "OpticalMedia.h"
@@ -120,7 +121,7 @@ QVariantMap DiscScanner::scanBlocking(const QString &device)
 #ifdef LUMEN_HAVE_BLURAY
     BLURAY *bd = bd_open(blurayPath(device).toUtf8().constData(), nullptr);
     if (!bd) {
-        m["error"] = QStringLiteral("libbluray konnte die Disc nicht öffnen");
+        m["error"] = LTR("libbluray konnte die Disc nicht öffnen");
         return m;
     }
     if (const BLURAY_DISC_INFO *di = bd_get_disc_info(bd)) {
@@ -170,7 +171,7 @@ QVariantMap DiscScanner::scanBlocking(const QString &device)
     m["titles"] = titles;
     bd_close(bd);
 #else
-    m["error"] = QStringLiteral("Ohne libbluray gebaut");
+    m["error"] = LTR("Ohne libbluray gebaut");
 #endif
     return m;
 }

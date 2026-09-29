@@ -1,4 +1,5 @@
 #include "DvdNav.h"
+#include "Tr.h"
 
 #include <QDeadlineTimer>
 #include <QDir>
@@ -300,7 +301,7 @@ struct DvdNav::Session
         const uint32_t n = dvdnav_describe_title_chapters(dvd, title, &times, &duration);
         QVariantList chapters;
         for (uint32_t i = 0; i < n; ++i)
-            chapters.append(QVariantMap{{"index", int(i)}, {"title", QStringLiteral("Kapitel %1").arg(i + 1)},
+            chapters.append(QVariantMap{{"index", int(i)}, {"title", LTR("Kapitel %1").arg(i + 1)},
                                         {"time", i == 0 ? 0.0 : double(times[i - 1]) / kTicks}});
         if (times)
             std::free(times);
@@ -506,7 +507,7 @@ QVariantMap DvdNav::scan(const QString &device)
 #ifdef LUMEN_HAVE_DVDNAV
     dvdnav_t *dvd = nullptr;
     if (dvdnav_open(&dvd, QDir::toNativeSeparators(device).toUtf8().constData()) != DVDNAV_STATUS_OK || !dvd) {
-        m["error"] = QStringLiteral("libdvdnav konnte die DVD nicht öffnen");
+        m["error"] = LTR("libdvdnav konnte die DVD nicht öffnen");
         return m;
     }
     const char *name = nullptr;
@@ -546,7 +547,7 @@ QVariantMap DvdNav::scan(const QString &device)
     m["titles"] = titles;
     dvdnav_close(dvd);
 #else
-    m["error"] = QStringLiteral("Ohne libdvdnav gebaut");
+    m["error"] = LTR("Ohne libdvdnav gebaut");
 #endif
     return m;
 }
@@ -605,7 +606,7 @@ int DvdNav::openStream(void *userData, char *, void *infoPtr)
     auto *s = new Session;
     s->nav = nav;
     if (dvdnav_open(&s->dvd, QDir::toNativeSeparators(nav->m_device).toUtf8().constData()) != DVDNAV_STATUS_OK || !s->dvd)
-        return fail(s, QStringLiteral("libdvdnav konnte die DVD nicht öffnen (bei CSS-geschützten Discs muss das System den Zugriff bereitstellen)"));
+        return fail(s, LTR("libdvdnav konnte die DVD nicht öffnen (bei CSS-geschützten Discs muss das System den Zugriff bereitstellen)"));
 
     dvdnav_set_readahead_flag(s->dvd, 1);
     dvdnav_set_PGC_positioning_flag(s->dvd, 1);
@@ -651,7 +652,7 @@ int DvdNav::openStream(void *userData, char *, void *infoPtr)
             }
         }
         if (title < 1 || dvdnav_title_play(s->dvd, title) != DVDNAV_STATUS_OK)
-            return fail(s, QStringLiteral("DVD-Titel konnte nicht gestartet werden"));
+            return fail(s, LTR("DVD-Titel konnte nicht gestartet werden"));
     }
 
     {
@@ -668,7 +669,7 @@ int DvdNav::openStream(void *userData, char *, void *infoPtr)
         nav->m_hl = Highlight();
         nav->m_poll.start();
         nav->m_clock.start();
-        nav->setStatus(nav->m_mode == QLatin1String("menu") ? QStringLiteral("DVD-Menü aktiv") : QStringLiteral("DVD-Titel über libdvdnav"));
+        nav->setStatus(nav->m_mode == QLatin1String("menu") ? LTR("DVD-Menü aktiv") : LTR("DVD-Titel über libdvdnav"));
         emit nav->stateChanged();
     });
 
@@ -754,9 +755,9 @@ void DvdNav::refreshStreams()
             QString label = langName(dvdnav_audio_stream_to_lang(dvd, uint8_t(logical))) + QStringLiteral(" · ") + fmt
                             + QStringLiteral(" · ") + (ch == 6 ? QStringLiteral("5.1") : ch == 2 ? QStringLiteral("2.0") : QStringLiteral("%1 ch").arg(ch));
             if (attr.code_extension == 2 || attr.code_extension == 3)
-                label += QStringLiteral(" · Audiodeskription");
+                label += LTR(" · Audiodeskription");
             else if (attr.code_extension == 4)
-                label += QStringLiteral(" · Kommentar");
+                label += LTR(" · Kommentar");
             audio.append(QVariantMap{{"srcId", id}, {"logical", logical}, {"label", label}});
         }
         for (int phys = 0; phys < 32; ++phys) {
@@ -767,11 +768,11 @@ void DvdNav::refreshStreams()
             dvdnav_get_spu_attr(dvd, uint8_t(logical), &attr);
             QString label = langName(dvdnav_spu_stream_to_lang(dvd, uint8_t(logical)));
             if (attr.code_extension == 9)
-                label += QStringLiteral(" · erzwungen");
+                label += LTR(" · erzwungen");
             else if (attr.code_extension == 13 || attr.code_extension == 14 || attr.code_extension == 15)
-                label += QStringLiteral(" · Kommentar");
+                label += LTR(" · Kommentar");
             else if (attr.code_extension >= 5 && attr.code_extension <= 7)
-                label += QStringLiteral(" · Hörgeschädigte");
+                label += LTR(" · Hörgeschädigte");
             subs.append(QVariantMap{{"id", phys}, {"logical", logical}, {"label", label}});
         }
         const int8_t a = dvdnav_get_active_spu_stream(dvd);

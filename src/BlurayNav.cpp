@@ -1,4 +1,5 @@
 #include "BlurayNav.h"
+#include "Tr.h"
 #include "PathUtil.h"
 
 #include <QDeadlineTimer>
@@ -162,7 +163,7 @@ void BlurayNav::Session::startMvc(uint32_t playlist)
             return;
         n->m_mvcActive = on;
         n->m_baseRight = right;
-        n->setStatus(on ? QStringLiteral("Blu-ray 3D: beide Ansichten aktiv") : n->m_status);
+        n->setStatus(on ? LTR("Blu-ray 3D: beide Ansichten aktiv") : n->m_status);
         emit n->mvcChanged();
         n->updateOverlay();
     }, Qt::QueuedConnection);
@@ -176,10 +177,10 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
     switch (ev.event) {
     case BD_EVENT_ERROR:
     case BD_EVENT_READ_ERROR:
-        post([n] { n->setStatus(QStringLiteral("Lesefehler auf der Disc")); });
+        post([n] { n->setStatus(LTR("Lesefehler auf der Disc")); });
         break;
     case BD_EVENT_ENCRYPTED:
-        post([n] { n->setStatus(QStringLiteral("Disc ist verschlüsselt und extern nicht entschlüsselt (LibreDrive/AACS-Bibliothek prüfen)")); });
+        post([n] { n->setStatus(LTR("Disc ist verschlüsselt und extern nicht entschlüsselt (LibreDrive/AACS-Bibliothek prüfen)")); });
         break;
     case BD_EVENT_TITLE:
         post([n, t = int(ev.param)] { n->m_title = t; emit n->stateChanged(); });
@@ -196,7 +197,7 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
             duration = playlistInfo->duration / kTicks;
             for (uint32_t i = 0; i < playlistInfo->chapter_count; ++i)
                 chapters.append(QVariantMap{{"index", int(i)},
-                                            {"title", QStringLiteral("Kapitel %1").arg(i + 1)},
+                                            {"title", LTR("Kapitel %1").arg(i + 1)},
                                             {"time", playlistInfo->chapters[i].start / kTicks}});
         }
         post([n, pl = int(ev.param), chapters, duration] {
@@ -421,14 +422,14 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
     s->menu = nav->m_mode == QLatin1String("menu");
     s->bd = bd_open(blurayPath(nav->m_device).toUtf8().constData(), nullptr);
     if (!s->bd)
-        return fail(s, QStringLiteral("libbluray konnte die Disc nicht öffnen"));
+        return fail(s, LTR("libbluray konnte die Disc nicht öffnen"));
 
     const BLURAY_DISC_INFO *di = bd_get_disc_info(s->bd);
     if (di && di->aacs_detected && !di->aacs_handled)
-        return fail(s, QStringLiteral("AACS nicht extern gelöst – Wiedergabe über libbluray nicht möglich"));
+        return fail(s, LTR("AACS nicht extern gelöst – Wiedergabe über libbluray nicht möglich"));
     if (s->menu && di && di->bdj_detected && !di->bdj_handled)
-        return fail(s, di->libjvm_detected ? QStringLiteral("BD-J-Menü: libbluray-j2se-JAR fehlt – bitte Titelmodus verwenden")
-                                           : QStringLiteral("BD-J-Menü benötigt eine Java-Laufzeit (JRE) – bitte Titelmodus verwenden"));
+        return fail(s, di->libjvm_detected ? LTR("BD-J-Menü: libbluray-j2se-JAR fehlt – bitte Titelmodus verwenden")
+                                           : LTR("BD-J-Menü benötigt eine Java-Laufzeit (JRE) – bitte Titelmodus verwenden"));
 
     // Spieler-Einstellungen: Sprache (ISO 639-2/T, z. B. "deu") und Region aus dem System
     const QLocale loc;
@@ -464,7 +465,7 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
 
     if (s->menu) {
         if (!bd_play(s->bd))
-            return fail(s, QStringLiteral("Menüwiedergabe konnte nicht gestartet werden – bitte Titelmodus verwenden"));
+            return fail(s, LTR("Menüwiedergabe konnte nicht gestartet werden – bitte Titelmodus verwenden"));
     } else {
         uint32_t playlist = uint32_t(nav->m_requestedPlaylist);
         bool ok = false;
@@ -483,7 +484,7 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
             }
         }
         if (!ok)
-            return fail(s, QStringLiteral("Titel konnte nicht geöffnet werden"));
+            return fail(s, LTR("Titel konnte nicht geöffnet werden"));
         // Im Titelmodus kommen PLAYLIST-/PLAYITEM-Ereignisse nicht zuverlässig -> direkt setzen
         BD_EVENT ev{BD_EVENT_PLAYLIST, playlist};
         s->handleEvent(ev);
@@ -499,7 +500,7 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
         nav->m_active = true;
         nav->m_position = 0;
         nav->m_poll.start();
-        nav->setStatus(nav->menuMode() ? QStringLiteral("Disc-Menü aktiv") : QStringLiteral("Titel über libbluray"));
+        nav->setStatus(nav->menuMode() ? LTR("Disc-Menü aktiv") : LTR("Titel über libbluray"));
         emit nav->stateChanged();
     });
 
