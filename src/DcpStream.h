@@ -5,6 +5,7 @@
 #include <QString>
 
 #include <atomic>
+#include <functional>
 
 struct mpv_handle;
 
@@ -47,6 +48,13 @@ struct TimedText
     QList<QByteArray> resources;
 };
 TimedText readTimedText(const QString &file, const QByteArray &key);
+
+// Zusätzliche Schlüsselquelle (Plugins): 16-Byte-Key-ID -> 16-Byte-Schlüssel,
+// genutzt für Spurdateien, deren Schlüssel keine KDM liefert
+using KeyProvider = std::function<QByteArray(const QByteArray &keyId)>;
+void setKeyProvider(KeyProvider provider);
+// Schlüssel zur Key-ID (UUID, auch "urn:uuid:…") oder leer
+QByteArray providedKey(const QString &keyId);
 
 // Für Tests: eine MXF-Datei vollständig durch den Leser schicken
 QByteArray readAllTransformed(const StreamSpec &spec, qint64 maxBytes = -1);

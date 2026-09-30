@@ -577,13 +577,14 @@ ApplicationWindow {
                     spacing: 0
 
                     // Tabs
-                    Row {
+                    Flow {
                         Layout.fillWidth: true
                         Layout.leftMargin: 12
+                        Layout.rightMargin: 12
                         Layout.topMargin: 10
                         spacing: 2
                         Repeater {
-                            model: [qsTr("Titel"), qsTr("Kapitel"), qsTr("Ton"), qsTr("Untertitel"), qsTr("Bild"), qsTr("Kino"), qsTr("Ausgabe")]
+                            model: [qsTr("Titel"), qsTr("Kapitel"), qsTr("Ton"), qsTr("Untertitel"), qsTr("Bild"), qsTr("Kino"), qsTr("Ausgabe"), qsTr("Plugins")]
                             delegate: AbstractButton {
                                 id: tabBtn
                                 required property string modelData
@@ -1070,6 +1071,9 @@ ApplicationWindow {
                                 }
                             }
                         }
+
+                        // ---- Plugins ----
+                        PluginsPane {}
                     }
                 }
             }

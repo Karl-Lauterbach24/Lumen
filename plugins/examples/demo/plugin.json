@@ -1,0 +1,8 @@
+{
+    "id": "demo",
+    "name": "Demo-Plugin",
+    "version": "1.0",
+    "author": "Lumen",
+    "description": "Beispiel für alle Plugin-Schnittstellen: Schaltfläche, Ereignisse, eigenes URL-Schema (xorfile://) und DCP-Schlüssel aus einer Textdatei.",
+    "library": "demo_plugin"
+}

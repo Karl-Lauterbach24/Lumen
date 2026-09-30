@@ -1,0 +1,8 @@
+{
+    "id": "osd-clock",
+    "name": "Uhr im Bild",
+    "version": "1.0",
+    "author": "Lumen",
+    "description": "mpv-Skript-Plugin: Strg+T blendet Uhrzeit, Restlaufzeit und voraussichtliches Ende ein.",
+    "scripts": ["scripts/clock.lua"]
+}

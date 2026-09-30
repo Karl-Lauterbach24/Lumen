@@ -17,6 +17,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QLocale>
 #include <QSet>
 #include <QStandardPaths>
@@ -378,6 +379,11 @@ bool MpvController::create(const QVariantMap &options)
     };
     for (auto it = base.cbegin(); it != base.cend(); ++it)
         setOptionRaw(it.key(), it.value(), true);
+    for (const auto &provider : m_optionProviders) {
+        const QVariantMap extra = provider();
+        for (auto it = extra.cbegin(); it != extra.cend(); ++it)
+            setOptionRaw(it.key(), it.value(), true);
+    }
     for (auto it = options.cbegin(); it != options.cend(); ++it)
         setOptionRaw(it.key(), it.value(), true);
 
@@ -455,6 +461,7 @@ void MpvController::destroy()
 {
     if (!m_mpv)
         return;
+    emit mpvDestroying();
     mpv_handle *h = m_mpv;
     m_mpv = nullptr;
     mpv_set_wakeup_callback(h, nullptr, nullptr);
@@ -756,10 +763,21 @@ void MpvController::openFile(const QUrl &url)
 
 void MpvController::openLocation(const QString &location)
 {
-    if (QFileInfo::exists(location))
+    if (QFileInfo::exists(location)) {
         openSource(QFileInfo(location).absoluteFilePath());
-    else
-        openFile(QUrl::fromUserInput(location));
+        return;
+    }
+    // "schema://…" (mpv-Protokolle wie av://lavfi:…, Plugin-Schemata) unverändert
+    // an mpv – QUrl::fromUserInput machte daraus sonst eine http-Adresse
+    static const QRegularExpression scheme(QStringLiteral("^[A-Za-z][A-Za-z0-9+.-]+://"));
+    if (scheme.match(location).hasMatch() && !location.startsWith(QLatin1String("file://"), Qt::CaseInsensitive)) {
+        m_sourceKind = QStringLiteral("file");
+        m_currentDevice.clear();
+        resetAutoStereo();
+        loadFile(location);
+        return;
+    }
+    openFile(QUrl::fromUserInput(location));
 }
 
 // ISO-Abbild: Verzeichnisnamen im Dateisystem-Kopf suchen (UDF/ISO 9660 speichern
@@ -924,6 +942,11 @@ bool MpvController::isDisc() const
 {
     static const QStringList kinds = {"bluray", "dvd", "hddvd", "vcd", "svcd", "cdda"};
     return kinds.contains(m_sourceKind) || m_path.startsWith(QLatin1String("bd://")) || m_path.startsWith(QLatin1String("lumenbd://"));
+}
+
+void MpvController::addOptionProvider(std::function<QVariantMap()> provider)
+{
+    m_optionProviders.push_back(std::move(provider));
 }
 
 void MpvController::addProtocol(std::function<void(mpv_handle *)> attach)

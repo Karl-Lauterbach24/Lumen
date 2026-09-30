@@ -192,14 +192,19 @@ QVariantMap DcpManager::keyStatus(const Dcp::Cpl &cpl) const
         return m;
     }
     const QDateTime now = QDateTime::currentDateTimeUtc();
-    int have = 0, notYet = 0, expired = 0;
+    int have = 0, notYet = 0, expired = 0, fromPlugin = 0;
     QDateTime until;
     for (const QString &id : cpl.keyIds()) {
         auto it = m_manualKeys.constFind(id);
         if (it == m_manualKeys.constEnd()) {
             it = m_keys.constFind(id);
-            if (it == m_keys.constEnd())
+            if (it == m_keys.constEnd()) {
+                if (!Dcp::providedKey(id).isEmpty()) {
+                    ++have;
+                    ++fromPlugin;
+                }
                 continue;
+            }
         }
         const DcpCrypto::ContentKey *k = &it.value();
         if (k->notBefore.isValid() && now < k->notBefore)
@@ -218,8 +223,9 @@ QVariantMap DcpManager::keyStatus(const Dcp::Cpl &cpl) const
     m["playable"] = have == need;
     if (have == need) {
         m["keyState"] = QStringLiteral("valid");
-        m["keyText"] = until.isValid() ? LTR("KDM gültig bis %1").arg(QLocale().toString(until.toLocalTime(), QLocale::ShortFormat))
-                                       : LTR("Schlüssel vorhanden");
+        m["keyText"] = fromPlugin == need ? LTR("Schlüssel von Plugin")
+                       : until.isValid() ? LTR("KDM gültig bis %1").arg(QLocale().toString(until.toLocalTime(), QLocale::ShortFormat))
+                                         : LTR("Schlüssel vorhanden");
         m["validUntil"] = until;
     } else if (notYet) {
         m["keyState"] = QStringLiteral("notyet");
@@ -541,7 +547,9 @@ bool DcpManager::play(int index, double start)
             return {};
         if (m_manualKeys.contains(a.keyId))
             return m_manualKeys.value(a.keyId).key;
-        return m_keys.value(a.keyId).key;
+        if (m_keys.contains(a.keyId))
+            return m_keys.value(a.keyId).key;
+        return Dcp::providedKey(a.keyId); // Plugin
     };
 
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/lumen-dcp/") + cpl.id;

@@ -17,6 +17,7 @@
 #include "DisplayManager.h"
 #include "DriveManager.h"
 #include "MpvController.h"
+#include "PluginManager.h"
 #include "ProfileManager.h"
 
 int main(int argc, char *argv[])
@@ -33,6 +34,9 @@ int main(int argc, char *argv[])
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     I18n i18n; // vor allen anderen: Texte der Objekte sind dann schon übersetzt
+    // Plugins vor libmpv/libbluray laden: Umgebung, Disc-Bibliotheken, mpv-Skripte
+    PluginManager plugins;
+    plugins.loadEnabled();
     DisplayManager displays;
     DriveManager drives;
     ProfileManager profiles;
@@ -41,6 +45,9 @@ int main(int argc, char *argv[])
     DvdNav dvd;
     MpvController player(&displays, &nav);
     player.setDvdNav(&dvd);
+    player.addOptionProvider([&plugins] { return plugins.mpvOptions(); });
+    player.addProtocol([&plugins](mpv_handle *mpv) { plugins.attach(mpv); });
+    QObject::connect(&player, &MpvController::mpvDestroying, &plugins, &PluginManager::detach);
 
     player.initialize(profiles.currentProfile());
     DcpManager dcp(&player, &displays);
@@ -55,7 +62,31 @@ int main(int argc, char *argv[])
     QObject::connect(&profiles, &ProfileManager::currentProfileChanged, &player,
                      [&] { player.applyProfile(profiles.currentProfile()); });
     QObject::connect(&player, &MpvController::shutdownRequested, &app, &QCoreApplication::quit);
+    // Ereignisse an Plugins
+    QObject::connect(&player, &MpvController::fileLoaded, &plugins, [&] {
+        plugins.sendEvent(QStringLiteral("file-loaded"),
+                          {{"path", player.path()}, {"kind", player.sourceKind()}, {"title", player.mediaTitle()}});
+    });
+    QObject::connect(&player, &MpvController::idleChanged, &plugins, [&] {
+        if (player.idle())
+            plugins.sendEvent(QStringLiteral("end-file"), {{"path", player.path()}});
+    });
+    QObject::connect(&scanner, &DiscScanner::infoChanged, &plugins, [&] {
+        const QVariantMap i = scanner.info();
+        if (!i.value("device").toString().isEmpty())
+            plugins.sendEvent(QStringLiteral("disc"), {{"device", i.value("device")}, {"kind", i.value("kind")},
+                                                       {"label", i.value("label", i.value("title"))}});
+    });
+    QObject::connect(&plugins, &PluginManager::openRequested, &player, [&](const QString &url) {
+        const QFileInfo fi(url);
+        if (fi.exists())
+            player.openSource(fi.absoluteFilePath(), QStringLiteral("main"));
+        else
+            player.openLocation(url);
+    });
+
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
+        plugins.sendEvent(QStringLiteral("shutdown"));
         player.shutdown();
         displays.restoreAll();
     });
@@ -69,6 +100,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "DvdNav", &dvd);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Dcp", &dcp);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "I18n", &i18n);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Plugins", &plugins);
     QObject::connect(&i18n, &I18n::languageChanged, &profiles, &ProfileManager::retranslate);
 
     QQmlApplicationEngine engine;

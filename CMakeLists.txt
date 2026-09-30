@@ -132,6 +132,8 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/OpticalMedia.h      src/OpticalMedia.cpp
     src/DcpManager.h        src/DcpManager.cpp
     src/I18n.h              src/I18n.cpp
+    src/PluginManager.h     src/PluginManager.cpp
+    include/lumen/plugin.h
     src/Tr.h
     ${LUMEN_DCP_SOURCES}
 )
@@ -149,6 +151,7 @@ set(LUMEN_QML
     qml/SectionLabel.qml
     qml/ProfileEditor.qml
     qml/CinemaPane.qml
+    qml/PluginsPane.qml
 )
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Alle QML-Dateien ins Modul-Wurzelverzeichnis legen (gemeinsames qmldir -> Singleton "Theme")
@@ -173,6 +176,7 @@ qt_add_qml_module(lumen
 )
 
 target_compile_definitions(lumen PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")
+target_include_directories(lumen PRIVATE include)
 
 target_link_libraries(lumen PRIVATE
     Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Xml
@@ -285,6 +289,33 @@ if(LUMEN_BUILD_TESTS)
     target_include_directories(dvd_test PRIVATE src)
     target_link_libraries(dvd_test PRIVATE Qt6::Core Qt6::Gui Qt6::OpenGL lumen_mpv)
     lumen_optional_libs(dvd_test)
+endif()
+
+# Plugins: Beispiele (plugins/examples) nach <build>/plugins, Test des Plugin-Systems
+option(LUMEN_BUILD_PLUGIN_EXAMPLES "Beispiel-Plugins bauen" ${LUMEN_BUILD_TESTS})
+if(LUMEN_BUILD_PLUGIN_EXAMPLES)
+    enable_language(C)
+    add_library(demo_plugin MODULE plugins/examples/demo/demo_plugin.c)
+    target_include_directories(demo_plugin PRIVATE include)
+    set_target_properties(demo_plugin PROPERTIES PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/demo"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/demo")
+    add_custom_command(TARGET demo_plugin POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_CURRENT_SOURCE_DIR}/plugins/examples/demo/plugin.json"
+                "${CMAKE_BINARY_DIR}/plugins/demo/plugin.json"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/plugins/examples/osd-clock"
+                "${CMAKE_BINARY_DIR}/plugins/osd-clock"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/plugins/examples/disc-libraries"
+                "${CMAKE_BINARY_DIR}/plugins/disc-libraries")
+endif()
+if(LUMEN_BUILD_TESTS)
+    add_executable(plugin_test tests/plugin_test.cpp src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
+    target_include_directories(plugin_test PRIVATE src include)
+    target_link_libraries(plugin_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
+    lumen_optional_libs(plugin_test)
+    if(LUMEN_BUILD_PLUGIN_EXAMPLES)
+        add_dependencies(plugin_test demo_plugin)
+    endif()
 endif()
 
 include(GNUInstallDirs)

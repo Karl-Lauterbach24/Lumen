@@ -14,7 +14,10 @@ Digital Cinema Packages (DCP, JPEG 2000, SMPTE and Interop, encrypted with KDM)*
 
 ## Copy protection / encryption
 
-Lumen **does not circumvent any copy protection**.
+Lumen **does not circumvent any copy protection**. Anything of that kind is the user's own choice and goes through
+**[plugins](plugins/README.md)** the user installs and enables: a plugin can make user-provided libraries
+(libaacs, libbdplus, libdvdcss) available to libbluray/libdvdread, register its own decrypting URL schemes, or
+supply DCP keys. Lumen ships and downloads none of these.
 
 - **Blu-ray:** discs are read exclusively through `libbluray`. If a disc is AACS/BD+ protected, this must already be
   handled outside of Lumen – e.g. a drive with LibreDrive firmware plus a user-installed AACS library that libbluray loads
@@ -26,6 +29,19 @@ Lumen **does not circumvent any copy protection**.
 - **DCP:** encrypted DCPs are decrypted the way every cinema server does it – with a **KDM issued for this player's
   certificate** (see below). Without a matching, currently valid KDM (or keys the content owner entered themselves),
   encrypted content stays unreadable.
+
+## Plugins
+
+Folders with a `plugin.json`, managed in the **Plugins** tab (enable, disable, buttons, status). A plugin
+can include any of these:
+- a native C-ABI library ([`include/lumen/plugin.h`](include/lumen/plugin.h)): events, buttons, its own
+  URL schemes as sources, DCP content keys, mpv commands/properties;
+- mpv Lua/JavaScript scripts;
+- mpv options;
+- environment variables;
+- user-provided disc libraries.
+
+Documentation and examples: [plugins/README.md](plugins/README.md).
 
 ## Features
 

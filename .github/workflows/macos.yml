@@ -62,6 +62,13 @@ jobs:
           python3 tools/make_test_dcp.py ffmpeg "$(brew --prefix openssl@3)/bin/openssl" $T/dcp3d --encrypt $T/id/leaf.pem --stereo
           $B/dcp_test play3d $T/dcp3d $T/dcp3d/kdm.xml $T/id/leaf.key $T/sbs.png
 
+      - name: "Test: Plugins (nativ, Skript, URL-Schema, DCP-Schlüssel)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/plugins.txt) 2>&1
+          set -e
+          build/plugin_test build/plugins build/tests/dcp | tee build/tests/plugins.txt
+          grep -q BESTANDEN build/tests/plugins.txt
+
       - name: "Test: DVD-Menüs (Render-API)"
         run: |
           mkdir -p build/logs; exec > >(tee -a build/logs/dvd.txt) 2>&1

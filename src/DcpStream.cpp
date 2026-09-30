@@ -21,6 +21,28 @@ std::atomic<int> g_keyErrors{0};
 std::atomic<int> g_missingKeys{0};
 
 namespace {
+KeyProvider g_keyProvider;
+}
+
+void setKeyProvider(KeyProvider provider)
+{
+    g_keyProvider = std::move(provider);
+}
+
+QByteArray providedKey(const QString &keyId)
+{
+    if (!g_keyProvider)
+        return {};
+    QString hex = keyId;
+    hex.remove(QStringLiteral("urn:uuid:"), Qt::CaseInsensitive).remove(QLatin1Char('-'));
+    const QByteArray id = QByteArray::fromHex(hex.toLatin1());
+    if (id.size() != 16)
+        return {};
+    const QByteArray key = g_keyProvider(id);
+    return key.size() == 16 ? key : QByteArray();
+}
+
+namespace {
 
 std::mutex g_mutex;
 QHash<int, StreamSpec> g_streams;

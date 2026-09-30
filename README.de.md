@@ -12,7 +12,10 @@ Digital Cinema Packages (DCP, JPEG 2000, SMPTE und Interop, verschlüsselt mit K
 
 ## Kopierschutz / Verschlüsselung
 
-Lumen **umgeht keinen Kopierschutz**.
+Lumen **umgeht keinen Kopierschutz**. Alles in dieser Richtung ist Entscheidung des Nutzers und läuft über
+**[Plugins](plugins/README.md)**, die er selbst installiert und aktiviert: Ein Plugin kann vom Nutzer beschaffte
+Bibliotheken (libaacs, libbdplus, libdvdcss) für libbluray/libdvdread bereitstellen, eigene entschlüsselnde
+URL-Schemata anmelden oder DCP-Schlüssel liefern. Lumen liefert nichts davon mit und lädt nichts davon herunter.
 
 - **Blu-ray:** Discs werden ausschließlich über `libbluray` gelesen. Ist eine Disc AACS/BD+-geschützt, muss das außerhalb
   von Lumen bereits gelöst sein – z. B. ein Laufwerk mit LibreDrive-Firmware plus eine vom Nutzer installierte
@@ -24,6 +27,19 @@ Lumen **umgeht keinen Kopierschutz**.
 - **DCP:** verschlüsselte DCPs werden entschlüsselt wie auf jedem Kinoserver – mit einem **für das Zertifikat dieses Players
   ausgestellten KDM** (siehe unten). Ohne passenden, gültigen KDM (oder vom Rechteinhaber selbst eingetragene Schlüssel)
   bleibt verschlüsselter Inhalt unlesbar.
+
+## Plugins
+
+Ordner mit einer `plugin.json`, verwaltet im Reiter **Plugins** (aktivieren, deaktivieren, Schaltflächen, Status).
+Ein Plugin kann Folgendes mitbringen, beliebig kombiniert:
+- eine native C-ABI-Bibliothek ([`include/lumen/plugin.h`](include/lumen/plugin.h)): Ereignisse,
+  Schaltflächen, eigene URL-Schemata als Quellen, DCP-Inhaltsschlüssel, mpv-Befehle/-Eigenschaften;
+- mpv-Skripte (Lua/JavaScript);
+- mpv-Optionen;
+- Umgebungsvariablen;
+- vom Nutzer bereitgestellte Disc-Bibliotheken.
+
+Doku und Beispiele: [plugins/README.md](plugins/README.md) (englisch).
 
 ## Funktionen
 

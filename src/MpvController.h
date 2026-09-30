@@ -111,6 +111,8 @@ public:
 
     // Zusätzliche mpv-Protokolle (DCP, VCD …), je mpv-Instanz angemeldet
     void addProtocol(std::function<void(mpv_handle *)> attach);
+    // Zusätzliche mpv-Optionen (Plugins), gelesen bei jedem Start der mpv-Instanz
+    void addOptionProvider(std::function<QVariantMap()> provider);
     // Eigene Bild-Overlays (z. B. DCP-Bilduntertitel); img = ARGB32_Premultiplied
     void setOverlay(int id, const QImage &img, int x, int y, int w, int h);
     void removeOverlay(int id);
@@ -201,6 +203,7 @@ public:
     static bool isDisc3D(const QString &device);
 
 signals:
+    void mpvDestroying();
     void osdDimensionsChanged();
     void droppedFramesChanged();
     void queueChanged();
@@ -264,6 +267,7 @@ private:
     BlurayNav *m_nav = nullptr;
     DvdNav *m_dvd = nullptr;
     std::vector<std::function<void(mpv_handle *)>> m_protocols;
+    std::vector<std::function<QVariantMap()>> m_optionProviders;
     QString m_sourceKind;
     QVariantMap m_osdDims;
     QString m_snapshotFile;        // Entwickler-Hilfe LUMEN_PLAYER_SNAPSHOT=<datei>@<sekunden>
