@@ -56,6 +56,23 @@ void setKeyProvider(KeyProvider provider);
 // Schlüssel zur Key-ID (UUID, auch "urn:uuid:…") oder leer
 QByteArray providedKey(const QString &keyId);
 
+// Frame-weise Essenz (z. B. IAB/Atmos, ein Element je Edit Unit): Elemente
+// finden und einzeln lesen, verschlüsselte Triplets werden dabei entschlüsselt.
+class EssenceReader
+{
+public:
+    // match: Essenz-Schlüssel (16 Byte, Klartext bzw. SourceKey im Triplet)
+    EssenceReader(const StreamSpec &spec, std::function<bool(const unsigned char *key)> match);
+    ~EssenceReader();
+    bool ok() const;
+    int count() const;
+    QByteArray element(int index);
+
+private:
+    struct Impl;
+    Impl *d;
+};
+
 // Für Tests: eine MXF-Datei vollständig durch den Leser schicken
 QByteArray readAllTransformed(const StreamSpec &spec, qint64 maxBytes = -1);
 

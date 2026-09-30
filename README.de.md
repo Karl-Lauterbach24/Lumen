@@ -94,6 +94,14 @@ ASSETMAP ─> PKL ─> CPL (Rollen: Bild | Ton | Untertitel | Marker)
 - **Ton:** 16-Kanal-DCPs werden nach SMPTE 428-12 zugeordnet (L R C LFE Ls Rs · HI · VI-N · … · Lrs Rrs); *automatisch* nutzt
   7.1 DS bei 16 Kanälen, sonst 5.1; HI und VI-N sind für Barrierefreiheit wählbar. Der Fader folgt der Skala der
   Kinoprozessoren (7,0 = 0 dB, 3,33 dB je Einheit oberhalb 4).
+- **Immersive Audio (Dolby Atmos / SMPTE IAB):** Atmos-Spuren in DCPs (`AuxData`, ST 429-18) enthalten IAB-Frames nach
+  SMPTE ST 2098-2. Lumen liest sie Frame für Frame, entschlüsselt sie mit dem KDM-Schlüssel (Typ MDEK) und rendert Betten
+  und Objekte mit dem offenen [IAB-Renderer](https://github.com/DTSProAudio/iab-renderer) von DTS (BSD-3-Clause, VBAP) auf
+  **7.1.4, 5.1.4, 7.1, 5.1 oder Stereo** (*Kino → Atmos/IAB-Ausgabe*). Das Ergebnis geht als 32-Bit-Float-WAV mit
+  Kanalmaske an mpv und ist die bevorzugte Tonspur der Komposition; die PCM-Fassung bleibt wählbar.
+  - Die 5.1/7.1-Layouts sind aus DTS' 5.1.4/7.1.4 abgeleitet, die Höhen werden dabei heruntergemischt (`resources/iab`).
+  - Der Renderer wird beim Bauen automatisch geholt (festgelegter Commit) oder aus `-DIAB_SOURCE_DIR` genommen;
+    `-DLUMEN_WITH_IAB=OFF` baut ohne ihn.
 - **Prüfung:** *Prüfen* bildet die SHA-1-Summen aller Spurdateien einer CPL und vergleicht sie mit der Packing List.
 - **Vorführprogramm:** CPLs (*Ins Programm*) oder die laufende Quelle hinzufügen und nacheinander abspielen.
 
@@ -281,7 +289,7 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
 | Thema | Stand |
 |---|---|
 | Blu-ray 3D | Implementiert und mit einer synthetischen 3D-Disc durchgehend getestet (Zusammenführung, Spulen, SBS, Frame Packing). **Noch nicht mit einer echten 3D-Disc getestet**. FFmpeg-mvc ist ein experimenteller Fork. |
-| DCP | Mit synthetischen SMPTE-DCPs durchgehend getestet (2 Rollen mit Einstiegspunkten, Marker, Interop-Untertitel, **verschlüsselte Essenz + KDM**; entschlüsselte Bilder bitgleich zur Quelle). **Noch nicht mit echten Kino-DCPs/KDMs getestet.** Nicht unterstützt: Dolby Atmos/IAB (angezeigt, nicht dekodiert), Bild-Untertitel (PNG), Closed Captions, Prüfung der KDM-Signatur (XML-DSig), forensische Markierung. 3D-DCPs: Augentrennung und SBS-Zusammenbau implementiert, noch nicht mit einem echten 3D-DCP getestet. |
+| DCP | Mit synthetischen SMPTE-DCPs unter Windows und macOS (CI) durchgehend getestet. Die Test-DCPs haben 2 Rollen mit Einstiegspunkten, Marker, Interop-Text- und Bilduntertitel, Closed Captions, eine signierte KDM, 3D und eine Atmos/IAB-Spur. Die gesamte Essenz ist verschlüsselt, entschlüsselte Bilder sind bitgleich zur Quelle. Die Objekt- und Bettpositionen der IAB-Spur werden je Lautsprecher und Layout geprüft. **Noch nicht mit echten Kino-DCPs/KDMs oder echten Atmos-Mischungen getestet.** Nicht unterstützt: forensische Markierung. Atmos-Spuren aus der Zeit vor dem SMPTE-Standard können Elemente enthalten, die der IAB-Renderer ablehnt (ungetestet). |
 | JPEG 2000 | Software-Dekodierung (FFmpeg, Frame- und Slice-Threads). 2K mit 24 fps braucht eine starke Mehrkern-CPU (≈ 24 fps auf 12 Threads bei 130 Mbit/s); automatischer Wechsel der Auflösungsstufe bei verworfenen Bildern. |
 | DVD | Menüführung, SPU-Dekodierung und Hervorhebung sind implementiert, aber **noch nicht mit echten DVDs getestet** (in der Build-Umgebung gab es kein DVD-Authoring-Werkzeug). Ohne libdvdnav laufen DVDs über mpv `dvd://` (ohne Menüs). |
 | HD DVD | Mit einer synthetischen HVDVD_TS/XPL-Struktur getestet. HDi-Interaktivität (Menüs) wird nicht unterstützt; Titel/Kapitel kommen aus der Playlist. AACS-geschützte Discs spielen nicht. |

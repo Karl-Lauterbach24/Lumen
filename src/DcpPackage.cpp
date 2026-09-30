@@ -208,8 +208,12 @@ bool parseCpl(const QString &file, const QHash<QString, Asset> &assets, Cpl *cpl
                 ra.file = it->path;
             else if (ra.kind != Kind::Other)
                 cpl->missing << ra.id;
-            if (!ra.file.isEmpty() && ra.file.endsWith(QLatin1String(".mxf"), Qt::CaseInsensitive))
+            if (!ra.file.isEmpty() && ra.file.endsWith(QLatin1String(".mxf"), Qt::CaseInsensitive)) {
                 ra.mxf = probeMxf(ra.file);
+                // IAB/Atmos auch an der Spurdatei erkennen (AuxData-Typen variieren)
+                if (ra.mxf.codec == QLatin1String("IAB") && ra.kind == Kind::Other)
+                    ra.kind = Kind::Atmos;
+            }
             if (!ra.editRate.valid())
                 ra.editRate = Rational{24, 1};
             reel.assets.append(ra);
@@ -437,7 +441,7 @@ MxfInfo probeMxf(const QString &file)
         }
     }
 
-    bool j2k = false, wave = false, rgba = false, tt = false, dcdata = false;
+    bool j2k = false, wave = false, rgba = false, tt = false, dcdata = false, iab = false;
     while (pos + 17 <= limit) {
         if (std::memcmp(pos, kUlPrefix, 4) != 0)
             break;
@@ -448,6 +452,12 @@ MxfInfo probeMxf(const QString &file)
         const uchar *next = val + len;
         if (next > limit)
             break;
+        // Immersive Audio (Dolby Atmos / SMPTE ST 429-18): ImmersiveAudioDataEssenceDescriptor
+        // 06.0e.2b.34.02.53.01.05.0e.09.06.03, IMF-IAB-Deskriptor 06.0e.2b.34.02.53.01.01.0d.01.01.01.01.01.7b
+        if (key[4] == 0x02 && key[5] == 0x53
+            && ((key[8] == 0x0e && key[9] == 0x09 && key[10] == 0x06 && key[11] == 0x03)
+                || (key[8] == 0x0d && key[9] == 0x01 && key[12] == 0x01 && key[13] == 0x01 && key[14] == 0x7b)))
+            iab = true;
         // Header-Metadaten (lokale Sets): 06.0e.2b.34.02.53.01.01.0d.01.01.01.01.01.XX.00
         if (key[4] == 0x02 && key[5] == 0x53 && key[8] == 0x0d && key[9] == 0x01) {
             const uchar type = key[14];
@@ -492,11 +502,13 @@ MxfInfo probeMxf(const QString &file)
             }
         }
         // Erstes Essenz-Element erreicht -> Kopf zu Ende
-        if (key[4] == 0x01 && key[5] == 0x02 && key[8] == 0x0d && key[9] == 0x01 && key[10] == 0x03)
+        if (key[4] == 0x01 && key[5] == 0x02 && ((key[8] == 0x0d && key[9] == 0x01 && key[10] == 0x03) || (key[8] == 0x0e && key[9] == 0x09)))
             break;
         pos = next;
     }
-    if (rgba || j2k)
+    if (iab)
+        info.codec = QStringLiteral("IAB");
+    else if (rgba || j2k)
         info.codec = QStringLiteral("J2K");
     else if (wave)
         info.codec = QStringLiteral("PCM");

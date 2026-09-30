@@ -62,6 +62,18 @@ jobs:
           python3 tools/make_test_dcp.py ffmpeg "$(brew --prefix openssl@3)/bin/openssl" $T/dcp3d --encrypt $T/id/leaf.pem --stereo
           $B/dcp_test play3d $T/dcp3d $T/dcp3d/kdm.xml $T/id/leaf.key $T/sbs.png
 
+      - name: "Test: Atmos/IAB (DTS-Renderer, verschlüsselt, alle Layouts)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/iab.txt) 2>&1
+          set -e
+          T=build/tests
+          build/iab_testgen $T/iab.bin 48
+          python3 tools/make_test_dcp.py ffmpeg "$(brew --prefix openssl@3)/bin/openssl" $T/atmos --encrypt $T/id/leaf.pem --iab $T/iab.bin
+          K=$(sed -n 3p $T/atmos/keys.txt | cut -d' ' -f2)
+          for L in 7.1.4 5.1.4 7.1 5.1 2.0; do build/dcp_test iab $T/atmos/atmos.mxf $K $L --check; done
+          build/dcp_test play $T/atmos $T/atmos/kdm.xml $T/id/leaf.key 1.5 --iab | tee $T/iabplay.txt
+          grep -q "audio-ch=12" $T/iabplay.txt
+
       - name: "Test: Plugins (nativ, Skript, URL-Schema, DCP-Schlüssel)"
         run: |
           mkdir -p build/logs; exec > >(tee -a build/logs/plugins.txt) 2>&1

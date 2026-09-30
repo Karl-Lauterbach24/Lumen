@@ -43,6 +43,11 @@ class DcpManager : public QObject
     Q_PROPERTY(double fader READ fader WRITE setFader NOTIFY faderChanged)
     Q_PROPERTY(QString audioRoute READ audioRoute WRITE setAudioRoute NOTIFY audioRouteChanged)
     Q_PROPERTY(QString decodeMode READ decodeMode WRITE setDecodeMode NOTIFY decodeModeChanged)
+    // Immersive Audio (Atmos/IAB): Renderer vorhanden, Lautsprecherlayout, Spur aktiv
+    Q_PROPERTY(bool iabAvailable READ iabAvailable CONSTANT)
+    Q_PROPERTY(QVariantList iabLayouts READ iabLayouts CONSTANT)
+    Q_PROPERTY(QString iabLayout READ iabLayout WRITE setIabLayout NOTIFY iabLayoutChanged)
+    Q_PROPERTY(bool iabActive READ iabActive NOTIFY activeChanged)
     Q_PROPERTY(int reduction READ reduction NOTIFY activeChanged)
     Q_PROPERTY(bool verifying READ verifying NOTIFY verifyChanged)
     Q_PROPERTY(double verifyProgress READ verifyProgress NOTIFY verifyChanged)
@@ -71,6 +76,11 @@ public:
     void setAudioRoute(const QString &r);
     QString decodeMode() const { return m_decodeMode; }
     void setDecodeMode(const QString &m);
+    bool iabAvailable() const;
+    QVariantList iabLayouts() const;
+    QString iabLayout() const { return m_iabLayout; }
+    void setIabLayout(const QString &layout);
+    bool iabActive() const { return m_iabActive; }
     int reduction() const { return m_reduction; }
     bool verifying() const { return m_verifying; }
     double verifyProgress() const { return m_verifyProgress; }
@@ -100,6 +110,7 @@ public:
     static QString routeFilter(int channels, const QString &route);
 
 signals:
+    void iabLayoutChanged();
     void busyChanged();
     void packageChanged();
     void identityChanged();
@@ -152,6 +163,8 @@ private:
 
     double m_fader = 7.0;
     QString m_route = QStringLiteral("auto");
+    QString m_iabLayout;
+    bool m_iabActive = false;
     QString m_decodeMode = QStringLiteral("auto");
 
     bool m_verifying = false;

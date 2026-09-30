@@ -8,6 +8,7 @@
 //   dcp_test play <dcp> [kdm leaf.key] [sekunden] [bild.png]
 //                                             mit libmpv (vo=null) abspielen
 #include "DcpCrypto.h"
+#include "DcpIab.h"
 #include "DcpPackage.h"
 #include "DcpSignature.h"
 #include "DcpStream.h"
@@ -26,6 +27,8 @@
 #include <mpv/client.h>
 
 #include <clocale>
+#include <cmath>
+#include <vector>
 #include <cstdio>
 
 namespace {
@@ -67,6 +70,58 @@ int main(int argc, char **argv)
         const DcpCrypto::Identity id = DcpCrypto::loadIdentity(a[1]);
         print(QStringLiteral("valid=%1 serial=%2\nsubject=%3\nthumbprint=%4").arg(id.valid).arg(id.serial, id.subject, id.thumbprint));
         return id.valid ? 0 : 1;
+    }
+
+    // iab <mxf> <schlüssel-hex|-> <layout> [--check]: IAB/Atmos-Spur rendern, Pegel je
+    // Kanal und Hälfte; --check prüft das Muster von iab_testgen (Objekt vorne
+    // links -> oben vorne rechts, LFE-Ton)
+    if (cmd == QLatin1String("iab") && a.size() >= 4) {
+        const QByteArray key = a[2] == QLatin1String("-") ? QByteArray() : QByteArray::fromHex(a[2].toLatin1());
+        Dcp::g_keyErrors = 0;
+        Dcp::IabDecoder dec({a[1], key, 0}, a[3]);
+        if (!dec.ok()) {
+            print(QStringLiteral("Fehler: ") + dec.error());
+            return 1;
+        }
+        const int n = dec.frames(), ch = dec.channels(), fs = dec.frameSamples();
+        print(QStringLiteral("frames=%1 channels=%2 [%3] rate=%4 samples/frame=%5 mask=0x%6")
+                  .arg(n).arg(ch).arg(dec.channelNames().join(QLatin1Char(' '))).arg(dec.sampleRate()).arg(fs)
+                  .arg(dec.channelMask(), 0, 16));
+        std::vector<float> buf(size_t(fs) * size_t(ch));
+        std::vector<double> energy[2] = {std::vector<double>(size_t(ch)), std::vector<double>(size_t(ch))};
+        for (int f = 0; f < n; ++f) {
+            dec.render(f, buf.data());
+            for (int i = 0; i < fs; ++i)
+                for (int c = 0; c < ch; ++c)
+                    energy[f >= n / 2][size_t(c)] += double(buf[size_t(i) * size_t(ch) + size_t(c)]) * buf[size_t(i) * size_t(ch) + size_t(c)];
+        }
+        const QStringList names = dec.channelNames();
+        QString loudest[2];
+        double lfe[2] = {};
+        for (int h = 0; h < 2; ++h) {
+            QStringList row;
+            double best = -1;
+            for (int c = 0; c < ch; ++c) {
+                const double rms = std::sqrt(energy[h][size_t(c)] / std::max(1, (n / 2) * fs));
+                row << QStringLiteral("%1=%2").arg(names[c]).arg(rms, 0, 'f', 4);
+                if (names[c] == QLatin1String("LFE"))
+                    lfe[h] = rms;
+                else if (rms > best)
+                    best = rms, loudest[h] = names[c];
+            }
+            print(QStringLiteral("%1. Hälfte: %2").arg(h + 1).arg(row.join(QLatin1Char(' '))));
+        }
+        print(QStringLiteral("lautester Kanal: %1 -> %2, Frame-Fehler=%3, Prüfwertfehler=%4")
+                  .arg(loudest[0], loudest[1]).arg(dec.errors()).arg(Dcp::g_keyErrors.load()));
+        if (!a.contains(QStringLiteral("--check")))
+            return dec.errors() ? 1 : 0;
+        const bool heights = names.contains(QStringLiteral("RFH"));
+        const bool stereo = !names.contains(QStringLiteral("LFE"));
+        const bool ok = dec.errors() == 0 && Dcp::g_keyErrors == 0 && loudest[0] == QLatin1String("L")
+                        && loudest[1] == (heights ? QStringLiteral("RFH") : QStringLiteral("R"))
+                        && (stereo || (lfe[0] > 0.01 && lfe[1] > 0.01));
+        print(ok ? QStringLiteral("IAB-Muster korrekt") : QStringLiteral("IAB-Muster FALSCH"));
+        return ok ? 0 : 1;
     }
 
     if (cmd == QLatin1String("info") && a.size() >= 2) {
@@ -208,12 +263,14 @@ int main(int argc, char **argv)
         }
         if (cmd == QLatin1String("play") && a.size() > argi)
             seconds = a[argi].toDouble();
-        if (cmd == QLatin1String("play") && a.size() > argi + 1)
+        if (cmd == QLatin1String("play") && a.size() > argi + 1 && !a[argi + 1].startsWith(QLatin1String("--")))
             png = a[argi + 1];
+        // --iab: Immersive-Audio-Spur (7.1.4) als zweite Tonspur, ausgewählt
+        const bool withIab = a.contains(QStringLiteral("--iab"));
 
         const Dcp::Cpl &cpl = pkg.cpls[0];
         QTemporaryDir tmp;
-        QString pic, snd;
+        QString pic, snd, iab;
         QList<Dcp::SubtitleSource> subs;
         double t = 0;
         for (const Dcp::Reel &r : cpl.reels) {
@@ -228,6 +285,10 @@ int main(int argc, char **argv)
             if (const Dcp::ReelAsset *s = r.find(Dcp::Kind::Sound)) {
                 const int id = Dcp::registerStream({s->file, keys.value(s->keyId), 0});
                 snd += QStringLiteral("%1,%2,%3\n").arg(edlFile(Dcp::streamUrl(id))).arg(s->startSeconds(), 0, 'f', 6).arg(len, 0, 'f', 6);
+            }
+            if (const Dcp::ReelAsset *ia = r.find(Dcp::Kind::Atmos); ia && withIab) {
+                const int id = Dcp::registerIabStream({ia->file, keys.value(ia->keyId), 0}, QStringLiteral("7.1.4"));
+                iab += QStringLiteral("%1,%2,%3\n").arg(edlFile(Dcp::iabUrl(id))).arg(ia->startSeconds(), 0, 'f', 6).arg(len, 0, 'f', 6);
             }
             if (const Dcp::ReelAsset *st = r.find(Dcp::Kind::Subtitle))
                 subs.append({st->file, keys.value(st->keyId), t, st->startSeconds(), len, st->language});
@@ -268,9 +329,14 @@ int main(int argc, char **argv)
         if (mpv_initialize(mpv) < 0)
             return 1;
         Dcp::attachProtocol(mpv);
+        Dcp::attachIabProtocol(mpv);
+        if (!iab.isEmpty())
+            mpv_set_property_string(mpv, "aid", "2");
         // Inline-EDL (wie in Lumen): eigene Protokolle sind nur so erlaubt
         const QByteArray ep = (QStringLiteral("edl://!no_chapters;!new_stream;") + pic.trimmed().replace(QLatin1Char('\n'), QLatin1Char(';'))
-                               + QStringLiteral(";!new_stream;") + snd.trimmed().replace(QLatin1Char('\n'), QLatin1Char(';'))).toUtf8();
+                               + QStringLiteral(";!new_stream;") + snd.trimmed().replace(QLatin1Char('\n'), QLatin1Char(';'))
+                               + (iab.isEmpty() ? QString() : QStringLiteral(";!new_stream;") + iab.trimmed().replace(QLatin1Char('\n'), QLatin1Char(';'))))
+                                  .toUtf8();
         const char *load[] = {"loadfile", ep.constData(), nullptr};
         mpv_command(mpv, load);
         bool loaded = false, ended = false;

@@ -2,6 +2,7 @@
 #include "Tr.h"
 
 #include "DcpStream.h"
+#include "DcpIab.h"
 #include "DcpSubtitles.h"
 #include "DisplayManager.h"
 #include "MpvController.h"
@@ -62,13 +63,17 @@ DcpManager::DcpManager(MpvController *player, DisplayManager *displays, QObject 
     m_fader = s.value(QStringLiteral("dcp/fader"), 7.0).toDouble();
     m_route = s.value(QStringLiteral("dcp/route"), QStringLiteral("auto")).toString();
     m_decodeMode = s.value(QStringLiteral("dcp/decode"), QStringLiteral("auto")).toString();
+    m_iabLayout = s.value(QStringLiteral("dcp/iabLayout"), Dcp::defaultIabLayout()).toString();
     m_identity = DcpCrypto::loadIdentity(configDir());
     loadStoredKdms();
     m_imageClock.setInterval(40);
     connect(&m_imageClock, &QTimer::timeout, this, &DcpManager::updateImageSubtitle);
 
     if (m_player) {
-        m_player->addProtocol([](mpv_handle *mpv) { Dcp::attachProtocol(mpv); });
+        m_player->addProtocol([](mpv_handle *mpv) {
+            Dcp::attachProtocol(mpv);
+            Dcp::attachIabProtocol(mpv);
+        });
         // Aktiv = eine DCP-Komposition läuft. Beim Laden ist mpv kurz "idle",
         // daher erst aus, wenn eine andere Quelle geladen wird.
         auto sync = [this] {
@@ -484,9 +489,34 @@ void DcpManager::setAudioRoute(const QString &r)
         return;
     m_route = r;
     QSettings().setValue(QStringLiteral("dcp/route"), r);
-    if (m_active)
+    if (m_active && !m_iabActive) // Kanalzuordnung betrifft nur die PCM-Spur
         m_player->setOption(QStringLiteral("af"), routeFilter(m_channels, r));
     emit audioRouteChanged();
+}
+
+bool DcpManager::iabAvailable() const
+{
+    return Dcp::iabAvailable();
+}
+
+QVariantList DcpManager::iabLayouts() const
+{
+    QVariantList out;
+    for (const Dcp::IabLayout &l : Dcp::iabLayouts())
+        out << QVariantMap{{"value", l.id}, {"text", l.name}};
+    return out;
+}
+
+void DcpManager::setIabLayout(const QString &layout)
+{
+    if (layout == m_iabLayout)
+        return;
+    m_iabLayout = layout;
+    QSettings().setValue(QStringLiteral("dcp/iabLayout"), layout);
+    emit iabLayoutChanged();
+    // Läuft gerade eine IAB-Spur: an gleicher Stelle mit neuem Layout neu aufbauen
+    if (m_active && m_iabActive && m_playing >= 0)
+        play(m_playing, m_player->position());
 }
 
 void DcpManager::setDecodeMode(const QString &m)
@@ -558,7 +588,10 @@ bool DcpManager::play(int index, double start)
     Dcp::g_missingKeys = 0;
 
     // --- EDL: Bild (1 oder 2 Augen) und Ton über alle Rollen ---------------
-    QStringList pic[2], snd;
+    QStringList pic[2], snd, iab;
+    bool anyIab = false;
+    static const QHash<QString, QString> iabSilence = {
+        {"7.1.4", "7.1.4"}, {"5.1.4", "5.1.4"}, {"7.1", "7.1"}, {"5.1", "5.1(side)"}, {"2.0", "stereo"}};
     QList<Dcp::SubtitleSource> subs, captions;
     QString ffmeta = QStringLiteral(";FFMETADATA1\n");
     struct Chapter { double t; QString title; };
@@ -600,6 +633,16 @@ bool DcpManager::play(int index, double start)
         } else {
             snd << QStringLiteral("%1,0,%2").arg(edlFile(QStringLiteral("av://lavfi:anullsrc=r=48000:cl=5.1")), num(len));
         }
+        // Immersive Audio: nur mit Renderer und (falls verschlüsselt) Schlüssel
+        const Dcp::ReelAsset *ia = reel.find(Dcp::Kind::Atmos);
+        if (ia && Dcp::iabAvailable() && !ia->file.isEmpty() && (!ia->encrypted() || !keyFor(*ia).isEmpty())) {
+            anyIab = true;
+            const QString url = Dcp::iabUrl(Dcp::registerIabStream({ia->file, keyFor(*ia), 0}, m_iabLayout));
+            iab << QStringLiteral("%1,%2,%3").arg(edlFile(url), num(ia->startSeconds()), num(len));
+        } else {
+            iab << QStringLiteral("%1,0,%2").arg(edlFile(QStringLiteral("av://lavfi:anullsrc=r=48000:cl=%1")
+                                                              .arg(iabSilence.value(m_iabLayout, QStringLiteral("7.1.4")))), num(len));
+        }
         if (const Dcp::ReelAsset *st = reel.find(Dcp::Kind::Subtitle)) {
             if (!st->file.isEmpty())
                 subs.append({st->file, keyFor(*st), t, st->startSeconds(), len, st->language});
@@ -621,6 +664,10 @@ bool DcpManager::play(int index, double start)
         edl += pic[eye].join(QLatin1Char('\n')) + QLatin1Char('\n');
     }
     edl += QStringLiteral("!new_stream\n!track_meta,title=DCP-Ton\n") + snd.join(QLatin1Char('\n')) + QLatin1Char('\n');
+    if (anyIab)
+        edl += QStringLiteral("!new_stream\n!track_meta,title=%1\n").arg(LTR("Immersive Audio (Atmos/IAB) → %1").arg(m_iabLayout))
+               + iab.join(QLatin1Char('\n')) + QLatin1Char('\n');
+    m_iabActive = anyIab;
     const QString edlPath = QDir(dir).filePath(QStringLiteral("composition.edl"));
     {
         QFile f(edlPath);
@@ -674,9 +721,14 @@ bool DcpManager::play(int index, double start)
     };
     if (m_reduction > 0)
         opts["vd-lavc-o"] = QStringLiteral("lowres=%1").arg(m_reduction);
-    const QString af = routeFilter(m_channels, m_route);
-    if (!af.isEmpty())
-        opts["af"] = af;
+    if (m_iabActive) {
+        opts["aid"] = "2"; // Immersive-Audio-Spur statt der PCM-Fassung
+        opts["af"] = QString();
+    } else {
+        const QString af = routeFilter(m_channels, m_route);
+        if (!af.isEmpty())
+            opts["af"] = af;
+    }
     if (want3d)
         opts["lavfi-complex"] = QStringLiteral("[vid1][vid2]hstack[vo]");
     if (start > 0)
@@ -728,6 +780,7 @@ bool DcpManager::play(int index, double start)
     m_current["index"] = index;
     m_current["reduction"] = m_reduction;
     m_current["channelsUsed"] = m_channels;
+    m_current["iab"] = m_iabActive;
     m_player->openPrepared(Optical::edlUrl(edl), opts, QStringLiteral("dcp"), cpl.root, want3d ? QStringLiteral("sbsl") : QStringLiteral("none"));
     m_active = true;
     m_playClock.start();
@@ -740,6 +793,8 @@ bool DcpManager::play(int index, double start)
         parts << LTR("J2K 1/%1 Auflösung").arg(1 << m_reduction);
     if (stereo)
         parts << (want3d ? QStringLiteral("3D") : LTR("3D-DCP als 2D"));
+    if (m_iabActive)
+        parts << LTR("Atmos/IAB → %1").arg(m_iabLayout);
     setStatus(parts.join(QStringLiteral(" · ")) + subInfo);
     return true;
 }

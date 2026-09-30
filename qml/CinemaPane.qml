@@ -123,7 +123,8 @@ ScrollView {
                         Chip { text: modelData.editRate ? modelData.editRate + qsTr(" fps") : "" }
                         Chip { text: modelData.channels ? modelData.channels + (modelData.channels === 1 ? qsTr(" Kanal") : qsTr(" Kanäle")) : "" }
                         Chip { text: modelData.stereo ? "3D" : ""; tint: Theme.accent }
-                        Chip { text: modelData.atmos ? qsTr("Atmos (nicht dekodiert)") : ""; tint: Theme.textDim }
+                        Chip { text: modelData.atmos ? (Dcp.iabAvailable ? qsTr("Atmos/IAB → ") + Dcp.iabLayout : qsTr("Atmos (nicht dekodiert)")) : ""
+                               tint: Dcp.iabAvailable ? Theme.accent : Theme.textDim }
                         Chip { text: modelData.subtitles ? qsTr("UT ") + (modelData.subtitleLanguages || []).join(", ") : "" }
                         Chip { text: modelData.reels + qsTr(" Rolle(n)") }
                         Chip { text: modelData.keyText; tint: pane.keyTint(modelData.keyState); filled: modelData.keyState === "valid" }
@@ -193,6 +194,14 @@ ScrollView {
             textRole: "text"; valueRole: "value"
             currentIndex: indexFor(Dcp.audioRoute)
             onActivated: Dcp.audioRoute = currentValue
+        }
+        Select {
+            Layout.fillWidth: true
+            visible: Dcp.iabAvailable
+            model: Dcp.iabLayouts.map(l => ({ value: l.value, text: qsTr("Atmos/IAB-Ausgabe: ") + l.text }))
+            textRole: "text"; valueRole: "value"
+            currentIndex: indexFor(Dcp.iabLayout)
+            onActivated: Dcp.iabLayout = currentValue
         }
         Select {
             Layout.fillWidth: true

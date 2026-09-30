@@ -107,7 +107,39 @@ if(PKG_CONFIG_FOUND)
         set(LUMEN_HAVE_LIBXML2 ${LIBXML2_FOUND})
     endif()
 endif()
-message(STATUS "Lumen: OpenSSL (DCP-Entschlüsselung): ${LUMEN_HAVE_OPENSSL} · libdvdnav: ${LUMEN_HAVE_DVDNAV} · libcdio: ${LUMEN_HAVE_CDIO} · libxml2 (KDM-Signatur): ${LUMEN_HAVE_LIBXML2}")
+# Immersive Audio (Dolby Atmos / SMPTE IAB in DCPs): offener DTS-IAB-Renderer (BSD-3).
+# IAB_SOURCE_DIR = lokale Quellen, sonst Download (festgelegter Commit) von GitHub
+option(LUMEN_WITH_IAB "Atmos/IAB in DCPs rendern (DTS IAB Renderer)" ON)
+set(IAB_SOURCE_DIR "" CACHE PATH "Quellen von github.com/DTSProAudio/iab-renderer (optional)")
+if(LUMEN_WITH_IAB)
+    if(NOT IAB_SOURCE_DIR)
+        include(FetchContent)
+        FetchContent_Declare(iabrenderer
+            GIT_REPOSITORY https://github.com/DTSProAudio/iab-renderer.git
+            GIT_TAG 1232c550aac4be4d4106605d30bd0eb798b3f4bf
+            SOURCE_SUBDIR lumen-no-cmake) # nur Quellen holen, deren CMakeLists nicht einbinden
+        FetchContent_MakeAvailable(iabrenderer)
+        set(IAB_SOURCE_DIR "${iabrenderer_SOURCE_DIR}")
+    endif()
+    if(EXISTS "${IAB_SOURCE_DIR}/include/IABRendererAPI.h")
+        file(GLOB_RECURSE IAB_LIB_SOURCES CONFIGURE_DEPENDS "${IAB_SOURCE_DIR}/src/lib/*.cpp")
+        list(FILTER IAB_LIB_SOURCES EXCLUDE REGEX "IABRendererMT[.]cpp$")
+        if(NOT APPLE)
+            list(FILTER IAB_LIB_SOURCES EXCLUDE REGEX "VectDSPMacAccelerate[.]cpp$")
+        endif()
+        add_library(lumen_iab STATIC ${IAB_LIB_SOURCES})
+        target_include_directories(lumen_iab PUBLIC "${IAB_SOURCE_DIR}/include" "${IAB_SOURCE_DIR}/src/lib")
+        # nutzt std::ios_base::streampos (in C++17 entfernt)
+        set_target_properties(lumen_iab PROPERTIES POSITION_INDEPENDENT_CODE ON CXX_STANDARD 14 CXX_EXTENSIONS ON)
+        target_compile_options(lumen_iab PRIVATE -w)
+        if(APPLE)
+            target_link_libraries(lumen_iab PUBLIC "-framework Accelerate")
+        endif()
+        set(LUMEN_HAVE_IAB ON)
+    endif()
+endif()
+
+message(STATUS "Lumen: OpenSSL (DCP-Entschlüsselung): ${LUMEN_HAVE_OPENSSL} · libdvdnav: ${LUMEN_HAVE_DVDNAV} · libcdio: ${LUMEN_HAVE_CDIO} · libxml2 (KDM-Signatur): ${LUMEN_HAVE_LIBXML2} · IAB/Atmos: ${LUMEN_HAVE_IAB}")
 
 # DCP-Kern (ohne GUI, auch für das Testprogramm)
 set(LUMEN_DCP_SOURCES
@@ -116,6 +148,7 @@ set(LUMEN_DCP_SOURCES
     src/DcpStream.h         src/DcpStream.cpp
     src/DcpSubtitles.h      src/DcpSubtitles.cpp
     src/DcpSignature.h      src/DcpSignature.cpp
+    src/DcpIab.h            src/DcpIab.cpp
 )
 
 qt_add_executable(lumen WIN32 MACOSX_BUNDLE
@@ -199,6 +232,15 @@ function(lumen_optional_libs target)
         target_link_libraries(${target} PRIVATE PkgConfig::LIBXML2)
         target_compile_definitions(${target} PRIVATE LUMEN_HAVE_LIBXML2=1)
     endif()
+    if(LUMEN_HAVE_IAB)
+        target_link_libraries(${target} PRIVATE lumen_iab)
+        target_compile_definitions(${target} PRIVATE LUMEN_HAVE_IAB=1)
+        # Lautsprecherlayouts (DTS-Konfigurationen, 5.1/7.1 von Lumen abgeleitet)
+        qt_add_resources(${target} "${target}_iab" PREFIX "/iab" BASE "${CMAKE_CURRENT_SOURCE_DIR}/resources/iab"
+            FILES "${CMAKE_CURRENT_SOURCE_DIR}/resources/iab/2.0.cfg" "${CMAKE_CURRENT_SOURCE_DIR}/resources/iab/5.1.cfg"
+                  "${CMAKE_CURRENT_SOURCE_DIR}/resources/iab/7.1.cfg" "${CMAKE_CURRENT_SOURCE_DIR}/resources/iab/5.1.4.cfg"
+                  "${CMAKE_CURRENT_SOURCE_DIR}/resources/iab/7.1.4.cfg")
+    endif()
 endfunction()
 lumen_optional_libs(lumen)
 
@@ -234,9 +276,18 @@ if(APPLE)
     # "cmake --build . --target lumen_dmg": eigenständiges Lumen.app (Qt, libmpv,
     # FFmpeg, libbluray … im Bundle) plus Lumen.dmg
     find_program(MACDEPLOYQT macdeployqt HINTS "${QT6_INSTALL_PREFIX}/bin" "${Qt6_DIR}/../../../bin")
+    # Homebrew verteilt Qt auf mehrere Pakete (qtbase, qtdeclarative, …): deren
+    # Frameworks liegen verlinkt in <prefix>/lib und müssen dort gesucht werden
+    set(_deploy_libpaths "")
+    if(LUMEN_BREW)
+        execute_process(COMMAND "${LUMEN_BREW}" --prefix OUTPUT_VARIABLE _brew_prefix OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        if(EXISTS "${_brew_prefix}/lib")
+            list(APPEND _deploy_libpaths "-libpath=${_brew_prefix}/lib")
+        endif()
+    endif()
     if(MACDEPLOYQT)
         add_custom_target(lumen_dmg
-            COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml -dmg -always-overwrite
+            COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml ${_deploy_libpaths} -dmg -always-overwrite
             DEPENDS lumen
             WORKING_DIRECTORY "$<TARGET_BUNDLE_DIR:lumen>/.."
             COMMENT "macdeployqt: Lumen.app + Lumen.dmg")
@@ -284,6 +335,11 @@ if(LUMEN_BUILD_TESTS)
     target_include_directories(dcp_test PRIVATE src)
     target_link_libraries(dcp_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
     lumen_optional_libs(dcp_test)
+    # IAB-Testmaterial (Atmos/IAB-DCP, tools/make_test_dcp.py --iab)
+    if(LUMEN_HAVE_IAB)
+        add_executable(iab_testgen tests/iab_testgen.cpp)
+        target_link_libraries(iab_testgen PRIVATE lumen_iab)
+    endif()
     # Test: DVD-Menüs mit echter mpv-Ausgabe (Test-DVD: tools/make_test_dvd.py)
     add_executable(dvd_test tests/dvd_test.cpp src/DvdNav.cpp src/DvdNav.h)
     target_include_directories(dvd_test PRIVATE src)

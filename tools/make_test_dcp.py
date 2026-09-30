@@ -52,7 +52,42 @@ def read_klvs(data):
 
 
 def is_essence(key):
-    return key[:4] == b"\x06\x0e\x2b\x34" and key[4] == 1 and key[5] == 2 and key[8:12] == b"\x0d\x01\x03\x01"
+    return key[:4] == b"\x06\x0e\x2b\x34" and key[4] == 1 and key[5] == 2 and key[8:12] in (b"\x0d\x01\x03\x01", b"\x0e\x09\x06\x01")
+
+
+# Immersive Audio (Dolby Atmos / SMPTE ST 429-18)
+IAB_ELEMENT = bytes.fromhex("060e2b34010201050e09060100000001")
+IAB_DESCRIPTOR = bytes.fromhex("060e2b34025301050e09060300000000")
+
+
+def write_iab_mxf(frames_path, dst):
+    """Minimale IAB-Spurdatei: Kopf-Partition, Deskriptor, je Edit Unit ein
+    ImmersiveAudioDataElement (Preamble + IAFrame aus iab_testgen), Fuß-Partition."""
+    data = open(frames_path, "rb").read()
+    frames, pos = [], 0
+    while pos + 4 <= len(data):
+        n = struct.unpack("<I", data[pos:pos + 4])[0]
+        frames.append(data[pos + 4:pos + 4 + n])
+        pos += 4 + n
+    op1a = bytes.fromhex("060e2b34040101010d01020101010900")
+    container = bytes.fromhex("060e2b34040101050e09060701010100")
+
+    def partition(kind, this, footer):
+        v = struct.pack(">HHIQQQQQIQI", 1, 3, 1, this, 0, footer, 0, 0, 0, 0, 0)
+        v += op1a + struct.pack(">II", 1, 16) + container
+        key = PARTITION_PREFIX + bytes([kind, 4, 0])
+        return key + ber(len(v)) + v
+
+    # Deskriptor als lokales Set: InstanceUID, SampleRate 24/1, ContainerDuration
+    desc = (struct.pack(">HH", 0x3C0A, 16) + uuid.uuid4().bytes + struct.pack(">HHII", 0x3001, 8, 24, 1)
+            + struct.pack(">HHQ", 0x3002, 8, len(frames)))
+    body = IAB_DESCRIPTOR + ber(len(desc)) + desc
+    body += b"".join(IAB_ELEMENT + ber(len(f)) + f for f in frames)
+    head_len = len(partition(2, 0, 0))
+    footer_pos = head_len + len(body)
+    out = partition(2, 0, footer_pos) + body + partition(4, footer_pos, footer_pos)
+    open(dst, "wb").write(out)
+    return len(frames)
 
 
 def aes_cbc(openssl, key, iv, data):
@@ -210,6 +245,7 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--encrypt", metavar="LEAF_PEM")
     ap.add_argument("--stereo", action="store_true", help="3D-DCP: linkes Auge Testbild, rechtes Auge rot")
+    ap.add_argument("--iab", metavar="FRAMES", help="IAB/Atmos-Spur aus iab_testgen-Frames (48 = 2 Rollen à 24)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     tmp = os.path.join(a.out, "_tmp")
@@ -224,8 +260,9 @@ def main():
                     "sine=f=440:r=48000:d=2", "-c:a", "pcm_s24le", "-mxf_audio_edit_rate", "24",
                     "-f", "mxf_opatom", snd_plain], check=True)
 
-    ids = {n: str(uuid.uuid4()) for n in ("cpl", "pkl", "am", "pic", "snd", "sub", "reel1", "reel2", "kpic", "ksnd", "cc", "img")}
-    keys = {"kpic": os.urandom(16), "ksnd": os.urandom(16)}
+    ids = {n: str(uuid.uuid4()) for n in ("cpl", "pkl", "am", "pic", "snd", "sub", "reel1", "reel2", "kpic", "ksnd", "cc", "img",
+                                           "iab", "kiab")}
+    keys = {"kpic": os.urandom(16), "ksnd": os.urandom(16), "kiab": os.urandom(16)}
     if a.stereo:
         right_plain = os.path.join(tmp, "pic_r.mxf")
         subprocess.run([a.ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i",
@@ -242,6 +279,15 @@ def main():
     else:
         os.replace(pic_plain, pic)
         os.replace(snd_plain, snd)
+
+    iab = os.path.join(a.out, "atmos.mxf")
+    if a.iab:
+        iab_plain = os.path.join(tmp, "iab.mxf")
+        write_iab_mxf(a.iab, iab_plain)
+        if a.encrypt:
+            encrypt_mxf(iab_plain, iab, keys["kiab"], a.openssl, uuid.UUID(ids["iab"]).bytes)
+        else:
+            os.replace(iab_plain, iab)
 
     sub = os.path.join(a.out, "subtitle.xml")
     open(sub, "w", encoding="utf-8").write(f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -275,6 +321,13 @@ def main():
             return f'<msp-cpl:MainStereoscopicPicture xmlns:msp-cpl="http://www.smpte-ra.org/schemas/429-10/2008/Main-Stereo-Picture-CPL">{body}</msp-cpl:MainStereoscopicPicture>'
         return f"<MainPicture>{body}</MainPicture>"
 
+    def aux(entry):
+        if not a.iab:
+            return ""
+        return (f'<axd:AuxData xmlns:axd="http://www.dolby.com/schemas/2012/AD"><Id>urn:uuid:{ids["iab"]}</Id><EditRate>24 1</EditRate>'
+                f"<IntrinsicDuration>48</IntrinsicDuration><EntryPoint>{entry}</EntryPoint><Duration>24</Duration>{key_id('kiab')}"
+                "<axd:DataType>urn:smpte:ul:060e2b34.04010105.0e090604.00000000</axd:DataType></axd:AuxData>")
+
     def reel(n, entry):
         return f"""<Reel><Id>urn:uuid:{ids['reel' + str(n)]}</Id><AssetList>
 <MainMarkers><Id>urn:uuid:{uuid.uuid4()}</Id><EditRate>24 1</EditRate><IntrinsicDuration>24</IntrinsicDuration><MarkerList>
@@ -282,6 +335,7 @@ def main():
 </MarkerList></MainMarkers>
 {picture_tag(entry)}
 <MainSound><Id>urn:uuid:{ids['snd']}</Id><EditRate>24 1</EditRate><IntrinsicDuration>48</IntrinsicDuration><EntryPoint>{entry}</EntryPoint><Duration>24</Duration>{key_id('ksnd')}</MainSound>
+{aux(entry)}
 {'<MainSubtitle><Id>urn:uuid:' + ids['sub'] + '</Id><EditRate>24 1</EditRate><IntrinsicDuration>24</IntrinsicDuration><EntryPoint>0</EntryPoint><Duration>24</Duration><Language>de</Language></MainSubtitle><cc-cpl:MainClosedCaption xmlns:cc-cpl="http://www.digicine.com/PROTO-ASDCP-CC-CPL-20070926#"><Id>urn:uuid:' + ids['cc'] + '</Id><EditRate>24 1</EditRate><IntrinsicDuration>24</IntrinsicDuration><EntryPoint>0</EntryPoint><Duration>24</Duration><Language>de</Language></cc-cpl:MainClosedCaption>' if n == 1 else ''}
 </AssetList></Reel>"""
 
@@ -295,6 +349,8 @@ def main():
 """)
     files = [(ids["cpl"], cpl, "text/xml"), (ids["pic"], pic, "application/mxf"), (ids["snd"], snd, "application/mxf"),
              (ids["sub"], sub, "text/xml"), (ids["cc"], cc, "text/xml"), (ids["img"], subimg, "image/png")]
+    if a.iab:
+        files.append((ids["iab"], iab, "application/mxf"))
     pkl = os.path.join(a.out, f"pkl_{ids['pkl']}.xml")
     assets = "".join(f"<Asset><Id>urn:uuid:{i}</Id><Hash>{sha1_b64(p)}</Hash><Size>{os.path.getsize(p)}</Size><Type>{t}</Type>"
                      f"<OriginalFileName>{os.path.basename(p)}</OriginalFileName></Asset>" for i, p, t in files)
@@ -313,8 +369,11 @@ def main():
     if a.encrypt:
         with open(os.path.join(a.out, "keys.txt"), "w") as f:
             f.write(f"{ids['kpic']} {keys['kpic'].hex()}\n{ids['ksnd']} {keys['ksnd'].hex()}\n")
+            if a.iab:
+                f.write(f"{ids['kiab']} {keys['kiab'].hex()}\n")
         ciphers = []
-        for name, ktype in (("kpic", b"MDIK"), ("ksnd", b"MDAK")):
+        kdm_keys = [("kpic", "MDIK"), ("ksnd", "MDAK")] + ([("kiab", "MDEK")] if a.iab else [])
+        for name, ktype in ((n, t.encode()) for n, t in kdm_keys):
             block = (bytes.fromhex("f1dc124460169a0e85bc300642f866ab") + bytes(20) + uuid.UUID(ids["cpl"]).bytes + ktype
                      + uuid.UUID(ids[name]).bytes + b"2026-01-01T00:00:00+00:00" + b"2036-01-01T00:00:00+00:00" + keys[name])
             assert len(block) == 138
@@ -325,7 +384,7 @@ def main():
         serial = str(int(serial.strip().split("=")[1], 16))
         enc = "".join(f'<enc:EncryptedKey><enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p"/>'
                       f"<enc:CipherData><enc:CipherValue>{c}</enc:CipherValue></enc:CipherData></enc:EncryptedKey>" for c in ciphers)
-        typed = "".join(f"<TypedKeyId><KeyType>{t}</KeyType><KeyId>urn:uuid:{ids[n]}</KeyId></TypedKeyId>" for n, t in (("kpic", "MDIK"), ("ksnd", "MDAK")))
+        typed = "".join(f"<TypedKeyId><KeyType>{t}</KeyType><KeyId>urn:uuid:{ids[n]}</KeyId></TypedKeyId>" for n, t in kdm_keys)
         open(os.path.join(a.out, "kdm.xml"), "w", encoding="utf-8").write(f"""<?xml version="1.0" encoding="UTF-8"?>
 <DCinemaSecurityMessage xmlns="http://www.smpte-ra.org/schemas/430-3/2006/ETM" xmlns:enc="http://www.w3.org/2001/04/xmlenc#" xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
 <AuthenticatedPublic Id="ID_AuthenticatedPublic"><MessageId>urn:uuid:{uuid.uuid4()}</MessageId><MessageType>http://www.smpte-ra.org/430-1/2006/KDM#kdm-key-type</MessageType>

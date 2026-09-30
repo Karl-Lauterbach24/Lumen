@@ -14,6 +14,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace Dcp {
 
@@ -410,6 +411,96 @@ void attachProtocol(mpv_handle *mpv)
     });
     if (err < 0)
         qWarning("lumendcp: Protokoll nicht angemeldet: %s", mpv_error_string(err));
+}
+
+struct EssenceReader::Impl
+{
+    explicit Impl(const StreamSpec &spec) : reader(spec) {}
+    Reader reader;
+    std::vector<std::pair<qint64, qint64>> elements; // KLV-Start, Gesamtlänge
+    QByteArray buffer;
+};
+
+EssenceReader::EssenceReader(const StreamSpec &spec, std::function<bool(const unsigned char *key)> match)
+    : d(new Impl(spec))
+{
+    if (!d->reader.ok())
+        return;
+    // Nur KLV-Köpfe der Rohdatei lesen (bei Triplets zusätzlich den SourceKey)
+    QFile f(spec.file);
+    if (!f.open(QIODevice::ReadOnly))
+        return;
+    const qint64 size = f.size();
+    qint64 pos = 0;
+    uchar h[128];
+    while (pos + 17 <= size) {
+        if (!f.seek(pos))
+            break;
+        const qint64 got = f.read(reinterpret_cast<char *>(h), std::min<qint64>(sizeof h, size - pos));
+        if (got < 17 || std::memcmp(h, kUl, 4) != 0)
+            break;
+        quint64 len = 0;
+        int hdr = 0;
+        if (!berAt(h + 16, h + got, &len, &hdr))
+            break;
+        const qint64 total = 16 + hdr + qint64(len);
+        if (pos + total > size)
+            break;
+        bool hit = false;
+        if (std::memcmp(h, kTriplet, 16) == 0) {
+            // CryptographicContextLink, PlaintextOffset, SourceKey
+            const uchar *p = h + 16 + hdr, *end = h + got;
+            quint64 l = 0;
+            int bh = 0;
+            if (berAt(p, end, &l, &bh) && (p += bh + l) < end && berAt(p, end, &l, &bh) && l == 8 && (p += bh + l) < end
+                && berAt(p, end, &l, &bh) && l == 16 && p + bh + 16 <= end)
+                hit = match(p + bh);
+        } else {
+            hit = match(h);
+        }
+        if (hit)
+            d->elements.emplace_back(pos, total);
+        pos += total;
+    }
+}
+
+EssenceReader::~EssenceReader()
+{
+    delete d;
+}
+
+bool EssenceReader::ok() const
+{
+    return !d->elements.empty();
+}
+
+int EssenceReader::count() const
+{
+    return int(d->elements.size());
+}
+
+QByteArray EssenceReader::element(int index)
+{
+    if (index < 0 || index >= count())
+        return {};
+    const auto [start, total] = d->elements[size_t(index)];
+    d->buffer.resize(int(total));
+    if (!d->reader.seek(start))
+        return {};
+    qint64 got = 0;
+    while (got < total) {
+        const qint64 n = d->reader.read(d->buffer.data() + got, total - got);
+        if (n <= 0)
+            return {};
+        got += n;
+    }
+    // Erstes KLV = (entschlüsseltes) Essenz-Element
+    const auto *p = reinterpret_cast<const uchar *>(d->buffer.constData());
+    quint64 len = 0;
+    int hdr = 0;
+    if (!berAt(p + 16, p + total, &len, &hdr) || 16 + hdr + qint64(len) > total)
+        return {};
+    return d->buffer.mid(16 + hdr, int(len));
 }
 
 QByteArray readAllTransformed(const StreamSpec &spec, qint64 maxBytes)

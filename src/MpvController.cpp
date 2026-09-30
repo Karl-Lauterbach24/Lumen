@@ -157,6 +157,8 @@ QString channelLabel(int n)
     case 2: return QStringLiteral("2.0");
     case 6: return QStringLiteral("5.1");
     case 8: return QStringLiteral("7.1");
+    case 10: return QStringLiteral("5.1.4");
+    case 12: return QStringLiteral("7.1.4");
     default: return QStringLiteral("%1 ch").arg(n);
     }
 }
