@@ -175,9 +175,16 @@ int main(int argc, char **argv)
     ms.reportStop(1.9);
     waitFor([&] { return serverLog(port).size() >= 3; }, 15000);
     const QJsonArray log1 = serverLog(port);
-    check(log1.size() >= 3 && log1[0].toObject().value("path") == QLatin1String("/Sessions/Playing")
-              && log1[2].toObject().value("path") == QLatin1String("/Sessions/Playing/Stopped")
-              && log1[2].toObject().value("body").toObject().value("PositionTicks").toDouble() == 19000000.0,
+    // die drei Meldungen laufen parallel (eigene Verbindungen) – Reihenfolge am Server ist offen
+    auto entry = [&](const QString &path) {
+        for (const QJsonValue &v : log1)
+            if (v.toObject().value("path") == path)
+                return v.toObject();
+        return QJsonObject();
+    };
+    check(log1.size() >= 3 && !entry(QStringLiteral("/Sessions/Playing")).isEmpty()
+              && !entry(QStringLiteral("/Sessions/Playing/Progress")).isEmpty()
+              && entry(QStringLiteral("/Sessions/Playing/Stopped")).value("body").toObject().value("PositionTicks").toDouble() == 19000000.0,
           QStringLiteral("Fortschritt gemeldet: Playing, Progress, Stopped bei 1,9 s"));
     ms.back();
     check(waitItems(2), QStringLiteral("zurück zu den Bibliotheken"));
@@ -219,7 +226,10 @@ int main(int argc, char **argv)
     ms.reportStop(1.5);
     waitFor([&] { return serverLog(port).size() >= log1.size() + 2; }, 15000);
     const QJsonArray log2 = serverLog(port);
-    const QJsonObject last = log2.last().toObject();
+    QJsonObject last;
+    for (const QJsonValue &v : log2)
+        if (v.toObject().value("server") == QLatin1String("plex") && v.toObject().value("query").toObject().value("state") == QLatin1String("stopped"))
+            last = v.toObject();
     check(last.value("server") == QLatin1String("plex") && last.value("query").toObject().value("state") == QLatin1String("stopped")
               && last.value("query").toObject().value("time") == QLatin1String("1500"),
           QStringLiteral("Plex-Timeline: gestoppt bei 1500 ms"));
