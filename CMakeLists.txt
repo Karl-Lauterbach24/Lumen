@@ -245,6 +245,26 @@ function(lumen_optional_libs target)
 endfunction()
 lumen_optional_libs(lumen)
 
+# libdvdcss-Ersatz ohne Kopierschutz-Code: MSYS2/Homebrew-libdvdread linkt
+# libdvdcss fest – statt der echten Bibliothek liegt dieser Shim im Paket.
+# Eine vom Nutzer per Plugin bereitgestellte libdvdcss wird durchgereicht.
+set(LUMEN_DVDCSS_SHIM OFF)
+if(LUMEN_HAVE_DVDNAV AND (WIN32 OR APPLE))
+    enable_language(C)
+    add_library(lumen_dvdcss_shim SHARED src/dvdcss_shim.c)
+    set_target_properties(lumen_dvdcss_shim PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+    if(WIN32)
+        set_target_properties(lumen_dvdcss_shim PROPERTIES PREFIX "" OUTPUT_NAME "libdvdcss-2"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    else()
+        set_target_properties(lumen_dvdcss_shim PROPERTIES OUTPUT_NAME dvdcss VERSION 2 SOVERSION 2
+            MACHO_COMPATIBILITY_VERSION 99.0.0 MACHO_CURRENT_VERSION 99.0.0
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/dvdcss-shim")
+    endif()
+    add_dependencies(lumen lumen_dvdcss_shim)
+    set(LUMEN_DVDCSS_SHIM ON)
+endif()
+
 if(LUMEN_HAVE_BLURAY)
     target_link_libraries(lumen PRIVATE lumen_bluray)
     target_compile_definitions(lumen PRIVATE LUMEN_HAVE_BLURAY=1)
@@ -294,8 +314,17 @@ if(APPLE)
         endforeach()
     endif()
     if(MACDEPLOYQT)
+        # 1. Bundle füllen, 2. libdvdcss durch den Shim ersetzen, 3. ad hoc signieren, 4. DMG
+        set(_frameworks "$<TARGET_BUNDLE_DIR:lumen>/Contents/Frameworks")
+        set(_shim_cmd "")
+        if(LUMEN_DVDCSS_SHIM)
+            set(_shim_cmd COMMAND sh -c "if [ -f '${_frameworks}/libdvdcss.2.dylib' ]; then cp -f '$<TARGET_FILE:lumen_dvdcss_shim>' '${_frameworks}/libdvdcss.2.dylib'; fi")
+        endif()
         add_custom_target(lumen_dmg
-            COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml ${_deploy_libpaths} -dmg -always-overwrite
+            COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml ${_deploy_libpaths} -always-overwrite
+            ${_shim_cmd}
+            COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:lumen>"
+            COMMAND hdiutil create -volname Lumen -srcfolder "$<TARGET_BUNDLE_DIR:lumen>" -ov -format UDZO Lumen.dmg
             DEPENDS lumen
             WORKING_DIRECTORY "$<TARGET_BUNDLE_DIR:lumen>/.."
             COMMENT "macdeployqt: Lumen.app + Lumen.dmg")
@@ -326,7 +355,7 @@ if(WIN32 AND LUMEN_DEPLOY_SEARCH)
     if(Python3_Interpreter_FOUND)
         add_custom_command(TARGET lumen POST_BUILD
             COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/tools/deploy_windows.py"
-                    "$<TARGET_FILE:lumen>" --search ${_search}
+                    "$<TARGET_FILE:lumen>" --search ${_search} --own libdvdcss-2.dll
             COMMENT "Laufzeit-DLLs (FFmpeg-mvc, libmpv, libbluray, …)")
     endif()
 endif()
@@ -365,6 +394,7 @@ option(LUMEN_BUILD_PLUGIN_EXAMPLES "Beispiel-Plugins bauen" ${LUMEN_BUILD_TESTS}
 if(LUMEN_BUILD_PLUGIN_EXAMPLES)
     enable_language(C)
     add_library(demo_plugin MODULE plugins/examples/demo/demo_plugin.c)
+    set_target_properties(demo_plugin PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
     target_include_directories(demo_plugin PRIVATE include)
     set_target_properties(demo_plugin PROPERTIES PREFIX ""
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/plugins/demo"

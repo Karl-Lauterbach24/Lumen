@@ -58,7 +58,7 @@ writable folder for this plugin) are expanded.
 | `scripts` | mpv Lua/JavaScript scripts, loaded into every mpv instance ([mpv scripting](https://mpv.io/manual/master/#lua-scripting)). |
 | `mpvOptions` | mpv options, applied after Lumen's defaults and before the output profile. |
 | `env` | Environment variables, set before any library starts. |
-| `discLibraries` | Libraries for libbluray (`aacs` → `LIBAACS_PATH`, `bdplus` → `LIBBDPLUS_PATH`) and libdvdread (`dvdcss`). Lumen preloads them. libdvdread finds libdvdcss by its standard file name (`libdvdcss-2.dll`, `libdvdcss.2.dylib`, `libdvdcss.so.2`). On Windows the library's folder is added to `PATH` so that dependencies next to it are found. |
+| `discLibraries` | Libraries for libbluray (`aacs` → `LIBAACS_PATH`, `bdplus` → `LIBBDPLUS_PATH`) and libdvdread (`dvdcss`). Lumen preloads them. On Windows and macOS, Lumen's own libdvdcss stand-in (no CSS code) forwards to the `dvdcss` library (`LUMEN_DVDCSS_LIBRARY`). On Linux, libdvdread finds it by its standard name (`libdvdcss.so.2`). On Windows the library's folder is added to `PATH` so that dependencies next to it are found. |
 
 With the disc libraries in place, libbluray/libdvdread and mpv use them for Blu-ray, UHD Blu-ray
 and DVD, both in the title list and in the disc menus. The **Titles** tab shows what libbluray

@@ -70,6 +70,7 @@ def main():
     ap.add_argument("exe")
     ap.add_argument("--search", nargs="+", required=True)
     ap.add_argument("--extra", nargs="*", default=[], help="zusätzlich zu prüfende Binärdateien (z. B. Qt-Plugins)")
+    ap.add_argument("--own", nargs="*", default=[], help="eigene DLLs neben der exe, nie überschreiben (z. B. libdvdcss-Shim)")
     a = ap.parse_args()
 
     target = os.path.dirname(os.path.abspath(a.exe))
@@ -96,6 +97,9 @@ def main():
             if not src:
                 continue  # System-DLL
             dst = os.path.join(target, os.path.basename(src))
+            if key in (o.lower() for o in a.own) and os.path.exists(lp(dst)):
+                todo.append(dst)
+                continue
             if not os.path.exists(lp(dst)) or os.path.getsize(lp(dst)) != os.path.getsize(src) or \
                     os.path.getmtime(lp(dst)) < os.path.getmtime(src):
                 shutil.copy2(src, lp(dst))

@@ -125,6 +125,12 @@ jobs:
           mkdir -p build/logs; exec > >(tee -a build/logs/dmg.txt) 2>&1
           cmake --build build --target lumen_dmg
           ls -la build/*.dmg
+          # libdvdcss im Bundle muss Lumens Shim sein (kein Kopierschutz-Code im Paket)
+          F=build/Lumen.app/Contents/Frameworks/libdvdcss.2.dylib
+          if [ -f "$F" ]; then
+            strings "$F" | grep -q LUMEN_DVDCSS_LIBRARY || { echo "::error::Bundle enthält die echte libdvdcss"; exit 1; }
+            echo "libdvdcss.2.dylib = Lumen-Shim"
+          fi
           # das Bundle muss ohne Homebrew-Pfade auskommen
           if for f in build/Lumen.app/Contents/MacOS/Lumen build/Lumen.app/Contents/Frameworks/*.dylib; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar)"; then
             echo "::error::Lumen.app verweist noch auf Homebrew-Bibliotheken"; exit 1

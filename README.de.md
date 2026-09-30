@@ -20,9 +20,11 @@ URL-Schemata anmelden oder DCP-Schlüssel liefern. Lumen liefert nichts davon mi
 - **Blu-ray:** Discs werden ausschließlich über `libbluray` gelesen. Ist eine Disc AACS/BD+-geschützt, muss das außerhalb
   von Lumen bereits gelöst sein – z. B. ein Laufwerk mit LibreDrive-Firmware plus eine vom Nutzer installierte
   AACS-Bibliothek, die libbluray zur Laufzeit selbst lädt. Das gilt auch für die zweite 3D-Ansicht (`bd_open_file_dec`).
-- **DVD:** Zugriff über `libdvdread`/`libdvdnav`; Lumen enthält keinen CSS-Code. Hinweis für Paketierer: das MSYS2-libdvdread
-  ist gegen `libdvdcss` gelinkt, der Deploy-Schritt kopiert sie daher neben `lumen.exe` – vor dem Weitergeben eines solchen
-  Builds die Rechtslage im eigenen Land prüfen.
+- **DVD:** Zugriff über `libdvdread`/`libdvdnav`; Lumen enthält keinen CSS-Code. Die MSYS2- und Homebrew-Builds von libdvdread
+  sind fest gegen `libdvdcss` gelinkt. In Lumens Windows- und macOS-Paketen liegt deshalb unter diesem Namen **Lumens
+  eigener Ersatz** (`src/dvdcss_shim.c`) statt libdvdcss. Er liest Sektoren unverändert, damit laufen unverschlüsselte Discs,
+  Abbilder und Ordner. Stellt der Nutzer per Plugin eine echte libdvdcss bereit, reicht der Ersatz an sie durch
+  (`LUMEN_DVDCSS_LIBRARY`).
 - **HD DVD:** nur ungeschützte (bzw. bereits entschlüsselte) Discs; AACS-geschützte HD DVDs werden als solche gemeldet.
 - **DCP:** verschlüsselte DCPs werden entschlüsselt wie auf jedem Kinoserver – mit einem **für das Zertifikat dieses Players
   ausgestellten KDM** (siehe unten). Ohne passenden, gültigen KDM (oder vom Rechteinhaber selbst eingetragene Schlüssel)

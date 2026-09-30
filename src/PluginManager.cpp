@@ -362,6 +362,9 @@ void PluginManager::load(Plugin &p)
         p.preloaded.push_back(std::move(lib));
         if (const char *var = discLibraryInfo().value(it.key()))
             qputenv(var, libbluraySpec(file));
+        // Lumens libdvdcss-Shim (Windows/macOS) reicht an diese Bibliothek durch
+        if (it.key() == QLatin1String("dvdcss"))
+            qputenv("LUMEN_DVDCSS_LIBRARY", QDir::toNativeSeparators(file).toUtf8());
         if (!m_discLibs.contains(it.key()))
             m_discLibs << it.key();
     }
