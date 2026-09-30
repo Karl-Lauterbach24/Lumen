@@ -188,6 +188,10 @@ MpvController::MpvController(DisplayManager *displays, BlurayNav *nav, QObject *
     , m_displays(displays)
     , m_nav(nav)
 {
+    // yt-dlp neben Lumen oder im PATH: Webseiten-Links (YouTube, Vimeo, Mediatheken …)
+    m_ytdl = QStandardPaths::findExecutable(QStringLiteral("yt-dlp"), {QCoreApplication::applicationDirPath()});
+    if (m_ytdl.isEmpty())
+        m_ytdl = QStandardPaths::findExecutable(QStringLiteral("yt-dlp"));
     const QString snap = qEnvironmentVariable("LUMEN_PLAYER_SNAPSHOT");
     if (snap.contains(QLatin1Char('@'))) {
         m_snapshotFile = snap.section(QLatin1Char('@'), 0, -2);
@@ -379,7 +383,7 @@ bool MpvController::create(const QVariantMap &options)
         {"cache", "yes"},
         {"demuxer-max-bytes", "400MiB"},
         {"demuxer-readahead-secs", "20"},
-        {"ytdl", "no"},
+        {"ytdl", m_ytdl.isEmpty() ? "no" : "yes"},
         {"alang", langs},
         {"slang", langs},
         {"sub-auto", "fuzzy"},
@@ -387,6 +391,8 @@ bool MpvController::create(const QVariantMap &options)
     };
     for (auto it = base.cbegin(); it != base.cend(); ++it)
         setOptionRaw(it.key(), it.value(), true);
+    if (!m_ytdl.isEmpty())
+        setOptionRaw(QStringLiteral("script-opts"), QStringLiteral("ytdl_hook-ytdl_path=") + m_ytdl, true);
     for (const auto &provider : m_optionProviders) {
         const QVariantMap extra = provider();
         for (auto it = extra.cbegin(); it != extra.cend(); ++it)
@@ -775,6 +781,19 @@ void MpvController::openFile(const QUrl &url)
         return;
     }
     openSource(url.toLocalFile());
+}
+
+void MpvController::openStream(const QString &url, const QString &title, double start)
+{
+    m_sourceKind = QStringLiteral("file");
+    m_currentDevice.clear();
+    resetAutoStereo();
+    QVariantMap opts;
+    if (!title.isEmpty())
+        opts["force-media-title"] = title;
+    if (start > 0)
+        opts["start"] = QString::number(start, 'f', 3);
+    loadFile(url.trimmed(), opts);
 }
 
 void MpvController::openLocation(const QString &location)

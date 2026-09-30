@@ -223,6 +223,7 @@ ApplicationWindow {
                         MenuItem { text: qsTr("Datei oder Abbild (ISO, CUE/BIN) …"); onTriggered: fileDialog.open() }
                         MenuItem { text: qsTr("Disc-Ordner (Blu-ray, DVD, HD DVD, VCD) …"); onTriggered: folderDialog.open() }
                         MenuItem { text: qsTr("DCP (Kino) …"); onTriggered: folderDialog.open() }
+                        MenuItem { text: qsTr("Stream-Link oder Medienserver …"); onTriggered: settings.tab = 6 }
                         background: Rectangle { implicitWidth: 220; color: Theme.raised; border.color: Theme.line; radius: Theme.radiusSmall }
                     }
                 }
@@ -659,7 +660,7 @@ ApplicationWindow {
                         Layout.topMargin: 10
                         spacing: 2
                         Repeater {
-                            model: [qsTr("Titel"), qsTr("Kapitel"), qsTr("Ton"), qsTr("Untertitel"), qsTr("Bild"), qsTr("Kino"), qsTr("Ausgabe"), qsTr("Plugins")]
+                            model: [qsTr("Titel"), qsTr("Kapitel"), qsTr("Ton"), qsTr("Untertitel"), qsTr("Bild"), qsTr("Kino"), qsTr("Streaming"), qsTr("Ausgabe"), qsTr("Plugins")]
                             delegate: AbstractButton {
                                 id: tabBtn
                                 required property string modelData
@@ -1043,6 +1044,9 @@ ApplicationWindow {
 
                         // ---- Kino (DCP, KDM, Programm) ----
                         CinemaPane {}
+
+                        // ---- Streaming (Links, Medienserver) ----
+                        StreamingPane {}
 
                         // ---- Ausgabe ----
                         ScrollView {

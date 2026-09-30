@@ -14,6 +14,7 @@
 #include "DcpManager.h"
 #include "DiscScanner.h"
 #include "DvdNav.h"
+#include "MediaServers.h"
 #include "I18n.h"
 #include "DisplayManager.h"
 #include "DriveManager.h"
@@ -92,7 +93,48 @@ int main(int argc, char *argv[])
             player.openLocation(url);
     });
 
+    // Medienserver: Wiedergabe über den Player, Fortschritt zurück an den Server
+    MediaServers servers;
+    struct { bool active = false; QString url; double position = 0; } serverPlay;
+    QObject::connect(&servers, &MediaServers::playRequested, &player, [&](const QString &url, const QString &title, const QVariantMap &item) {
+        if (serverPlay.active)
+            servers.reportStop(serverPlay.position);
+        const double resume = item.value("resume").toDouble();
+        const double start = resume > 10 && resume < item.value("duration").toDouble() - 30 ? resume : 0;
+        player.openStream(url, title, start);
+        servers.reportStart(item, start);
+        serverPlay = {true, url, start};
+    });
+    QTimer serverProgress;
+    serverProgress.setInterval(10000);
+    QObject::connect(&serverProgress, &QTimer::timeout, &servers, [&] {
+        if (serverPlay.active && !player.idle()) {
+            serverPlay.position = player.position();
+            servers.reportProgress(serverPlay.position, player.paused());
+        }
+    });
+    serverProgress.start();
+    auto serverStop = [&] {
+        if (!serverPlay.active)
+            return;
+        servers.reportStop(serverPlay.position);
+        serverPlay.active = false;
+    };
+    QObject::connect(&player, &MpvController::positionChanged, &servers, [&] {
+        if (serverPlay.active && player.path() == serverPlay.url)
+            serverPlay.position = player.position();
+    });
+    QObject::connect(&player, &MpvController::mediaChanged, &servers, [&] {
+        if (serverPlay.active && !player.path().isEmpty() && player.path() != serverPlay.url)
+            serverStop();
+    });
+    QObject::connect(&player, &MpvController::idleChanged, &servers, [&] {
+        if (player.idle())
+            serverStop();
+    });
+
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
+        serverStop();
         plugins.sendEvent(QStringLiteral("shutdown"));
         player.shutdown();
         displays.restoreAll();
@@ -110,6 +152,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "I18n", &i18n);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Plugins", &plugins);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Store", &store);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Servers", &servers);
     QObject::connect(&i18n, &I18n::languageChanged, &profiles, &ProfileManager::retranslate);
 
     QQmlApplicationEngine engine;

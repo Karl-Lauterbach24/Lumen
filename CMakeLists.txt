@@ -168,6 +168,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/I18n.h              src/I18n.cpp
     src/PluginManager.h     src/PluginManager.cpp
     src/PluginStore.h       src/PluginStore.cpp
+    src/MediaServers.h      src/MediaServers.cpp
     include/lumen/plugin.h
     src/Tr.h
     ${LUMEN_DCP_SOURCES}
@@ -187,6 +188,7 @@ set(LUMEN_QML
     qml/ProfileEditor.qml
     qml/CinemaPane.qml
     qml/PluginsPane.qml
+    qml/StreamingPane.qml
 )
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Alle QML-Dateien ins Modul-Wurzelverzeichnis legen (gemeinsames qmldir -> Singleton "Theme")
@@ -421,6 +423,10 @@ if(LUMEN_BUILD_TESTS)
     add_executable(plugin_test tests/plugin_test.cpp src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
     target_include_directories(plugin_test PRIVATE src include)
     target_link_libraries(plugin_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
+    # Medienserver (Jellyfin/Emby/Plex) gegen tools/mock_media_server.py
+    add_executable(media_test tests/media_test.cpp src/MediaServers.cpp src/MediaServers.h)
+    target_include_directories(media_test PRIVATE src)
+    target_link_libraries(media_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network lumen_mpv)
     # Plugin-Store gegen eine lokale Quelle (Ordner mit index.json)
     add_executable(store_test tests/store_test.cpp src/PluginStore.cpp src/PluginStore.h src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
     target_include_directories(store_test PRIVATE src include)

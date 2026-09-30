@@ -59,6 +59,7 @@ class MpvController : public QObject
     Q_PROPERTY(QString outputStatus READ outputStatus NOTIFY outputStatusChanged)
     // FFmpeg mit H.264/MVC-Decoder (FFmpeg-mvc) geladen?
     Q_PROPERTY(bool mvcCapable READ mvcCapable NOTIFY profileApplied)
+    Q_PROPERTY(bool ytdlAvailable READ ytdlAvailable CONSTANT)
     // Blu-ray 3D läuft gerade mit beiden Ansichten
     Q_PROPERTY(bool mvcActive READ mvcActive NOTIFY mvcActiveChanged)
     // Art der Quelle: file, bluray, dvd, hddvd, vcd, svcd, cdda, dcp
@@ -91,6 +92,9 @@ public:
     Q_INVOKABLE void openFile(const QUrl &url);
     // Kommandozeile: lokaler Pfad (Datei/ISO/Ordner/Laufwerk) oder mpv-URL
     void openLocation(const QString &location);
+    // Netzwerk-Stream (http(s), HLS, DASH, rtsp, rtmp, srt, udp, Medienserver …); title/start optional
+    Q_INVOKABLE void openStream(const QString &url, const QString &title = {}, double start = 0);
+    bool ytdlAvailable() const { return !m_ytdl.isEmpty(); }
     // Beliebige Quelle erkennen und öffnen. mode: "auto" | "menu" | "main" | "title";
     // title: Titel/Playlist/CPL-Index (-1 = Hauptfilm)
     Q_INVOKABLE void openSource(const QString &path, const QString &mode = QStringLiteral("auto"), int title = -1);
@@ -269,6 +273,7 @@ private:
     BlurayNav *m_nav = nullptr;
     DvdNav *m_dvd = nullptr;
     VcdNav *m_vcd = nullptr;
+    QString m_ytdl; // yt-dlp (Webseiten wie YouTube), falls installiert
     void updateVcdKeys();
     std::vector<std::function<void(mpv_handle *)>> m_protocols;
     std::vector<std::function<QVariantMap()>> m_optionProviders;
