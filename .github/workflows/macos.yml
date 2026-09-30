@@ -17,8 +17,8 @@ jobs:
       - name: Abhängigkeiten (Homebrew)
         run: |
           brew update --quiet
-          brew install --quiet qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja dvdauthor || true
-          # dvdauthor ist nur für den DVD-Test nötig – alles andere muss da sein
+          brew install --quiet qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja dvdauthor vcdimager || true
+          # dvdauthor/vcdimager erzeugen nur Testmaterial – alles andere muss da sein
           for f in qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 ninja; do brew list --versions "$f" >/dev/null || { echo "::error::$f fehlt"; exit 1; }; done
 
       - name: Konfigurieren
@@ -80,6 +80,15 @@ jobs:
           set -e
           build/plugin_test build/plugins build/tests/dcp | tee build/tests/plugins.txt
           grep -q BESTANDEN build/tests/plugins.txt
+
+      - name: "Test: Video-CD-Menüs (PBC, mit vcdxbuild erstellt)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/vcd.txt) 2>&1
+          if ! command -v vcdxbuild >/dev/null; then echo "::warning::vcdimager fehlt – VCD-Test übersprungen"; exit 0; fi
+          set -e
+          python3 tools/make_test_vcd_pbc.py ffmpeg vcdxbuild build/tests/vcd
+          build/vcd_test build/tests/vcd/pbc.cue | tee build/tests/vcd.txt
+          grep -q BESTANDEN build/tests/vcd.txt
 
       - name: "Test: DVD-Menüs (Render-API)"
         run: |

@@ -12,6 +12,7 @@ struct mpv_event;
 class BlurayNav;
 class DisplayManager;
 class DvdNav;
+class VcdNav;
 class QImage;
 class PlayerWindow;
 
@@ -118,6 +119,7 @@ public:
     void removeOverlay(int id);
     QVariantMap osdDimensions() const { return m_osdDims; }
     void setDvdNav(DvdNav *dvd);
+    void setVcdNav(VcdNav *vcd);
 
     // Transport
     Q_INVOKABLE void togglePause();
@@ -266,6 +268,8 @@ private:
     DisplayManager *m_displays = nullptr;
     BlurayNav *m_nav = nullptr;
     DvdNav *m_dvd = nullptr;
+    VcdNav *m_vcd = nullptr;
+    void updateVcdKeys();
     std::vector<std::function<void(mpv_handle *)>> m_protocols;
     std::vector<std::function<QVariantMap()>> m_optionProviders;
     QString m_sourceKind;

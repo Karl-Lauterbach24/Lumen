@@ -163,6 +163,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/PathUtil.h
     src/DvdNav.h            src/DvdNav.cpp
     src/OpticalMedia.h      src/OpticalMedia.cpp
+    src/VcdNav.h            src/VcdNav.cpp
     src/DcpManager.h        src/DcpManager.cpp
     src/I18n.h              src/I18n.cpp
     src/PluginManager.h     src/PluginManager.cpp
@@ -284,6 +285,13 @@ if(APPLE)
         if(EXISTS "${_brew_prefix}/lib")
             list(APPEND _deploy_libpaths "-libpath=${_brew_prefix}/lib")
         endif()
+        # z. B. QtVirtualKeyboard/QtPdf, die Plugins aus anderen Qt-Paketen nachziehen
+        file(GLOB _qt_kegs LIST_DIRECTORIES true "${_brew_prefix}/opt/qt*")
+        foreach(_keg ${_qt_kegs})
+            if(EXISTS "${_keg}/lib")
+                list(APPEND _deploy_libpaths "-libpath=${_keg}/lib")
+            endif()
+        endforeach()
     endif()
     if(MACDEPLOYQT)
         add_custom_target(lumen_dmg
@@ -335,6 +343,11 @@ if(LUMEN_BUILD_TESTS)
     target_include_directories(dcp_test PRIVATE src)
     target_link_libraries(dcp_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
     lumen_optional_libs(dcp_test)
+    # Test: Video-CD-Wiedergabesteuerung (PBC) mit echter mpv-Wiedergabe
+    add_executable(vcd_test tests/vcd_test.cpp src/VcdNav.cpp src/VcdNav.h src/OpticalMedia.cpp src/OpticalMedia.h)
+    target_include_directories(vcd_test PRIVATE src)
+    target_link_libraries(vcd_test PRIVATE Qt6::Core Qt6::Xml lumen_mpv)
+    lumen_optional_libs(vcd_test)
     # IAB-Testmaterial (Atmos/IAB-DCP, tools/make_test_dcp.py --iab)
     if(LUMEN_HAVE_IAB)
         add_executable(iab_testgen tests/iab_testgen.cpp)

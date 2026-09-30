@@ -8,6 +8,7 @@
 #include "OpticalMedia.h"
 #include "PathUtil.h"
 #include "PlayerWindow.h"
+#include "VcdNav.h"
 #include "ProfileManager.h"
 
 #include <QCoreApplication>
@@ -704,6 +705,14 @@ void MpvController::selectTrackByPid(const QString &type, int pid)
 
 void MpvController::handleClientMessage(const QStringList &args)
 {
+    if (m_vcd && m_vcd->active()) {
+        if (args.value(0) != QLatin1String("lumen-key"))
+            return;
+        const QString k = args.value(1);
+        if (!m_vcd->key(k) && k == QLatin1String("enter"))
+            toggleFullscreen();
+        return;
+    }
     if (m_dvd && m_dvd->active()) {
         const bool dvdMenu = m_dvd->menuVisible();
         if (args.value(0) == QLatin1String("lumen-click")) {
@@ -871,6 +880,13 @@ void MpvController::openSource(const QString &path, const QString &mode, int tit
         m_currentDevice.clear();
         resetAutoStereo();
         loadFile(path);
+    } else if ((kind == QLatin1String("vcd") || kind == QLatin1String("svcd")) && mode == QLatin1String("menu") && m_vcd
+               && VcdNav::hasPbc(path)) {
+        // Video-CD 2.0 mit PBC: Menüs der Disc (Auswahl per Zifferntasten)
+        m_sourceKind = kind;
+        m_currentDevice = path;
+        resetAutoStereo();
+        m_vcd->start(path);
     } else {
         const Optical::Prepared p = Optical::prepare(path, kind, mode == QLatin1String("title") ? title : -1);
         if (p.url.isEmpty()) {
@@ -980,6 +996,38 @@ void MpvController::removeOverlay(int id)
     const QByteArray sid = QByteArray::number(id);
     const char *args[] = {"overlay-remove", sid.constData(), nullptr};
     mpv_command_async(m_mpv, 0, args);
+}
+
+void MpvController::setVcdNav(VcdNav *vcd)
+{
+    m_vcd = vcd;
+    if (!m_vcd)
+        return;
+    connect(m_vcd, &VcdNav::playRequested, this, [this](const QString &url, bool) {
+        // keep-open pausiert am Dateiende – jedes Element der Steuerung läuft los
+        setOptionRaw(QStringLiteral("pause"), false, false);
+        loadFile(url);
+    });
+    connect(m_vcd, &VcdNav::stateChanged, this, &MpvController::updateVcdKeys);
+}
+
+// Zifferntasten gehören nur während der VCD-Steuerung der Auswahl (eigene
+// mpv-Eingabesektion; sonst bleiben die normalen Belegungen)
+void MpvController::updateVcdKeys()
+{
+    if (!m_mpv)
+        return;
+    if (m_vcd && m_vcd->active()) {
+        QString section;
+        for (int i = 0; i <= 9; ++i)
+            section += QStringLiteral("%1 script-message lumen-key %1\nKP%1 script-message lumen-key %1\n").arg(i);
+        section += QStringLiteral("PGUP script-message lumen-key prev\nPGDWN script-message lumen-key next\n"
+                                  "BS script-message lumen-key return\nESC script-message lumen-key return\n");
+        command({"define-section", "lumen-vcd", section, "force"});
+        command({"enable-section", "lumen-vcd"});
+    } else {
+        command({"disable-section", "lumen-vcd"});
+    }
 }
 
 void MpvController::setDvdNav(DvdNav *dvd)
@@ -1409,7 +1457,12 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     case P_MUTE: m_muted = flag(); emit mutedChanged(); break;
     case P_SPEED: m_speed = dbl(1); emit speedChanged(); break;
     case P_MEDIATITLE: m_mediaTitle = str(); emit mediaChanged(); break;
-    case P_PATH: m_path = str(); emit mediaChanged(); break;
+    case P_PATH:
+        m_path = str();
+        if (m_vcd && m_vcd->active() && !m_path.isEmpty() && !m_path.startsWith(QLatin1String("lumenvcd://")))
+            m_vcd->stop();
+        emit mediaChanged();
+        break;
     case P_IDLE:
         m_idle = flag();
         if (m_idle) {
@@ -1524,6 +1577,8 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         const bool eof = flag();
         if (eof && !m_eof && m_queueActive)
             QMetaObject::invokeMethod(this, &MpvController::advanceQueue, Qt::QueuedConnection);
+        if (eof && !m_eof && m_vcd && m_vcd->active())
+            QMetaObject::invokeMethod(m_vcd, [this] { m_vcd->itemFinished(); }, Qt::QueuedConnection);
         m_eof = eof;
         break;
     }

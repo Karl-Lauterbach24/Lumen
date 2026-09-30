@@ -1,6 +1,8 @@
 #pragma once
 
+#include <QHash>
 #include <QList>
+#include <QPair>
 #include <QString>
 #include <QVariant>
 
@@ -41,5 +43,18 @@ struct Prepared
 };
 // title < 0: alles bzw. Hauptfilm
 Prepared prepare(const QString &path, const QString &kind, int title);
+
+// Video-CD-Wiedergabesteuerung (PBC): Rohdaten der Steuerdateien
+struct VcdDisc
+{
+    bool ok = false;
+    bool svcd = false;
+    QByteArray info, lot, psd;                 // INFO/LOT/PSD (.VCD bzw. .SVD)
+    QList<QPair<int, int>> entries;            // Einsprungpunkt -> (Track, LSN)
+    QHash<int, QPair<int, int>> tracks;        // Track -> (erster, letzter LSN)
+};
+VcdDisc readVcdDisc(const QString &path);
+// Beliebiger Sektorbereich (Mode 2 Form 2) als "lumenvcd://<n>"
+QString sectorUrl(const QString &path, int firstLsn, int lastLsn);
 
 } // namespace Optical

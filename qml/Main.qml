@@ -318,6 +318,43 @@ ApplicationWindow {
                         Chip { text: win.isDvd && DvdNav.angles > 1 ? qsTr("Winkel ") + DvdNav.angle + "/" + DvdNav.angles : ""; tint: Theme.accent }
                     }
 
+                    // Video-CD-Wiedergabesteuerung (PBC): Auswahlnummern und Sprungtasten
+                    ColumnLayout {
+                        visible: VcdNav.active
+                        Layout.topMargin: 10
+                        spacing: 6
+                        Text {
+                            text: VcdNav.selection ? qsTr("VCD-Menü – Auswahl per Zifferntaste") : qsTr("VCD-Wiedergabesteuerung")
+                            color: Theme.textDim
+                            font.pixelSize: 12
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            visible: VcdNav.selection
+                            spacing: 4
+                            Repeater {
+                                model: VcdNav.state.choices || []
+                                delegate: Button {
+                                    required property var modelData
+                                    width: 36; height: 36
+                                    text: modelData
+                                    focusPolicy: Qt.NoFocus
+                                    font.pixelSize: 12; font.weight: Font.DemiBold
+                                    onClicked: String(modelData).split("").forEach(c => VcdNav.key(c))
+                                    contentItem: Text { text: parent.text; color: Theme.bg; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                    background: Rectangle { radius: 18; color: parent.down ? "#c9ccd6" : Theme.text }
+                                }
+                            }
+                        }
+                        RowLayout {
+                            spacing: 2
+                            Button { text: qsTr("Zurück"); flat: true; enabled: !!VcdNav.state.prev; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("prev") }
+                            Button { text: qsTr("OK"); flat: true; enabled: !!VcdNav.state["default"]; palette.windowText: Theme.accent; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("enter") }
+                            Button { text: qsTr("Weiter"); flat: true; enabled: !!VcdNav.state.next; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("next") }
+                            Button { text: qsTr("Menü"); flat: true; enabled: !!VcdNav.state["return"]; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("return") }
+                        }
+                    }
+
                     // Fernbedienung für Disc-Menüs
                     RowLayout {
                         visible: win.navMode && win.nav.menuMode

@@ -19,6 +19,7 @@
 #include "MpvController.h"
 #include "PluginManager.h"
 #include "ProfileManager.h"
+#include "VcdNav.h"
 
 int main(int argc, char *argv[])
 {
@@ -43,8 +44,10 @@ int main(int argc, char *argv[])
     DiscScanner scanner;
     BlurayNav nav;
     DvdNav dvd;
+    VcdNav vcd;
     MpvController player(&displays, &nav);
     player.setDvdNav(&dvd);
+    player.setVcdNav(&vcd);
     player.addOptionProvider([&plugins] { return plugins.mpvOptions(); });
     player.addProtocol([&plugins](mpv_handle *mpv) { plugins.attach(mpv); });
     QObject::connect(&player, &MpvController::mpvDestroying, &plugins, &PluginManager::detach);
@@ -98,6 +101,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Disc", &scanner);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Nav", &nav);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "DvdNav", &dvd);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "VcdNav", &vcd);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Dcp", &dcp);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "I18n", &i18n);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Plugins", &plugins);

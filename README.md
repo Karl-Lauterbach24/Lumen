@@ -53,7 +53,7 @@ Documentation and examples: [plugins/README.md](plugins/README.md).
 | **DVD-Video** | **Disc menus** via libdvdnav (root/title/audio/subtitle menus, buttons with keyboard, remote and mouse), stills, own subpicture decoder with the disc palette and button highlights, forced subtitles, multi-angle, languages from the IFO, region/language from system settings, title & chapter selection |
 | **DCP** | SMPTE and Interop, OV/VF (supplemental packages in neighbouring folders), multi-reel CPLs with entry points, **JPEG 2000 (XYZ → display colour space)**, 24-bit PCM up to 16 channels, **encrypted DCPs (KDM, AES-128)**, subtitles (Interop XML and SMPTE Timed Text incl. encrypted MXF and embedded fonts → positioned ASS), **CPL markers as chapters** (FFOC, LFOC, FFEC, FFMC …), **3D DCPs**, hash verification against the PKL |
 | HD DVD | Titles and chapters from the Advanced Content playlists (ADV_OBJ/*.XPL), EVO playback (VC-1/AVC/MPEG-2, DD+, DTS-HD, TrueHD) |
-| Video-CD / SVCD | Sector-exact reading of Mode 2 Form 2 tracks via libcdio (drive or CUE/BIN/NRG), entry points (ENTRIES.VCD/SVD) as chapters, fallback via the file system |
+| Video-CD / SVCD | Sector-exact reading of Mode 2 Form 2 tracks via libcdio (drive or CUE/BIN/NRG), entry points (ENTRIES.VCD/SVD) as chapters, **PBC menus** (VCD 2.0 playback control: selection lists with number keys, play lists, Next/Previous/Return/Default, wait times, loops, segment stills), fallback via the file system |
 | Audio-CD | Tracks as chapters (mpv cdda) |
 | Transport | Play/pause, stop, ±10 s/±60 s, chapters, frame step back/forward, A-B loop, speed, scrubbing with chapter marks, screenshot, **show playlist** (ads, trailers, feature back to back) |
 | Audio | Track selection, bitstream (TrueHD/Atmos, DTS-HD MA/DTS:X, DD+, DD), WASAPI exclusive, channel layout, audio delay; **cinema fader** (Dolby scale, 7.0 = reference) and **DCP channel routing** (5.1, 7.1 DS, HI, VI-N) |
@@ -252,6 +252,9 @@ dcp_test play atmos atmos/kdm.xml id/leaf.key 1.5 --iab # audio-ch=12
 # Plugins: examples in <build>/plugins
 plugin_test <build>/plugins dcp                       # native + script plugin, xorfile://, DCP key from plugin
 
+# Video-CD with PBC menus (authored with vcdxbuild from GNU VCDImager)
+python tools/make_test_vcd_pbc.py ffmpeg vcdxbuild vcd && vcd_test vcd/pbc.cue
+
 # Video-CD: CUE/BIN image with Mode 2 Form 2 track
 python tools/make_test_vcd.py ffmpeg vcd && lumen vcd/vcd.cue
 ```
@@ -305,7 +308,7 @@ lumen movie.mkv                # any file mpv can play
 | JPEG 2000 | Software decoding (FFmpeg, frame + slice threads). 2K at 24 fps needs a strong multi-core CPU (≈ 24 fps on 12 threads at 130 Mbit/s); automatic resolution-level fallback when frames drop. |
 | DVD | Menu navigation, SPU decoding and highlights are implemented but **not yet tested with real DVDs** (no DVD authoring tools available in the build environment). Without libdvdnav, DVDs play via mpv `dvd://` (no menus). |
 | HD DVD | Tested with a synthetic HVDVD_TS/XPL structure. HDi interactivity (menus) is not supported; titles/chapters come from the playlist. AACS-protected discs do not play. |
-| Video-CD | Tested with a synthetic CUE/BIN image. PBC menus (playback control) are not interpreted; tracks and entry points are offered as titles/chapters. |
+| Video-CD | Playback control (PBC) is tested with a VCD 2.0 authored with GNU VCDImager's `vcdxbuild`, on Windows and macOS. The test covers selection by number, Default, Next/Prev/Return, automatic continuation, entry points and segment menus. Not supported: SVCD extended selection areas (mouse areas) and command lists. **Not yet tested with a real pressed VCD.** |
 | Frame packing | Requires a 1920×2205 mode in the graphics driver; whether the projector recognizes it as 3D without an HDMI 3D InfoFrame depends on the device. |
 | Dolby Vision | Detected (profile 5/7/8), gpu-next applies the RPU metadata; no PC player can output a real DV signal over HDMI. |
 | Refresh/HDR switching | Windows: refresh + HDR · Linux X11: refresh (xrandr) · KDE Plasma: refresh + HDR · GNOME Wayland: display only · macOS: refresh |

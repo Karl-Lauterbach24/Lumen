@@ -111,7 +111,11 @@ struct Cdio
 
 QByteArray readIsoFile(CdIo_t *p, const char *path)
 {
+    // ISO-9660-Namen tragen eine Versionsnummer ("INFO.VCD;1"); libcdio findet
+    // Dateien ohne sie nicht
     iso9660_stat_t *st = iso9660_fs_stat_translate(p, path);
+    if (!st)
+        st = iso9660_fs_stat_translate(p, (QByteArray(path) + ";1").constData());
     if (!st)
         return {};
     const quint32 size = std::min<quint32>(st->size, 256 * 1024);
@@ -452,6 +456,47 @@ void attachProtocol(mpv_handle *mpv)
     mpv_stream_cb_add_ro(mpv, "lumenvcd", nullptr, [](void *ud, char *uri, mpv_stream_cb_info *info) { return openTrack(ud, uri, info); });
 #else
     Q_UNUSED(mpv)
+#endif
+}
+
+VcdDisc readVcdDisc(const QString &path)
+{
+    VcdDisc d;
+#ifdef LUMEN_HAVE_CDIO
+    Cdio c(path);
+    if (!c)
+        return d;
+    d.info = readIsoFile(c.p, "/VCD/INFO.VCD");
+    if (d.info.isEmpty()) {
+        d.info = readIsoFile(c.p, "/SVCD/INFO.SVD");
+        d.svcd = !d.info.isEmpty();
+    }
+    const char *dir = d.svcd ? "/SVCD/" : "/VCD/";
+    const char *ext = d.svcd ? ".SVD" : ".VCD";
+    d.lot = readIsoFile(c.p, (QByteArray(dir) + "LOT" + ext).constData());
+    d.psd = readIsoFile(c.p, (QByteArray(dir) + "PSD" + ext).constData());
+    bool svcd = false;
+    for (const Entry &e : readEntries(c.p, &svcd))
+        d.entries.append({e.track, int(e.lsn)});
+    const track_t first = cdio_get_first_track_num(c.p), n = cdio_get_num_tracks(c.p);
+    for (track_t t = first; n != CDIO_INVALID_TRACK && t < first + n; ++t)
+        d.tracks.insert(int(t), {int(cdio_get_track_lsn(c.p, t)), int(cdio_get_track_last_lsn(c.p, t))});
+    d.ok = d.info.size() >= 56 && !d.psd.isEmpty();
+#else
+    Q_UNUSED(path)
+#endif
+    return d;
+}
+
+QString sectorUrl(const QString &path, int firstLsn, int lastLsn)
+{
+#ifdef LUMEN_HAVE_CDIO
+    return QStringLiteral("lumenvcd://%1").arg(registerTrack({path, lsn_t(firstLsn), lsn_t(lastLsn)}));
+#else
+    Q_UNUSED(path)
+    Q_UNUSED(firstLsn)
+    Q_UNUSED(lastLsn)
+    return {};
 #endif
 }
 
