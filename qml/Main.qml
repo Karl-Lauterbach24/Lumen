@@ -446,6 +446,38 @@ ApplicationWindow {
                         font.pixelSize: 26
                         font.weight: Font.DemiBold
                     }
+                    // Sprache direkt auf der Startseite wählen
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 4
+                        Repeater {
+                            model: I18n.languages
+                            delegate: AbstractButton {
+                                id: langBtn
+                                required property var modelData
+                                readonly property bool current: I18n.effective === modelData.code
+                                focusPolicy: Qt.NoFocus
+                                implicitWidth: langText.implicitWidth + 18
+                                implicitHeight: 26
+                                onClicked: I18n.language = modelData.code
+                                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                contentItem: Text {
+                                    id: langText
+                                    text: langBtn.modelData.name
+                                    color: langBtn.current ? Theme.bg : langBtn.hovered ? Theme.text : Theme.textDim
+                                    font.pixelSize: 12
+                                    font.weight: langBtn.current ? Font.DemiBold : Font.Normal
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: 13
+                                    color: langBtn.current ? Theme.text : "transparent"
+                                    border.color: langBtn.current ? "transparent" : Theme.line
+                                }
+                            }
+                        }
+                    }
                     Flow {
                         Layout.fillWidth: true
                         spacing: 10

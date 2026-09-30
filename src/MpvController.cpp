@@ -9,6 +9,10 @@
 #include "PathUtil.h"
 #include "PlayerWindow.h"
 #include "VcdNav.h"
+
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 #include "ProfileManager.h"
 
 #include <QCoreApplication>
@@ -38,7 +42,7 @@ enum PropId : quint64 {
     P_CHAPTER, P_TRACKLIST, P_AID, P_SID, P_VIDEOPARAMS, P_VIDEOFORMAT, P_FPS,
     P_HWDEC, P_DISPLAYFPS, P_AUDIOOUTPARAMS, P_AUDIOCODEC, P_AUDIODEVICES,
     P_ABA, P_ABB, P_FULLSCREEN, P_AUDIODELAY, P_SUBDELAY, P_CACHEPAUSE, P_CACHEDUR,
-    P_OSDDIMS, P_MOUSEPOS, P_VODROPS, P_DECDROPS, P_EOF,
+    P_OSDDIMS, P_MOUSEPOS, P_VODROPS, P_DECDROPS, P_EOF, P_WINDOWID,
 };
 
 struct Observed
@@ -86,6 +90,7 @@ const Observed kObserved[] = {
     {"frame-drop-count", MPV_FORMAT_INT64, P_VODROPS},
     {"decoder-frame-drop-count", MPV_FORMAT_INT64, P_DECDROPS},
     {"eof-reached", MPV_FORMAT_FLAG, P_EOF},
+    {"window-id", MPV_FORMAT_INT64, P_WINDOWID},
 };
 
 // Optionen, die ein neues Player-Fenster / einen neuen Renderer erfordern
@@ -1571,6 +1576,23 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
             m_droppedFrames = m_vo_drops + m_dec_drops;
             emit droppedFramesChanged();
         }
+        break;
+    }
+    case P_WINDOWID: {
+#ifdef Q_OS_WIN
+        // mpv lädt sein Fenstersymbol aus der eigenen DLL – Lumens Symbol setzen
+        if (data && format == MPV_FORMAT_INT64) {
+            const auto hwnd = reinterpret_cast<HWND>(static_cast<intptr_t>(*static_cast<int64_t *>(data)));
+            const HINSTANCE self = GetModuleHandleW(nullptr);
+            auto icon = [&](int size) {
+                return reinterpret_cast<LPARAM>(LoadImageW(self, L"IDI_ICON1", IMAGE_ICON, size, size, LR_SHARED));
+            };
+            if (hwnd) {
+                SendMessageW(hwnd, WM_SETICON, ICON_BIG, icon(GetSystemMetrics(SM_CXICON)));
+                SendMessageW(hwnd, WM_SETICON, ICON_SMALL, icon(GetSystemMetrics(SM_CXSMICON)));
+            }
+        }
+#endif
         break;
     }
     case P_EOF: {

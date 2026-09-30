@@ -60,7 +60,8 @@ QString JsonTranslator::translate(const char *, const char *sourceText, const ch
 I18n::I18n(QObject *parent)
     : QObject(parent)
 {
-    m_language = QSettings().value(QStringLiteral("ui/language")).toString();
+    // Standard: Englisch; leer = ausdrücklich Systemsprache
+    m_language = QSettings().value(QStringLiteral("ui/language"), QStringLiteral("en")).toString();
     apply();
 }
 
