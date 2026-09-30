@@ -12,7 +12,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Abhängigkeiten (Homebrew)
         run: |
@@ -26,8 +26,8 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=ON \
                 -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" 2>&1 | tee configure.log
           grep -q "OpenSSL (DCP-Entschlüsselung): TRUE" configure.log || echo "::warning::OpenSSL nicht gefunden"
-          grep -q "libdvdnav: TRUE" configure.log || echo "::warning::libdvdnav nicht gefunden"
-          grep -q "libxml2 (KDM-Signatur): TRUE" configure.log || echo "::warning::libxml2 nicht gefunden"
+          grep -qE "libdvdnav: (1|TRUE)" configure.log || echo "::warning::libdvdnav nicht gefunden"
+          grep -qE "libxml2 \(KDM-Signatur\): (1|TRUE)" configure.log || echo "::warning::libxml2 nicht gefunden"
 
       - name: Bauen
         run: |
@@ -53,7 +53,12 @@ jobs:
           $B/dcp_test kdm $T/dcp/kdm.xml $T/id/leaf.key
           $B/dcp_test subs $T/dcp
           $B/dcp_test play $T/dcp $T/dcp/kdm.xml $T/id/leaf.key 1.5 | tee $T/play.txt
-          $B/dcp_test verifykdm $T/dcp/kdm.xml
+          # KDM-Signatur: signiert -> gültig, verändert -> abgelehnt
+          $B/dcp_test gencert $T/signer
+          $B/dcp_test signkdm $T/dcp/kdm.xml $T/signer/leaf.key $T/signer/chain.pem $T/kdm_signed.xml
+          $B/dcp_test verifykdm $T/kdm_signed.xml
+          sed 's/<ContentTitleText>/<ContentTitleText>X/' $T/kdm_signed.xml > $T/kdm_tampered.xml
+          if $B/dcp_test verifykdm $T/kdm_tampered.xml; then echo "::error::veränderte KDM wurde akzeptiert"; exit 1; fi
           python3 tools/make_test_dcp.py ffmpeg "$(brew --prefix openssl@3)/bin/openssl" $T/dcp3d --encrypt $T/id/leaf.pem --stereo
           $B/dcp_test play3d $T/dcp3d $T/dcp3d/kdm.xml $T/id/leaf.key $T/sbs.png
 
@@ -107,7 +112,7 @@ jobs:
             echo "::error title=$(basename "$f")::$body"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: Lumen-macOS
