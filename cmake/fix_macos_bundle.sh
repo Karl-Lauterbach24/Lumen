@@ -27,6 +27,18 @@ machos() {
         done
 }
 
+# Install-Namen (LC_ID_DYLIB), die noch auf Homebrew zeigen, auf @rpath setzen
+while IFS= read -r f; do
+    id=$(otool -D "$f" | tail -n +2)
+    case "$id" in
+    "$BREW"/*|/usr/local/opt/*|/usr/local/Cellar/*)
+        if [[ "$id" == *.framework/* ]]; then new="@rpath/${id#*/lib/}"; else new="@rpath/$(basename "$id")"; fi
+        chmod u+w "$f"
+        install_name_tool -id "$new" "$f" 2>/dev/null
+        ;;
+    esac
+done < <(machos)
+
 for pass in 1 2 3 4 5 6 7 8; do
     changed=0
     while IFS= read -r f; do
