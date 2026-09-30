@@ -1,3 +1,5 @@
+<p align="center"><img src="resources/logo/lumen-logo.png" width="300" alt="Lumen – Disc · Cinema Player"></p>
+
 # Lumen – Disc- & Digitalkino-Player
 
 [English](README.md) · **Deutsch** · [Français](README.fr.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Português](README.pt.md)
@@ -300,3 +302,7 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
 | Dolby Vision | Erkannt (Profil 5/7/8), gpu-next wendet die RPU-Metadaten an; ein echtes DV-Signal über HDMI kann kein PC-Player ausgeben. |
 | Bildrate/HDR-Umschaltung | Windows: Bildrate + HDR · Linux X11: Bildrate (xrandr) · KDE Plasma: Bildrate + HDR · GNOME Wayland: nur Anzeige · macOS: Bildrate |
 | Eingebettetes Player-Fenster | Automatisch unter macOS, sonst per Profil; OpenGL-Render-API → nur SDR. |
+
+## Lizenz
+
+Lumen ist freie Software unter der **GNU Affero General Public License v3.0 oder später** ([LICENSE](LICENSE)). Verwendete Komponenten und ihre Lizenzen: [THIRD_PARTY.md](THIRD_PARTY.md).

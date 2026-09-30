@@ -1,3 +1,5 @@
+<p align="center"><img src="resources/logo/lumen-logo.png" width="300" alt="Lumen – Disc · Cinema Player"></p>
+
 # Lumen – Disc & Digital Cinema Player
 
 **English** · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Português](README.pt.md)
@@ -315,3 +317,7 @@ lumen movie.mkv                # any file mpv can play
 | Dolby Vision | Detected (profile 5/7/8), gpu-next applies the RPU metadata; no PC player can output a real DV signal over HDMI. |
 | Refresh/HDR switching | Windows: refresh + HDR · Linux X11: refresh (xrandr) · KDE Plasma: refresh + HDR · GNOME Wayland: display only · macOS: refresh |
 | Embedded player window | Automatic on macOS, otherwise per profile; OpenGL render API → SDR only. |
+
+## License
+
+Lumen is free software under the **GNU Affero General Public License v3.0 or later** ([LICENSE](LICENSE)). Components and their licenses: [THIRD_PARTY.md](THIRD_PARTY.md).

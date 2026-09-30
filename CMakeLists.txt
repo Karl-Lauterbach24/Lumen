@@ -206,6 +206,7 @@ qt_add_qml_module(lumen
         icons/frame-back.svg icons/frame-fwd.svg icons/refresh.svg
         icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg
         profiles/presets.json
+        resources/logo/lumen-emblem-small.png resources/logo/lumen-icon-256.png resources/logo/lumen-logo.png
         i18n/en.json i18n/fr.json i18n/es.json i18n/it.json i18n/pt.json i18n/nl.json i18n/pl.json
 )
 
@@ -273,6 +274,11 @@ if(LUMEN_HAVE_BLURAY)
 endif()
 
 if(WIN32)
+    # Programmsymbol (Explorer, Taskleiste)
+    enable_language(RC)
+    file(WRITE "${CMAKE_BINARY_DIR}/lumen.rc" "IDI_ICON1 ICON \"${CMAKE_CURRENT_SOURCE_DIR}/resources/logo/lumen.ico\"
+")
+    target_sources(lumen PRIVATE "${CMAKE_BINARY_DIR}/lumen.rc")
     target_compile_definitions(lumen PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 UNICODE _UNICODE NOMINMAX)
     target_link_libraries(lumen PRIVATE user32)
     foreach(dll ${MPV_RUNTIME_DLLS})
@@ -288,7 +294,10 @@ if(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.lumen-player"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-        MACOSX_BUNDLE_COPYRIGHT "Lumen")
+        MACOSX_BUNDLE_COPYRIGHT "Lumen · AGPL-3.0-or-later"
+        MACOSX_BUNDLE_ICON_FILE lumen.icns)
+    target_sources(lumen PRIVATE resources/logo/lumen.icns)
+    set_source_files_properties(resources/logo/lumen.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     # CoreGraphics (Bildraten-Umschaltung) steckt in ApplicationServices
     target_link_libraries(lumen PRIVATE "-framework ApplicationServices")
     # OpenGL (Render-API von mpv) ist seit macOS 10.14 als veraltet markiert

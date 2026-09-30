@@ -181,7 +181,13 @@ ApplicationWindow {
                 Row {
                     spacing: 8
                     Layout.rightMargin: 18
-                    Rectangle { width: 10; height: 10; radius: 5; color: Theme.accent; anchors.verticalCenter: parent.verticalCenter }
+                    Image {
+                        source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-small.png"
+                        height: 24; width: 50
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true; mipmap: true
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
                     Text { text: qsTr("LUMEN"); color: Theme.text; font.pixelSize: 15; font.weight: Font.Bold; font.letterSpacing: 4 }
                 }
 

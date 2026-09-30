@@ -1,6 +1,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
@@ -29,6 +30,7 @@ int main(int argc, char *argv[])
     QGuiApplication::setApplicationName(QStringLiteral("Lumen"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Lumen"));
     QGuiApplication::setApplicationVersion(QStringLiteral(LUMEN_VERSION));
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/Lumen/resources/logo/lumen-icon-256.png")));
 
     // libmpv verlangt den C-Locale für Zahlen
     std::setlocale(LC_NUMERIC, "C");

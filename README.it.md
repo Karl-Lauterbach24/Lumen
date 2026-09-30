@@ -1,3 +1,5 @@
+<p align="center"><img src="resources/logo/lumen-logo.png" width="300" alt="Lumen – Disc · Cinema Player"></p>
+
 # Lumen – Lettore Blu-ray
 
 [English](README.md) · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · **Italiano** · [Português](README.pt.md)
@@ -184,3 +186,7 @@ lumen film.mkv                 # qualsiasi file riproducibile da mpv
 | Finestra di riproduzione integrata | Automatica su macOS, altrimenti per profilo; API di rendering OpenGL → solo SDR. |
 
 Aiuto per sviluppatori: `LUMEN_SNAPSHOT=shot.png` (opzionale `LUMEN_SNAPSHOT_DELAY=ms`) salva la finestra di controllo come immagine.
+
+## Licenza
+
+Lumen è software libero sotto la **GNU Affero General Public License v3.0 o successiva** ([LICENSE](LICENSE)). Componenti e licenze: [THIRD_PARTY.md](THIRD_PARTY.md).
