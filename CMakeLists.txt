@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 0.1.0 LANGUAGES CXX)
+project(Lumen VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -169,6 +169,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/PluginManager.h     src/PluginManager.cpp
     src/PluginStore.h       src/PluginStore.cpp
     src/MediaServers.h      src/MediaServers.cpp
+    src/Updater.h           src/Updater.cpp
     include/lumen/plugin.h
     src/Tr.h
     ${LUMEN_DCP_SOURCES}
@@ -423,6 +424,12 @@ if(LUMEN_BUILD_TESTS)
     add_executable(plugin_test tests/plugin_test.cpp src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
     target_include_directories(plugin_test PRIVATE src include)
     target_link_libraries(plugin_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
+    # Update-Prüfung/-Installation gegen einen lokalen Release-Server (Windows: ZIP)
+    if(WIN32)
+        add_executable(updater_test tests/updater_test.cpp src/Updater.cpp src/Updater.h)
+        target_include_directories(updater_test PRIVATE src)
+        target_link_libraries(updater_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network)
+    endif()
     # Automatische Bildschirmzuordnung
     add_executable(display_test tests/display_test.cpp src/DisplayManager.cpp src/DisplayManager.h)
     target_include_directories(display_test PRIVATE src)

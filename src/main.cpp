@@ -16,6 +16,7 @@
 #include "DiscScanner.h"
 #include "DvdNav.h"
 #include "MediaServers.h"
+#include "Updater.h"
 #include "I18n.h"
 #include "DisplayManager.h"
 #include "DriveManager.h"
@@ -154,6 +155,9 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Plugins", &plugins);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Store", &store);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Servers", &servers);
+    Updater updater;
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Updater", &updater);
+    QTimer::singleShot(4000, &updater, &Updater::checkAutomatically);
     QObject::connect(&i18n, &I18n::languageChanged, &profiles, &ProfileManager::retranslate);
 
     QQmlApplicationEngine engine;

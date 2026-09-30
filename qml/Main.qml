@@ -1071,6 +1071,24 @@ ApplicationWindow {
                                     onActivated: I18n.language = currentValue
                                 }
 
+                                SectionLabel { text: qsTr("Updates") }
+                                Toggle {
+                                    Layout.fillWidth: true
+                                    label: qsTr("Beim Start nach Updates suchen")
+                                    hint: Updater.status
+                                    checked: Updater.autoCheck
+                                    onToggled: Updater.autoCheck = checked
+                                }
+                                RowLayout {
+                                    Button { text: qsTr("Jetzt prüfen"); flat: true; enabled: !Updater.busy; palette.windowText: Theme.accent; onClicked: Updater.check() }
+                                    Button {
+                                        visible: Updater.available
+                                        text: Updater.canInstall ? qsTr("Lumen %1 installieren").arg(Updater.latestVersion) : qsTr("Download-Seite öffnen")
+                                        flat: true; enabled: !Updater.busy; palette.windowText: Theme.accent
+                                        onClicked: Updater.canInstall ? Updater.install() : Updater.openPage()
+                                    }
+                                }
+
                                 SectionLabel { text: qsTr("Bildschirme") }
                                 Toggle {
                                     Layout.fillWidth: true
@@ -1199,6 +1217,17 @@ ApplicationWindow {
                 Text {
                     text: win.vinfo.displayFps > 0 ? qsTr("Anzeige ") + win.vinfo.displayFps.toFixed(3) + qsTr(" Hz") : ""
                     color: Theme.textFaint; font.pixelSize: 11; font.family: Theme.mono
+                }
+                // Update verfügbar: ein Klick lädt, prüft und installiert
+                Text {
+                    visible: Updater.available || Updater.busy
+                    text: Updater.busy ? Updater.status + (Updater.progress > 0 ? " " + Math.round(Updater.progress * 100) + " %" : "")
+                                       : (Updater.canInstall ? qsTr("Lumen %1 verfügbar – jetzt aktualisieren") : qsTr("Lumen %1 verfügbar – Download-Seite")).arg(Updater.latestVersion)
+                    color: Theme.accent
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    TapHandler { enabled: !Updater.busy; onTapped: Updater.canInstall ? Updater.install() : Updater.openPage() }
                 }
                 Text { text: qsTr("Lumen ") + Qt.application.version; color: Theme.textFaint; font.pixelSize: 11 }
             }
