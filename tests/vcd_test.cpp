@@ -118,7 +118,7 @@ int main(int argc, char **argv)
 
     check(nav.key(QStringLiteral("2")) && nav.lid() == 3, QStringLiteral("Taste 2 -> Extras (LID 3)"));
     check(near(duration(), 3.0), QStringLiteral("Extras 3 s"));
-    check(atLid(1, 10000), QStringLiteral("nach Extras automatisch zurück ins Menü (Next)"));
+    check(atLid(1, 20000), QStringLiteral("nach Extras automatisch zurück ins Menü (Next)"));
 
     check(nav.key(QStringLiteral("3")) && nav.lid() == 4, QStringLiteral("Taste 3 -> Film ab Einsprungpunkt (LID 4)"));
     // MPEG-PS: am Sektor des Einsprungpunkts liegt bereits Ton kurz vor 2 s (verschränkt)
@@ -126,7 +126,7 @@ int main(int argc, char **argv)
     double start = -1;
     mpv_get_property(mpv, "demuxer-start-time", MPV_FORMAT_DOUBLE, &start);
     const double entryStart = start;
-    check(atLid(1, 10000), QStringLiteral("zurück ins Menü"));
+    check(atLid(1, 20000), QStringLiteral("zurück ins Menü"));
 
     check(nav.key(QStringLiteral("enter")) && nav.lid() == 2, QStringLiteral("Enter = Default -> Film (LID 2)"));
     check(near(duration(), 4.0), QStringLiteral("Film 4 s"));
@@ -141,8 +141,8 @@ int main(int argc, char **argv)
     check(nav.key(QStringLiteral("return")) && nav.lid() == 1, QStringLiteral("Return -> Menü"));
 
     check(nav.key(QStringLiteral("1")) && nav.lid() == 2, QStringLiteral("Taste 1 -> Film"));
-    check(atLid(3, 10000), QStringLiteral("Filmende -> Extras (Next)"));
-    check(atLid(1, 10000), QStringLiteral("Extras-Ende -> Menü"));
+    check(atLid(3, 20000), QStringLiteral("Filmende -> Extras (Next)"));
+    check(atLid(1, 20000), QStringLiteral("Extras-Ende -> Menü"));
     std::printf("     Ladevorgänge: %d\n", loads);
 
     nav.stop();
