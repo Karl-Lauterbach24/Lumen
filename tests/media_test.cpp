@@ -50,11 +50,16 @@ QVariantMap find(const QVariantList &items, const QString &title)
             return v.toMap();
     return {};
 }
+// ein gemeinsamer Manager: unter macOS dauert die erste Anfrage je Manager mehrere Sekunden
+QNetworkAccessManager &testNet()
+{
+    static QNetworkAccessManager net;
+    return net;
+}
 QJsonArray serverLog(int port)
 {
-    QNetworkAccessManager net;
-    QNetworkReply *r = net.get(QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/_log").arg(port))));
-    waitFor([&] { return r->isFinished(); }, 5000);
+    QNetworkReply *r = testNet().get(QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/_log").arg(port))));
+    waitFor([&] { return r->isFinished(); }, 15000);
     const QJsonArray a = r->isFinished() ? QJsonDocument::fromJson(r->readAll()).array() : QJsonArray();
     delete r;
     return a;
@@ -114,10 +119,9 @@ int main(int argc, char **argv)
     QElapsedTimer up;
     up.start();
     bool ready = false;
-    while (started && !ready && up.elapsed() < 30000 && mock.state() == QProcess::Running) {
-        QNetworkAccessManager net;
-        QNetworkReply *r = net.get(QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/_log").arg(port))));
-        waitFor([&] { return r->isFinished(); }, 2000);
+    while (started && !ready && up.elapsed() < 60000 && mock.state() == QProcess::Running) {
+        QNetworkReply *r = testNet().get(QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/_log").arg(port))));
+        waitFor([&] { return r->isFinished(); }, 15000);
         ready = r->isFinished() && r->error() == QNetworkReply::NoError;
         delete r;
         if (!ready)
@@ -169,7 +173,7 @@ int main(int argc, char **argv)
     ms.reportStart(movie, 0.5);
     ms.reportProgress(1.2, true);
     ms.reportStop(1.9);
-    waitFor([&] { return serverLog(port).size() >= 3; }, 5000);
+    waitFor([&] { return serverLog(port).size() >= 3; }, 15000);
     const QJsonArray log1 = serverLog(port);
     check(log1.size() >= 3 && log1[0].toObject().value("path") == QLatin1String("/Sessions/Playing")
               && log1[2].toObject().value("path") == QLatin1String("/Sessions/Playing/Stopped")
@@ -213,7 +217,7 @@ int main(int argc, char **argv)
     check(std::abs(d2 - 2.0) < 0.3, QStringLiteral("mpv spielt den Plex-Stream (%1 s)").arg(d2, 0, 'f', 2));
     ms.reportStart(pmovie, 0.7);
     ms.reportStop(1.5);
-    waitFor([&] { return serverLog(port).size() >= log1.size() + 2; }, 5000);
+    waitFor([&] { return serverLog(port).size() >= log1.size() + 2; }, 15000);
     const QJsonArray log2 = serverLog(port);
     const QJsonObject last = log2.last().toObject();
     check(last.value("server") == QLatin1String("plex") && last.value("query").toObject().value("state") == QLatin1String("stopped")
