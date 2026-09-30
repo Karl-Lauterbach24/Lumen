@@ -338,7 +338,7 @@ if(APPLE)
             COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml ${_deploy_libpaths} -always-overwrite
             ${_shim_cmd}
             COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:lumen>"
-            COMMAND hdiutil create -volname Lumen -srcfolder "$<TARGET_BUNDLE_DIR:lumen>" -ov -format UDZO Lumen.dmg
+            COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_BUNDLE_DIR:lumen>" -DDMG=Lumen.dmg -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MakeDmg.cmake"
             DEPENDS lumen
             WORKING_DIRECTORY "$<TARGET_BUNDLE_DIR:lumen>/.."
             COMMENT "macdeployqt: Lumen.app + Lumen.dmg")
