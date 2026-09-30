@@ -11,7 +11,7 @@ Lecteur Blu-ray / UHD / 3D rapide et minimaliste pour le home cinéma, avec **de
 - **Fenêtre de lecture** – fenêtre mpv native (gpu-next, D3D11/Vulkan/Wayland), attribuable à un périphérique de sortie, HDR passthrough.
 - **Fenêtre de contrôle** – Qt Quick : source, transport, titres, chapitres, audio, sous-titres, image, profils de sortie.
 
-> L'interface est actuellement en allemand.
+> L'interface est en anglais par défaut ; la langue se change sur la page d'accueil (allemand, français, espagnol, italien, portugais, néerlandais, polonais).
 
 ## Protection contre la copie / LibreDrive
 

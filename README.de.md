@@ -12,6 +12,20 @@ Schneller, minimalistischer Player für Heimkinos, Vorführräume und kleine Kin
 Spielt **Blu-ray / UHD / Blu-ray 3D, DVD-Video (mit Menüs), HD DVD, Video-CD / Super Video-CD, Audio-CD,
 Digital Cinema Packages (DCP, JPEG 2000, SMPTE und Interop, verschlüsselt mit KDM)** und alle Dateiformate, die mpv abspielt.
 
+## Screenshots (englische Oberfläche)
+
+<p align="center">
+  <img src="docs/screenshots/start.png" width="49%" alt="Start page with language selection">
+  <img src="docs/screenshots/cinema.png" width="49%" alt="Playing a Digital Cinema Package (Cinema tab)">
+</p>
+<p align="center">
+  <img src="docs/screenshots/streaming.png" width="49%" alt="Stream links and media servers (Jellyfin, Emby, Plex)">
+  <img src="docs/screenshots/plugins.png" width="49%" alt="Installed plugins and the plugin store">
+</p>
+<p align="center">
+  <img src="docs/screenshots/output.png" width="49%" alt="Output: language, updates, automatic screen assignment, profiles">
+</p>
+
 ## Kopierschutz / Verschlüsselung
 
 Lumen **umgeht keinen Kopierschutz**. Alles in dieser Richtung ist Entscheidung des Nutzers und läuft über

@@ -12,7 +12,21 @@ A fast, minimalist player for home cinemas, screening rooms and small cinemas wi
 Plays **Blu-ray / UHD / Blu-ray 3D, DVD-Video (with menus), HD DVD, Video-CD / Super Video-CD, Audio-CD,
 Digital Cinema Packages (DCP, JPEG 2000, SMPTE and Interop, encrypted with KDM)** and every file format mpv can play.
 
-> The user interface is currently in German.
+> The interface is in English by default and can be switched on the start page to German, French, Spanish, Italian, Portuguese, Dutch or Polish.
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/start.png" width="49%" alt="Start page with language selection">
+  <img src="docs/screenshots/cinema.png" width="49%" alt="Playing a Digital Cinema Package (Cinema tab)">
+</p>
+<p align="center">
+  <img src="docs/screenshots/streaming.png" width="49%" alt="Stream links and media servers (Jellyfin, Emby, Plex)">
+  <img src="docs/screenshots/plugins.png" width="49%" alt="Installed plugins and the plugin store">
+</p>
+<p align="center">
+  <img src="docs/screenshots/output.png" width="49%" alt="Output: language, updates, automatic screen assignment, profiles">
+</p>
 
 ## Copy protection / encryption
 

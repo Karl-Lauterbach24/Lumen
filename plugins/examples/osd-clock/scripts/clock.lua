@@ -9,7 +9,7 @@ local function show()
     local speed = mp.get_property_number("speed", 1)
     local text = os.date("%H:%M")
     if left then
-        text = text .. "   –" .. fmt(left) .. "   Ende " .. os.date("%H:%M", os.time() + math.floor(left / speed))
+        text = text .. "   –" .. fmt(left) .. "   ends " .. os.date("%H:%M", os.time() + math.floor(left / speed))
     end
     mp.osd_message(text, 3)
 end

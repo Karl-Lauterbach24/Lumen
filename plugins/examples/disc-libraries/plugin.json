@@ -1,8 +1,8 @@
 {
     "id": "disc-libraries",
-    "name": "Disc-Bibliotheken (Vorlage)",
+    "name": "Disc libraries (template)",
     "version": "1.0",
-    "description": "Vorlage: bindet vom Nutzer selbst beschaffte Bibliotheken für libbluray/libdvdread ein. Lumen liefert keine davon mit. Pfade anpassen, nicht benötigte Einträge entfernen, dann aktivieren.",
+    "description": "Template: loads libraries you obtained yourself into libbluray/libdvdread. Lumen ships none of them. Adjust the paths, remove entries you do not need, then enable.",
     "discLibraries": {
         "aacs":   { "windows": "lib/libaacs.dll",      "macos": "lib/libaacs.0.dylib",   "linux": "lib/libaacs.so.0" },
         "bdplus": { "windows": "lib/libbdplus.dll",    "macos": "lib/libbdplus.0.dylib", "linux": "lib/libbdplus.so.0" },

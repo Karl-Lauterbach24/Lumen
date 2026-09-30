@@ -11,7 +11,7 @@ Reproductor Blu-ray / UHD / 3D rápido y minimalista para cine en casa, con **do
 - **Ventana de reproducción** – ventana nativa de mpv (gpu-next, D3D11/Vulkan/Wayland), asignable a un dispositivo de salida, HDR passthrough.
 - **Ventana de control** – Qt Quick: fuente, transporte, títulos, capítulos, audio, subtítulos, imagen, perfiles de salida.
 
-> La interfaz está actualmente en alemán.
+> La interfaz está en inglés por defecto; el idioma se cambia en la página de inicio (alemán, francés, español, italiano, portugués, neerlandés, polaco).
 
 ## Protección anticopia / LibreDrive
 
