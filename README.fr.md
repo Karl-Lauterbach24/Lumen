@@ -113,7 +113,10 @@ Si votre distribution ne correspond pas, compilez mpv avec `3rdparty/ffmpeg-mvc`
 
 ### macOS
 
-`brew install qt mpv libbluray nasm dav1d`, FFmpeg-mvc comme sous Linux (branche correspondant au FFmpeg de Homebrew),
+`brew install qt mpv libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja`, puis
+`cmake -S . -B build -G Ninja -DCMAKE_PREFIX_PATH=$(brew --prefix qt)`, `cmake --build build` (Lumen.app) et
+`cmake --build build --target lumen_dmg` (Lumen.app autonome + Lumen.dmg). Le workflow `.github/workflows/macos.yml`
+compile et teste sous macOS 15. Blu-ray 3D : `brew install nasm dav1d`, FFmpeg-mvc comme sous Linux (branche correspondant au FFmpeg de Homebrew),
 `DYLD_LIBRARY_PATH` vers `3rdparty/ffmpeg-mvc/lib`. La fenêtre de lecture y est automatiquement intégrée.
 
 ### Sans 3D

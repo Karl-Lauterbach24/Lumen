@@ -153,6 +153,7 @@ Popup {
                     title: qsTr("Player-Fenster")
                     EnumSelect {
                         key: "playerWindow"
+                        enabled: Qt.platform.os !== "osx" // macOS: immer eingebettet
                         options: [
                             { value: "auto", text: Qt.platform.os === "osx" ? qsTr("Automatisch (macOS: eingebettet)") : qsTr("Automatisch (nativ)") },
                             { value: "native", text: qsTr("Nativ – HDR-Ausgabe, beste Qualität") },

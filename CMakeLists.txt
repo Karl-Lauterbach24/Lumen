@@ -4,6 +4,25 @@ project(Lumen VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# macOS/Homebrew: OpenSSL und libxml2 sind "keg-only" (nicht im Standardpfad) –
+# ihre Präfixe für find_package/pkg-config ergänzen
+if(APPLE)
+    find_program(LUMEN_BREW brew)
+    if(LUMEN_BREW)
+        foreach(pkg openssl@3 libxml2)
+            execute_process(COMMAND "${LUMEN_BREW}" --prefix ${pkg}
+                OUTPUT_VARIABLE _prefix OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE _rc)
+            if(_rc EQUAL 0 AND EXISTS "${_prefix}/lib")
+                list(APPEND CMAKE_PREFIX_PATH "${_prefix}")
+                set(ENV{PKG_CONFIG_PATH} "${_prefix}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+                if(pkg STREQUAL "openssl@3" AND NOT OPENSSL_ROOT_DIR)
+                    set(OPENSSL_ROOT_DIR "${_prefix}")
+                endif()
+            endif()
+        endforeach()
+    endif()
+endif()
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui OpenGL Qml Quick QuickControls2 Xml)
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -196,8 +215,28 @@ if(WIN32)
 endif()
 
 if(APPLE)
-    set_target_properties(lumen PROPERTIES MACOSX_BUNDLE_BUNDLE_NAME "Lumen")
+    set_target_properties(lumen PROPERTIES
+        OUTPUT_NAME "Lumen"
+        MACOSX_BUNDLE_BUNDLE_NAME "Lumen"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.lumen-player"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_COPYRIGHT "Lumen")
+    # CoreGraphics (Bildraten-Umschaltung) steckt in ApplicationServices
     target_link_libraries(lumen PRIVATE "-framework ApplicationServices")
+    # OpenGL (Render-API von mpv) ist seit macOS 10.14 als veraltet markiert
+    target_compile_definitions(lumen PRIVATE GL_SILENCE_DEPRECATION)
+
+    # "cmake --build . --target lumen_dmg": eigenständiges Lumen.app (Qt, libmpv,
+    # FFmpeg, libbluray … im Bundle) plus Lumen.dmg
+    find_program(MACDEPLOYQT macdeployqt HINTS "${QT6_INSTALL_PREFIX}/bin" "${Qt6_DIR}/../../../bin")
+    if(MACDEPLOYQT)
+        add_custom_target(lumen_dmg
+            COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml -dmg -always-overwrite
+            DEPENDS lumen
+            WORKING_DIRECTORY "$<TARGET_BUNDLE_DIR:lumen>/.."
+            COMMENT "macdeployqt: Lumen.app + Lumen.dmg")
+    endif()
 endif()
 
 # ---------------------------------------------------------------------------
@@ -244,7 +283,7 @@ if(LUMEN_BUILD_TESTS)
     # Test: DVD-Menüs mit echter mpv-Ausgabe (Test-DVD: tools/make_test_dvd.py)
     add_executable(dvd_test tests/dvd_test.cpp src/DvdNav.cpp src/DvdNav.h)
     target_include_directories(dvd_test PRIVATE src)
-    target_link_libraries(dvd_test PRIVATE Qt6::Core Qt6::Gui lumen_mpv)
+    target_link_libraries(dvd_test PRIVATE Qt6::Core Qt6::Gui Qt6::OpenGL lumen_mpv)
     lumen_optional_libs(dvd_test)
 endif()
 

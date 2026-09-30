@@ -5,15 +5,24 @@
 // Ablauf: Hauptmenü (Standbild, Button 1 hervorgehoben) -> Pfeil runter (Button 2)
 // -> Pfeil hoch, Enter (Titel 1) -> Untertitel an -> Einblendung bei 1–2,5 s ->
 // Titelende -> zurück ins Menü. Je Schritt ein Fenster-Screenshot mit Overlay.
+//
+// macOS (oder LUMEN_TEST_RENDER_API=1): libmpv öffnet dort kein eigenes Fenster –
+// das Bild entsteht wie im eingebetteten Player-Fenster über die Render-API
+// (OpenGL, hier in ein Offscreen-Framebuffer), die Screenshots sind dessen Inhalt.
 #include "DvdNav.h"
 
 #include <QDir>
 #include <QElapsedTimer>
 #include <QGuiApplication>
 #include <QJsonDocument>
+#include <QOffscreenSurface>
+#include <QOpenGLContext>
+#include <QOpenGLFramebufferObject>
+#include <QOpenGLFunctions>
 #include <QTimer>
 
 #include <mpv/client.h>
+#include <mpv/render_gl.h>
 
 #include <clocale>
 #include <cstdio>
@@ -46,14 +55,65 @@ int main(int argc, char **argv)
     check(scan.value("titles").toList().size() == 1, "scan: 1 Titel");
     std::printf("     scan: %s\n", QString::fromUtf8(QJsonDocument::fromVariant(scan).toJson(QJsonDocument::Compact)).toLocal8Bit().constData());
 
+#ifdef Q_OS_MACOS
+    const bool renderApi = true;
+#else
+    const bool renderApi = qEnvironmentVariableIntValue("LUMEN_TEST_RENDER_API") != 0;
+#endif
     mpv_handle *mpv = mpv_create();
     for (auto [k, v] : std::initializer_list<std::pair<const char *, const char *>>{
-             {"vo", "gpu-next"}, {"ao", "null"}, {"force-window", "yes"}, {"geometry", "720x405"}, {"terminal", "no"},
+             {"vo", renderApi ? "libmpv" : "gpu-next"}, {"ao", "null"}, {"force-window", renderApi ? "no" : "yes"},
+             {"geometry", "720x405"}, {"terminal", "no"},
              {"idle", "yes"}, {"keep-open", "yes"}, {"osc", "no"}, {"osd-level", "0"}})
         mpv_set_option_string(mpv, k, v);
     mpv_request_log_messages(mpv, "warn");
     if (mpv_initialize(mpv) < 0)
         return 1;
+
+    // Render-API: OpenGL-3.2-Core-Kontext (macOS-Minimum für mpv) ohne Fenster
+    QOffscreenSurface surface;
+    QOpenGLContext gl;
+    QOpenGLFramebufferObject *fbo = nullptr;
+    mpv_render_context *rc = nullptr;
+    if (renderApi) {
+        QSurfaceFormat fmt;
+        fmt.setVersion(3, 2);
+        fmt.setProfile(QSurfaceFormat::CoreProfile);
+        gl.setFormat(fmt);
+        surface.setFormat(fmt);
+        surface.create();
+        if (!gl.create() || !gl.makeCurrent(&surface)) {
+            std::fprintf(stderr, "OpenGL-Kontext nicht verfügbar\n");
+            return 1;
+        }
+        fbo = new QOpenGLFramebufferObject(720, 405);
+        mpv_opengl_init_params init{[](void *, const char *name) -> void * {
+                                        QOpenGLContext *c = QOpenGLContext::currentContext();
+                                        return c ? reinterpret_cast<void *>(c->getProcAddress(name)) : nullptr;
+                                    }, nullptr};
+        mpv_render_param params[] = {
+            {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
+            {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &init},
+            {MPV_RENDER_PARAM_INVALID, nullptr},
+        };
+        check(mpv_render_context_create(&rc, mpv, params) >= 0, "Render-API (OpenGL) initialisiert");
+        if (!rc)
+            return 1;
+        std::printf("     OpenGL: %s\n", reinterpret_cast<const char *>(gl.functions()->glGetString(GL_VERSION)));
+    }
+    auto render = [&] {
+        if (!rc || !(mpv_render_context_update(rc) & MPV_RENDER_UPDATE_FRAME))
+            return;
+        mpv_opengl_fbo target{int(fbo->handle()), fbo->width(), fbo->height(), 0};
+        int flip = 1;
+        mpv_render_param params[] = {
+            {MPV_RENDER_PARAM_OPENGL_FBO, &target},
+            {MPV_RENDER_PARAM_FLIP_Y, &flip},
+            {MPV_RENDER_PARAM_INVALID, nullptr},
+        };
+        mpv_render_context_render(rc, params);
+        gl.functions()->glFlush();
+    };
     mpv_observe_property(mpv, 1, "osd-dimensions", MPV_FORMAT_NODE);
 
     DvdNav nav;
@@ -68,6 +128,7 @@ int main(int argc, char **argv)
     // mpv-Ereignisse im Qt-Takt abholen (osd-dimensions -> Overlay-Platzierung)
     QTimer events;
     QObject::connect(&events, &QTimer::timeout, [&] {
+        render();
         for (;;) {
             mpv_event *ev = mpv_wait_event(mpv, 0);
             if (ev->event_id == MPV_EVENT_NONE)
@@ -107,6 +168,11 @@ int main(int argc, char **argv)
     };
     auto shot = [&](const char *name) {
         const QByteArray f = QDir(out).filePath(QString::fromLatin1(name)).toUtf8();
+        if (fbo) {
+            render();
+            fbo->toImage().save(QString::fromUtf8(f));
+            return;
+        }
         const char *cmd[] = {"screenshot-to-file", f.constData(), "window", nullptr};
         mpv_command(mpv, cmd);
     };
@@ -140,6 +206,11 @@ int main(int argc, char **argv)
     check(waitFor([&] { return nav.title() == 1 && nav.chapter() == 1; }, 6000), "Titel 1, Kapitel 2");
 
     events.stop();
+    if (rc) {
+        mpv_render_context_free(rc); // vor mpv_terminate_destroy
+        delete fbo;
+        gl.doneCurrent();
+    }
     mpv_terminate_destroy(mpv);
     nav.detach();
     std::printf("%s (%d Fehler)\n", g_fail ? "FEHLGESCHLAGEN" : "BESTANDEN", g_fail);

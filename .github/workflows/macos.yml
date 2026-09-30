@@ -1,0 +1,120 @@
+# macOS: Build (Homebrew), Tests, eigenständiges Lumen.app + DMG
+name: macOS
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Abhängigkeiten (Homebrew)
+        run: |
+          brew update --quiet
+          brew install --quiet qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja dvdauthor || true
+          # dvdauthor ist nur für den DVD-Test nötig – alles andere muss da sein
+          for f in qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 ninja; do brew list --versions "$f" >/dev/null || { echo "::error::$f fehlt"; exit 1; }; done
+
+      - name: Konfigurieren
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=ON \
+                -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" 2>&1 | tee configure.log
+          grep -q "OpenSSL (DCP-Entschlüsselung): TRUE" configure.log || echo "::warning::OpenSSL nicht gefunden"
+          grep -q "libdvdnav: TRUE" configure.log || echo "::warning::libdvdnav nicht gefunden"
+          grep -q "libxml2 (KDM-Signatur): TRUE" configure.log || echo "::warning::libxml2 nicht gefunden"
+
+      - name: Bauen
+        run: |
+          set -o pipefail
+          if ! cmake --build build 2>&1 | tee build.log; then
+            # Compilerfehler als Annotationen (auch ohne Anmeldung über die API lesbar)
+            grep -E "^[^ ]+:[0-9]+:[0-9]+: (fatal )?error:" build.log | head -40 | while IFS= read -r l; do
+              f=${l%%:*}; rest=${l#*:}; line=${rest%%:*}
+              echo "::error file=${f#$GITHUB_WORKSPACE/},line=$line::${l#*error: }"
+            done
+            grep -E "error|Error" build.log | grep -vE "^[^ ]+:[0-9]+:[0-9]+:" | head -15 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+
+      - name: "Test: DCP (JPEG 2000, KDM, Entschlüsselung, Signatur, Untertitel, 3D)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/dcp.txt) 2>&1
+          set -e
+          T=build/tests; mkdir -p $T; B=build
+          $B/dcp_test gencert $T/id
+          python3 tools/make_test_dcp.py ffmpeg "$(brew --prefix openssl@3)/bin/openssl" $T/dcp --encrypt $T/id/leaf.pem
+          $B/dcp_test info $T/dcp
+          $B/dcp_test kdm $T/dcp/kdm.xml $T/id/leaf.key
+          $B/dcp_test subs $T/dcp
+          $B/dcp_test play $T/dcp $T/dcp/kdm.xml $T/id/leaf.key 1.5 | tee $T/play.txt
+          $B/dcp_test verifykdm $T/dcp/kdm.xml
+          python3 tools/make_test_dcp.py ffmpeg "$(brew --prefix openssl@3)/bin/openssl" $T/dcp3d --encrypt $T/id/leaf.pem --stereo
+          $B/dcp_test play3d $T/dcp3d $T/dcp3d/kdm.xml $T/id/leaf.key $T/sbs.png
+
+      - name: "Test: DVD-Menüs (Render-API)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/dvd.txt) 2>&1
+          if ! command -v dvdauthor >/dev/null; then echo "::warning::dvdauthor fehlt – DVD-Test übersprungen"; exit 0; fi
+          set -e
+          T=build/tests
+          python3 tools/make_test_dvd.py ffmpeg dvdauthor spumux $T/dvd
+          build/dvd_test $T/dvd/DVD $T/dvdshots | tee $T/dvd.txt
+          grep -q BESTANDEN $T/dvd.txt
+
+      - name: "Test: Player-Fenster rendert (lumen.app)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/player.txt) 2>&1
+          set -e
+          APP=build/Lumen.app/Contents/MacOS/Lumen
+          export LUMEN_PLAYER_SNAPSHOT="$PWD/build/tests/player.png@1.0"
+          "$APP" "av://lavfi:testsrc2=size=1280x720:rate=24" > build/tests/lumen.log 2>&1 &
+          PID=$!
+          for i in $(seq 1 60); do [ -s build/tests/player.png ] && break; sleep 1; done
+          kill $PID 2>/dev/null || true
+          tail -30 build/tests/lumen.log
+          [ -s build/tests/player.png ] || { echo "::error::Player-Fenster hat kein Bild geliefert"; exit 1; }
+          python3 - <<'EOF'
+          import struct, zlib
+          d = open("build/tests/player.png", "rb").read()
+          w, h = struct.unpack(">II", d[16:24])
+          print("player.png", w, "x", h)
+          assert w >= 640 and h >= 360, "Fenster zu klein"
+          EOF
+
+      - name: Lumen.app + DMG (macdeployqt)
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/dmg.txt) 2>&1
+          cmake --build build --target lumen_dmg
+          ls -la build/*.dmg
+          # das Bundle muss ohne Homebrew-Pfade auskommen
+          if for f in build/Lumen.app/Contents/MacOS/Lumen build/Lumen.app/Contents/Frameworks/*.dylib; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar)"; then
+            echo "::error::Lumen.app verweist noch auf Homebrew-Bibliotheken"; exit 1
+          fi
+
+      - name: Fehlerprotokolle als Annotationen
+        if: failure()
+        run: |
+          # Protokollende je Etappe als eine Annotation (ohne Anmeldung per API lesbar)
+          for f in build/logs/*.txt; do
+            [ -f "$f" ] || continue
+            body=$(tail -40 "$f" | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=$(basename "$f")::$body"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Lumen-macOS
+          path: |
+            build/*.dmg
+            build/tests/*.png
+            build/tests/dvdshots
+            build/tests/*.txt
+            build/tests/*.log
+          if-no-files-found: ignore

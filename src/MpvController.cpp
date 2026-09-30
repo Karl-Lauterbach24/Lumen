@@ -256,15 +256,14 @@ int MpvController::trackIdForPid(const QString &type, int pid) const
 
 bool MpvController::wantsEmbedded(const QVariantMap &profile)
 {
-    const QString mode = profile.value("playerWindow", "auto").toString();
-    if (mode == QLatin1String("embedded"))
-        return true;
-    if (mode == QLatin1String("native"))
-        return false;
 #ifdef Q_OS_MACOS
-    return true; // libmpv kann unter macOS kein eigenes Fenster öffnen
+    // libmpv kann unter macOS kein eigenes Fenster öffnen – auch nicht, wenn ein
+    // (z. B. unter Windows angelegtes) Profil "nativ" verlangt
+    Q_UNUSED(profile)
+    return true;
 #else
-    return false;
+    const QString mode = profile.value("playerWindow", "auto").toString();
+    return mode == QLatin1String("embedded");
 #endif
 }
 
@@ -1361,7 +1360,16 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         if (m_snapshotAt >= 0 && m_position >= m_snapshotAt && !m_idle) {
             m_snapshotAt = -1;
             setOptionRaw(QStringLiteral("pause"), true, false);
-            command({"screenshot-to-file", m_snapshotFile, "window"});
+            if (m_window) {
+                // vo=libmpv kennt keinen Fenster-Screenshot: das Qt-Fenster selbst
+                // auslesen (prüft den Render-Pfad, u. a. unter macOS)
+                QTimer::singleShot(400, this, [this] {
+                    if (m_window)
+                        m_window->grabFramebuffer().save(m_snapshotFile);
+                });
+            } else {
+                command({"screenshot-to-file", m_snapshotFile, "window"});
+            }
         }
         const int bucket = int(m_position * 4); // max. 4 UI-Updates pro Sekunde
         if (bucket != m_positionBucket) {

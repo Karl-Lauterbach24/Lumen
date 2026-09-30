@@ -21,9 +21,9 @@ QtObject {
     readonly property int radiusSmall: 7
 
     readonly property string font: Qt.platform.os === "windows" ? "Segoe UI Variable Text"
-                                 : Qt.platform.os === "osx" ? "SF Pro Text" : "Inter"
+                                 : Qt.platform.os === "osx" ? Qt.application.font.family /* Systemschrift (SF) */ : "Inter"
     readonly property string mono: Qt.platform.os === "windows" ? "Cascadia Mono"
-                                 : Qt.platform.os === "osx" ? "SF Mono" : "JetBrains Mono"
+                                 : Qt.platform.os === "osx" ? "Menlo" : "JetBrains Mono"
 
     function icon(name) { return "qrc:/qt/qml/Lumen/icons/" + name + ".svg" }
 

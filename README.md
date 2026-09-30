@@ -178,8 +178,19 @@ If your distribution doesn't match, build mpv against `3rdparty/ffmpeg-mvc` (`me
 
 ### macOS
 
-`brew install qt mpv libbluray libdvdnav libcdio openssl nasm dav1d`, build FFmpeg-mvc as on Linux (branch matching Homebrew's FFmpeg),
-set `DYLD_LIBRARY_PATH` to `3rdparty/ffmpeg-mvc/lib`. The player window is embedded automatically on macOS.
+```bash
+brew install qt mpv libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(brew --prefix qt)
+cmake --build build                      # build/Lumen.app
+cmake --build build --target lumen_dmg   # self-contained Lumen.app + Lumen.dmg (macdeployqt)
+```
+Homebrew's keg-only OpenSSL and libxml2 are found automatically. libmpv can't open its own window on macOS,
+so the player window is always the embedded one (mpv render API, OpenGL 3.2 Core, SDR); refresh-rate switching
+uses CoreGraphics, HDR is left to macOS. The GitHub Actions workflow [`macos.yml`](.github/workflows/macos.yml)
+builds on macOS 15 (Apple Silicon), runs the DCP and DVD tests plus a render check of the player window, and
+uploads `Lumen.dmg`.
+Blu-ray 3D: build FFmpeg-mvc as on Linux (`brew install nasm dav1d`, branch matching Homebrew's FFmpeg) and
+start Lumen with `DYLD_LIBRARY_PATH=3rdparty/ffmpeg-mvc/lib`.
 
 ### Without 3D
 
