@@ -331,7 +331,8 @@ if(APPLE)
         set(_frameworks "$<TARGET_BUNDLE_DIR:lumen>/Contents/Frameworks")
         set(_shim_cmd "")
         if(LUMEN_DVDCSS_SHIM)
-            set(_shim_cmd COMMAND sh -c "if [ -f '${_frameworks}/libdvdcss.2.dylib' ]; then cp -f '$<TARGET_FILE:lumen_dvdcss_shim>' '${_frameworks}/libdvdcss.2.dylib'; fi")
+            set(_shim_cmd COMMAND "${CMAKE_COMMAND}" "-DSRC=$<TARGET_FILE:lumen_dvdcss_shim>"
+                "-DDST=${_frameworks}/libdvdcss.2.dylib" -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/SwapDvdcssShim.cmake")
         endif()
         add_custom_target(lumen_dmg
             COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml ${_deploy_libpaths} -always-overwrite

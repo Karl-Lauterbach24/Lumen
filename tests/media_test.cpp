@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
+#include <QNetworkProxy>
 #include <QNetworkReply>
 #include <QProcess>
 #include <QSettings>
@@ -54,8 +55,8 @@ QJsonArray serverLog(int port)
     QNetworkAccessManager net;
     QNetworkReply *r = net.get(QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/_log").arg(port))));
     waitFor([&] { return r->isFinished(); }, 5000);
-    const QJsonArray a = QJsonDocument::fromJson(r->readAll()).array();
-    r->deleteLater();
+    const QJsonArray a = r->isFinished() ? QJsonDocument::fromJson(r->readAll()).array() : QJsonArray();
+    delete r;
     return a;
 }
 // mpv öffnet die Stream-URL, liefert die Dauer
@@ -103,10 +104,26 @@ int main(int argc, char **argv)
         probe.listen(QHostAddress::LocalHost, 0);
         port = probe.serverPort();
     }
+    // lokaler Test-Verkehr ohne System-Proxy (macOS fragt sonst PAC/WPAD ab)
+    QNetworkProxy::setApplicationProxy(QNetworkProxy::NoProxy);
     QProcess mock;
+    mock.setProcessChannelMode(QProcess::ForwardedChannels); // Python-Fehler im Log sehen
     mock.start(QString::fromLocal8Bit(argv[1]), {QString::fromLocal8Bit(argv[2]), QString::number(port), QString::fromLocal8Bit(argv[3])});
-    check(mock.waitForStarted(5000), QStringLiteral("Test-Server gestartet (Port %1)").arg(port));
-    waitFor([] { return false; }, 1500); // Server hochfahren lassen
+    const bool started = mock.waitForStarted(5000);
+    // warten, bis der Server wirklich antwortet (statt fester Wartezeit)
+    QElapsedTimer up;
+    up.start();
+    bool ready = false;
+    while (started && !ready && up.elapsed() < 30000 && mock.state() == QProcess::Running) {
+        QNetworkAccessManager net;
+        QNetworkReply *r = net.get(QNetworkRequest(QUrl(QStringLiteral("http://127.0.0.1:%1/_log").arg(port))));
+        waitFor([&] { return r->isFinished(); }, 2000);
+        ready = r->isFinished() && r->error() == QNetworkReply::NoError;
+        delete r;
+        if (!ready)
+            waitFor([] { return false; }, 200);
+    }
+    check(started && ready, QStringLiteral("Test-Server gestartet (Port %1, bereit nach %2 ms)").arg(port).arg(up.elapsed()));
     const QString base = QStringLiteral("http://127.0.0.1:%1").arg(port);
 
     MediaServers ms;
@@ -121,7 +138,7 @@ int main(int argc, char **argv)
     // ---------------- Jellyfin
     ms.addEmbyServer(QStringLiteral("jellyfin"), base, QStringLiteral("test"), QStringLiteral("wrong"));
     bool done = waitFor([&] { return added; }, 10000);
-    check(done && !ok, QStringLiteral("falsches Passwort abgelehnt: %1").arg(msg));
+    check(done && !ok, QStringLiteral("falsches Passwort abgelehnt: %1").arg(done ? msg : QStringLiteral("(keine Antwort in 10 s)")));
     added = false;
     ms.addEmbyServer(QStringLiteral("jellyfin"), base + QStringLiteral("/"), QStringLiteral("test"), QStringLiteral("test"));
     done = waitFor([&] { return added; }, 10000);
