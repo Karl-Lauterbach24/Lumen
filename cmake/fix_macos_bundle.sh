@@ -20,11 +20,8 @@ find_brew_lib() { # <dateiname> -> Pfad in Homebrew
     return 1
 }
 
-machos() {
-    find "$APP/Contents" -type f \( -name '*.dylib' -o -name '*.so' -o -perm -u+x \) -print0 |
-        while IFS= read -r -d '' f; do
-            file -b "$f" | grep -q 'Mach-O' && printf '%s\n' "$f"
-        done
+machos() { # alle Mach-O-Dateien (Framework-Binärdateien sind oft nicht ausführbar markiert)
+    find "$APP/Contents" -type f -print0 | xargs -0 file | grep 'Mach-O' | cut -d: -f1 | sort -u
 }
 
 # Install-Namen (LC_ID_DYLIB), die noch auf Homebrew zeigen, auf @rpath setzen
