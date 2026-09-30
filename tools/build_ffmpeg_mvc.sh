@@ -23,8 +23,11 @@ MINGW*|MSYS*)
     # Toolchain ebenfalls über kurzen Pfad (Junction auf 3rdparty), sonst findet gcc cc1.exe nicht
     R="${TOOLROOT:-/c/lumen-build}"
     [ -d "$R/msys2" ] || R="$HERE/3rdparty"
-    export PATH="$R/msys2/ucrt64/bin:$R/msys2-tools/usr/bin:/usr/bin:$PATH"
-    export PKG_CONFIG_PATH="$R/msys2/ucrt64/lib/pkgconfig"
+    # Eigene MSYS2-Pakete (lokaler Build) – in einer echten MSYS2-Umgebung (CI) die vorhandene nutzen
+    if [ -d "$R/msys2/ucrt64" ]; then
+        export PATH="$R/msys2/ucrt64/bin:$R/msys2-tools/usr/bin:/usr/bin:$PATH"
+        export PKG_CONFIG_PATH="$R/msys2/ucrt64/lib/pkgconfig"
+    fi
     # configure verträgt keine Backslashes, gcc keine POSIX-Pfade -> "C:/..."-Form für beide
     mkdir -p "$(dirname "$SRC")/tmp"
     TMPDIR="$(cygpath -m "$(dirname "$SRC")/tmp")"

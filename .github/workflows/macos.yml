@@ -3,7 +3,7 @@ name: macOS
 
 on:
   push:
-    branches: [main, "feature/**"]
+    branches: [main, "feature/**", "release/**"]
   pull_request:
   workflow_dispatch:
 
@@ -81,14 +81,23 @@ jobs:
           build/plugin_test build/plugins build/tests/dcp | tee build/tests/plugins.txt
           grep -q BESTANDEN build/tests/plugins.txt
 
+      - name: "Test: Medienserver (Jellyfin/Emby/Plex), Bildschirmzuordnung"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/media.txt) 2>&1
+          set -e
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=640x360:rate=24 -f lavfi -i sine=f=440 -t 2                  -c:v libx264 -c:a aac -pix_fmt yuv420p build/tests/stream.mp4
+          build/media_test python3 tools/mock_media_server.py build/tests/stream.mp4
+          build/display_test
+
       - name: "Test: Video-CD-Menüs (PBC, mit vcdxbuild erstellt)"
         run: |
           mkdir -p build/logs; exec > >(tee -a build/logs/vcd.txt) 2>&1
           if ! command -v vcdxbuild >/dev/null; then echo "::warning::vcdimager fehlt – VCD-Test übersprungen"; exit 0; fi
           set -e
           python3 tools/make_test_vcd_pbc.py ffmpeg vcdxbuild build/tests/vcd
-          build/vcd_test build/tests/vcd/pbc.cue | tee build/tests/vcd.txt
-          grep -q BESTANDEN build/tests/vcd.txt
+          rc=0; build/vcd_test build/tests/vcd/pbc.cue > build/tests/vcd.txt 2>&1 || rc=$?
+          cat build/tests/vcd.txt; echo "vcd_test exit=$rc"
+          grep -q BESTANDEN build/tests/vcd.txt && [ "$rc" -eq 0 ]
 
       - name: "Test: DVD-Menüs (Render-API)"
         run: |

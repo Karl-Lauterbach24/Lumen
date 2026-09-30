@@ -32,6 +32,43 @@ URL-Schemata anmelden oder DCP-Schlüssel liefern. Lumen liefert nichts davon mi
   ausgestellten KDM** (siehe unten). Ohne passenden, gültigen KDM (oder vom Rechteinhaber selbst eingetragene Schlüssel)
   bleibt verschlüsselter Inhalt unlesbar.
 
+## Downloads
+
+Fertige Builds gibt es auf der [Release-Seite](https://github.com/Karl-Lauterbach24/Lumen/releases):
+- Windows: portables ZIP;
+- macOS: DMG für Apple Silicon.
+
+Lumen sucht beim Start nach neuen Versionen, höchstens einmal täglich und nur wenn eingeschaltet. Ein Update
+installiert es mit einem Klick, nachdem es den Download gegen die `SHA256SUMS.txt` des Releases geprüft hat.
+
+## Streaming und Medienserver
+
+Der Reiter **Streaming** spielt Links aller Art, die mpv versteht: HTTP(S)-Dateien, HLS (`.m3u8`), DASH (`.mpd`),
+RTSP, RTMP, SRT, UDP und SMB. Er merkt sich die zuletzt geöffneten Links. Webseiten wie YouTube laufen über
+[yt-dlp](https://github.com/yt-dlp/yt-dlp), wenn es neben Lumen oder im `PATH` liegt.
+
+Medienserver:
+
+| Server | Anmeldung | Funktionen |
+|--------|-----------|------------|
+| **Jellyfin**, **Emby** | Benutzer + Passwort; gespeichert wird nur das Zugriffstoken | Bibliotheken, Serien/Staffeln/Folgen, Suche, Weiterschauen, Cover, Direktwiedergabe ab Fortsetzungspunkt, Fortschritt an den Server |
+| **Plex** | *Mit Plex anmelden* per PIN im eigenen Browser oder Server-URL + `X-Plex-Token` | Bibliotheken, Serien/Staffeln/Folgen, Suche, Weiterschauen, Cover, Direktwiedergabe, Fortschritt über die Timeline |
+
+## Bildschirme
+
+Ist als Ausgabe *Automatisch* eingestellt (Standard), ordnet Lumen die Bildschirme selbst zu:
+- die Wiedergabe läuft auf dem Bildschirm mit den meisten Pixeln (danach zählen Bildrate und HDR);
+- das Steuerfenster wandert auf den kleinsten übrigen, z. B. den Laptop neben dem Projektor.
+
+Beim Ein- und Ausstecken von Bildschirmen passt Lumen die Zuordnung an. Abschalten lässt sich das im Reiter *Ausgabe*.
+
+## Plugin-Store
+
+Der Reiter *Plugins* installiert Plugins aus dem offiziellen Store
+[Lumen-Plugins](https://github.com/Karl-Lauterbach24/Lumen-Plugins) und aus eigenen Quellen. Eine Quelle kann
+`owner/repo` sein, eine GitHub-URL oder eine URL bzw. ein Ordner mit `index.json`. Jede Datei wird gegen ihre
+SHA-256-Summe geprüft, und neu installierte Plugins sind zunächst aus.
+
 ## Plugins
 
 Ordner mit einer `plugin.json`, verwaltet im Reiter **Plugins** (aktivieren, deaktivieren, Schaltflächen, Status).

@@ -34,6 +34,43 @@ supply DCP keys. Lumen ships and downloads none of these.
   certificate** (see below). Without a matching, currently valid KDM (or keys the content owner entered themselves),
   encrypted content stays unreadable.
 
+## Downloads
+
+Precompiled releases are on the [Releases page](https://github.com/Karl-Lauterbach24/Lumen/releases):
+- Windows: a portable ZIP;
+- macOS: a DMG for Apple Silicon.
+
+Lumen checks for new releases at start, at most once a day and only if enabled. It installs an update with
+one click, after verifying the download against the release's `SHA256SUMS.txt`.
+
+## Streaming and media servers
+
+The **Streaming** tab plays links of every kind mpv understands: HTTP(S) files, HLS (`.m3u8`), DASH (`.mpd`),
+RTSP, RTMP, SRT, UDP and SMB. It keeps a history of recent links. Web pages such as YouTube play through
+[yt-dlp](https://github.com/yt-dlp/yt-dlp) when it is installed next to Lumen or in the `PATH`.
+
+Media servers:
+
+| Server | Sign-in | Features |
+|--------|---------|----------|
+| **Jellyfin**, **Emby** | Username + password; only the access token is stored | Libraries, series/seasons/episodes, search, continue watching, posters, direct play from the resume position, progress reported to the server |
+| **Plex** | *Sign in with Plex*, via a PIN in your own browser, or server URL + `X-Plex-Token` | Libraries, series/seasons/episodes, search, on deck, posters, direct play, progress reported through the timeline |
+
+## Screens
+
+With the output set to *Automatic* (the default), Lumen assigns screens itself:
+- the player uses the screen with the most pixels (then refresh rate and HDR);
+- the control window moves to the smallest remaining screen, e.g. the laptop next to a projector.
+
+Plugging screens in or out updates the assignment. You can switch this off in the *Output* tab.
+
+## Plugin store
+
+The *Plugins* tab installs plugins from the official store
+[Lumen-Plugins](https://github.com/Karl-Lauterbach24/Lumen-Plugins) and from your own sources. A source can be
+`owner/repo`, a GitHub URL, or a URL or folder with an `index.json`. Every file is checked against its SHA-256 sum,
+and newly installed plugins start disabled.
+
 ## Plugins
 
 Folders with a `plugin.json`, managed in the **Plugins** tab (enable, disable, buttons, status). A plugin

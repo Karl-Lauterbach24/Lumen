@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -13,6 +14,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QThread>
 #include <QVersionNumber>
 
 #include <memory>
@@ -37,6 +39,27 @@ QNetworkRequest request(const QUrl &url)
     r.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
     r.setTransferTimeout(30000);
     return r;
+}
+
+// Ordner verschieben; unter Windows halten Virenscanner frisch geschriebene Dateien
+// kurz offen -> mehrfach versuchen, zuletzt kopieren und löschen
+bool moveDir(const QString &from, const QString &to)
+{
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        if (QDir().rename(from, to))
+            return true;
+        QThread::msleep(100);
+    }
+    QDirIterator it(from, QDir::Files | QDir::Hidden, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString file = it.next();
+        const QString target = QDir(to).filePath(QDir(from).relativeFilePath(file));
+        QDir().mkpath(QFileInfo(target).absolutePath());
+        if (!QFile::copy(file, target))
+            return false;
+    }
+    QDir(from).removeRecursively();
+    return true;
 }
 
 // Nur einfache relative Pfade (keine absoluten Pfade, kein "..")
@@ -295,7 +318,7 @@ void PluginStore::install(const QString &source, const QString &id)
                 // Laufende native Bibliotheken lassen sich unter Windows nicht löschen: altes Verzeichnis nur umbenennen
                 if (QFileInfo::exists(target) && !QDir().rename(target, old))
                     *failed = LTR("Altes Plugin ist in Benutzung – bitte deaktivieren und neu starten");
-                else if (!QDir().rename(staging->path(), target))
+                else if (!moveDir(staging->path(), target))
                     *failed = LTR("Installation nicht abschließbar");
                 else
                     staging->setAutoRemove(false);

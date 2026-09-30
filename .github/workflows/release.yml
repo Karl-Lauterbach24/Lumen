@@ -1,0 +1,134 @@
+# Precompiled release: Windows (portable ZIP) + macOS (DMG), SHA256SUMS.txt, GitHub release.
+# Triggered by a tag "v<version>" (e.g. v0.2.0).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["release/**"]   # Probelauf: bauen + testen, kein Release
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  REF: ${{ github.event.inputs.tag || github.ref }}
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.REF }}
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: git make zip
+          pacboy: >-
+            toolchain:p cmake:p ninja:p pkgconf:p python:p nasm:p dav1d:p
+            qt6-base:p qt6-declarative:p qt6-svg:p qt6-imageformats:p qt6-tools:p
+            mpv:p ffmpeg:p libbluray:p libdvdnav:p libcdio:p openssl:p libxml2:p
+
+      - name: FFmpeg-mvc (Blu-ray 3D decoder, matched to MSYS2's FFmpeg)
+        id: mvc
+        continue-on-error: true
+        run: |
+          ver=$(ffmpeg -hide_banner -version | head -1 | sed -E 's/^ffmpeg version n?([0-9]+\.[0-9]+).*/\1/')
+          echo "MSYS2 FFmpeg $ver -> FFmpeg-mvc release/$ver"
+          FFMPEG_MVC_BRANCH="release/$ver" SRC=/d/ffmpeg-mvc-src DEST="$PWD/3rdparty/ffmpeg-mvc" tools/build_ffmpeg_mvc.sh
+          ls 3rdparty/ffmpeg-mvc/bin
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$MINGW_PREFIX \
+                -DMPV_ROOT=$MINGW_PREFIX -DBLURAY_ROOT=$MINGW_PREFIX
+          cmake --build build --target lumen
+
+      - name: Package (portable ZIP)
+        run: |
+          set -e
+          VER=$(grep -oE 'project[(]Lumen VERSION [0-9.]+' CMakeLists.txt | awk '{print $3}')
+          S=dist/Lumen
+          mkdir -p $S
+          cp build/lumen.exe build/libdvdcss-2.dll $S/
+          windeployqt6 --qmldir qml --no-translations --no-compiler-runtime --dir $S $S/lumen.exe
+          SEARCH="$MINGW_PREFIX/bin"
+          [ -d 3rdparty/ffmpeg-mvc/bin ] && SEARCH="3rdparty/ffmpeg-mvc/bin $SEARCH"
+          python tools/deploy_windows.py $S/lumen.exe --search $SEARCH --own libdvdcss-2.dll
+          cp LICENSE THIRD_PARTY.md README.md $S/
+          # libdvdcss must be Lumen's stand-in, never the real library
+          strings $S/libdvdcss-2.dll | grep -q LUMEN_DVDCSS_LIBRARY
+          (cd dist && zip -qr "../Lumen-$VER-windows-x64.zip" Lumen)
+          ls -la Lumen-*.zip
+
+      - name: Start test without MSYS2 (all DLLs in the package)
+        shell: pwsh
+        run: |
+          $env:PATH = "C:\Windows\System32;C:\Windows"
+          $env:LUMEN_SNAPSHOT = "$PWD\snapshot.png"
+          $p = Start-Process dist\Lumen\lumen.exe -PassThru
+          for ($i = 0; $i -lt 40 -and -not (Test-Path $env:LUMEN_SNAPSHOT); $i++) { Start-Sleep -Milliseconds 500 }
+          Stop-Process -Id $p.Id -ErrorAction SilentlyContinue
+          if (-not (Test-Path $env:LUMEN_SNAPSHOT)) { Write-Error "Lumen did not start from the package"; exit 1 }
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows
+          path: Lumen-*.zip
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.REF }}
+      - name: Dependencies
+        run: brew install --quiet qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja
+      - name: Build + DMG
+        run: |
+          VER=$(grep -oE 'project[(]Lumen VERSION [0-9.]+' CMakeLists.txt | awk '{print $3}')
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
+          cmake --build build
+          cmake --build build --target lumen_dmg
+          mv build/Lumen.dmg "Lumen-$VER-macos-arm64.dmg"
+          ls -la Lumen-*.dmg
+      - uses: actions/upload-artifact@v5
+        with:
+          name: macos
+          path: Lumen-*.dmg
+
+  release:
+    needs: [windows, macos]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.REF }}
+      - uses: actions/download-artifact@v5
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums + GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd assets
+          sha256sum Lumen-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          VER=$(grep -oE 'project[(]Lumen VERSION [0-9.]+' ../CMakeLists.txt | awk '{print $3}')
+          TAG="v$VER"
+          NOTES="../docs/release-notes/$VER.md"
+          [ -f "$NOTES" ] || { echo "Lumen $VER" > /tmp/notes.md; NOTES=/tmp/notes.md; }
+          gh release create "$TAG" Lumen-* SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --title "Lumen $VER" --notes-file "$NOTES"
