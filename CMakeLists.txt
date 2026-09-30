@@ -337,6 +337,7 @@ if(APPLE)
         add_custom_target(lumen_dmg
             COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml ${_deploy_libpaths} -always-overwrite
             ${_shim_cmd}
+            COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_macos_bundle.sh" "$<TARGET_BUNDLE_DIR:lumen>"
             COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:lumen>"
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_BUNDLE_DIR:lumen>" -DDMG=Lumen.dmg -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MakeDmg.cmake"
             DEPENDS lumen

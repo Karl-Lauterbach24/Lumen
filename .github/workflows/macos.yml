@@ -141,9 +141,17 @@ jobs:
             echo "libdvdcss.2.dylib = Lumen-Shim"
           fi
           # das Bundle muss ohne Homebrew-Pfade auskommen
-          if for f in build/Lumen.app/Contents/MacOS/Lumen build/Lumen.app/Contents/Frameworks/*.dylib; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar)"; then
+          if find build/Lumen.app/Contents -type f -print0 | xargs -0 file | grep Mach-O | cut -d: -f1                | while read -r f; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar)"; then
             echo "::error::Lumen.app verweist noch auf Homebrew-Bibliotheken"; exit 1
           fi
+          # das ausgelieferte Bundle muss starten (Steuerfenster als Bild speichern)
+          rm -f /tmp/lumen-bundle.png
+          LUMEN_SNAPSHOT=/tmp/lumen-bundle.png build/Lumen.app/Contents/MacOS/Lumen &
+          PID=$!
+          for i in $(seq 1 60); do [ -s /tmp/lumen-bundle.png ] && break; sleep 1; done
+          kill $PID 2>/dev/null || true
+          [ -s /tmp/lumen-bundle.png ] || { echo "::error::Lumen.app aus dem Bundle startet nicht"; exit 1; }
+          echo "Bundle startet: Steuerfenster gerendert"
 
       - name: Fehlerprotokolle als Annotationen
         if: failure()
