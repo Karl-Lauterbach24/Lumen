@@ -8,6 +8,8 @@ ScrollView {
     id: pane
     contentWidth: availableWidth
     clip: true
+    // Store-Index beim ersten Anzeigen laden
+    Component.onCompleted: Store.refresh()
 
     ColumnLayout {
         width: pane.availableWidth
@@ -140,6 +142,130 @@ ScrollView {
                         font.pixelSize: 10
                         elide: Text.ElideMiddle
                         Layout.fillWidth: true
+                    }
+                }
+            }
+        }
+
+        // ---------------- Plugin-Store ----------------
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.topMargin: 14
+            SectionLabel { text: qsTr("Plugin-Store"); Layout.fillWidth: true }
+            Text { visible: Store.busy; text: qsTr("Lädt …"); color: Theme.textFaint; font.pixelSize: 11 }
+            Button { text: qsTr("Aktualisieren"); flat: true; palette.windowText: Theme.accent; onClicked: Store.refresh() }
+        }
+        Text {
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            color: Theme.textFaint
+            font.pixelSize: 11
+            text: qsTr("Plugins sind ausführbarer Code: nur aus Quellen installieren, denen du vertraust. Installierte Plugins sind zunächst deaktiviert.")
+        }
+        Text {
+            visible: Store.status.length > 0
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            text: Store.status
+            color: Theme.textDim
+            font.pixelSize: 12
+        }
+        // Quellen: offizielles Repository + eigene
+        Flow {
+            Layout.fillWidth: true
+            spacing: 6
+            Repeater {
+                model: Store.sources
+                delegate: Rectangle {
+                    id: srcChip
+                    required property var modelData
+                    height: 26
+                    width: srcRow.implicitWidth + 16
+                    radius: 13
+                    color: Theme.raised
+                    border.color: srcChip.modelData.error ? Theme.bad : Theme.line
+                    Row {
+                        id: srcRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Text {
+                            text: (srcChip.modelData.name || srcChip.modelData.source)
+                                  + (srcChip.modelData.error ? " – " + srcChip.modelData.error : " (" + srcChip.modelData.count + ")")
+                            color: srcChip.modelData.error ? Theme.bad : Theme.textDim
+                            font.pixelSize: 11
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            visible: !srcChip.modelData.builtin
+                            text: "×"
+                            color: Theme.textFaint
+                            font.pixelSize: 13
+                            anchors.verticalCenter: parent.verticalCenter
+                            TapHandler { onTapped: Store.removeSource(srcChip.modelData.source) }
+                        }
+                    }
+                }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            TextField {
+                id: sourceField
+                Layout.fillWidth: true
+                placeholderText: qsTr("Eigene Quelle: owner/repo, GitHub-URL oder URL/Ordner mit index.json")
+                color: Theme.text
+                font.pixelSize: 12
+                background: Rectangle { color: Theme.raised; radius: Theme.radiusSmall; border.color: Theme.line }
+                onAccepted: if (Store.addSource(text)) text = ""
+            }
+            Button { text: qsTr("Hinzufügen"); flat: true; palette.windowText: Theme.accent; onClicked: if (Store.addSource(sourceField.text)) sourceField.text = "" }
+        }
+        Repeater {
+            model: Store.available
+            delegate: Rectangle {
+                id: storeCard
+                required property var modelData
+                Layout.fillWidth: true
+                implicitHeight: storeCol.implicitHeight + 20
+                radius: Theme.radiusSmall
+                color: Theme.raised
+                ColumnLayout {
+                    id: storeCol
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    spacing: 6
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text { text: storeCard.modelData.name; color: Theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.maximumWidth: storeCard.width * 0.5 }
+                        Text { text: storeCard.modelData.version; color: Theme.textFaint; font.pixelSize: 11 }
+                        Item { Layout.fillWidth: true }
+                        Button {
+                            visible: storeCard.modelData.supported && (!storeCard.modelData.installed || storeCard.modelData.update)
+                            text: storeCard.modelData.update ? qsTr("Aktualisieren") : qsTr("Installieren")
+                            flat: true; enabled: !Store.busy; palette.windowText: Theme.accent
+                            onClicked: Store.install(storeCard.modelData.source, storeCard.modelData.id)
+                        }
+                        Button {
+                            visible: storeCard.modelData.storeInstalled
+                            text: qsTr("Entfernen")
+                            flat: true; palette.windowText: Theme.textDim
+                            onClicked: Store.uninstall(storeCard.modelData.id)
+                        }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Chip { text: storeCard.modelData.installed ? qsTr("installiert ") + storeCard.modelData.installed : ""; tint: Theme.good }
+                        Chip { text: storeCard.modelData.update ? qsTr("Update verfügbar") : ""; tint: Theme.warn }
+                        Chip { text: storeCard.modelData.native ? qsTr("Nativ") : "" }
+                        Chip { text: storeCard.modelData.supported ? "" : qsTr("nicht für dieses System"); tint: Theme.bad }
+                        Chip { text: storeCard.modelData.sourceName; tint: Theme.textFaint }
+                    }
+                    Text {
+                        visible: text.length > 0
+                        text: storeCard.modelData.description
+                        color: Theme.textDim; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true
                     }
                 }
             }

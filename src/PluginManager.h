@@ -39,6 +39,8 @@ public:
     QStringList searchPaths() const;
     QString userDir() const;
     void discover();
+    // Nach Installation/Entfernen: Ordner neu einlesen, geladene Plugins bleiben unverändert
+    void rescan();
     // Aktivierte Plugins laden – vor dem Start von mpv/libbluray aufrufen
     void loadEnabled();
     void unloadAll();

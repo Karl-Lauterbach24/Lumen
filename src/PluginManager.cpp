@@ -18,6 +18,7 @@
 #include <mpv/client.h>
 #include <mpv/stream_cb.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 
@@ -214,6 +215,23 @@ QStringList PluginManager::searchPaths() const
     return paths;
 }
 
+void PluginManager::rescan()
+{
+    std::vector<std::unique_ptr<Plugin>> loaded;
+    for (auto &p : m_plugins)
+        if (p->loaded)
+            loaded.push_back(std::move(p));
+    discover();
+    for (auto &l : loaded) {
+        auto it = std::find_if(m_plugins.begin(), m_plugins.end(), [&](const auto &p) { return p && p->id == l->id; });
+        if (it != m_plugins.end())
+            *it = std::move(l);
+        else
+            m_plugins.push_back(std::move(l));
+    }
+    emit pluginsChanged();
+}
+
 void PluginManager::discover()
 {
     m_plugins.clear();
@@ -341,6 +359,11 @@ void PluginManager::load(Plugin &p)
         }
         const QString file = resolveLibrary(p, expand(platformValue(it.value())));
         if (file.isEmpty()) {
+            // "optional": true – Bibliothek bringt der Nutzer selbst mit; ohne sie läuft der Rest des Plugins
+            if (it.value().toMap().value("optional").toBool()) {
+                p.status = LTR("%1 fehlt – Bibliothek nach %2 kopieren").arg(it.key(), QDir::toNativeSeparators(QFileInfo(QDir(p.dir).filePath(platformValue(it.value()))).absolutePath()));
+                continue;
+            }
             p.error = LTR("Bibliothek „%1“ nicht gefunden").arg(platformValue(it.value()));
             return;
         }

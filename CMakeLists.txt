@@ -23,7 +23,7 @@ if(APPLE)
     endif()
 endif()
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui OpenGL Qml Quick QuickControls2 Xml)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network OpenGL Qml Quick QuickControls2 Xml)
 qt_standard_project_setup(REQUIRES 6.5)
 
 # ---------------------------------------------------------------------------
@@ -167,6 +167,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/DcpManager.h        src/DcpManager.cpp
     src/I18n.h              src/I18n.cpp
     src/PluginManager.h     src/PluginManager.cpp
+    src/PluginStore.h       src/PluginStore.cpp
     include/lumen/plugin.h
     src/Tr.h
     ${LUMEN_DCP_SOURCES}
@@ -214,7 +215,7 @@ target_compile_definitions(lumen PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")
 target_include_directories(lumen PRIVATE include)
 
 target_link_libraries(lumen PRIVATE
-    Qt6::Core Qt6::Gui Qt6::OpenGL Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Xml
+    Qt6::Core Qt6::Gui Qt6::Network Qt6::OpenGL Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Xml
     lumen_mpv)
 
 function(lumen_optional_libs target)
@@ -420,6 +421,11 @@ if(LUMEN_BUILD_TESTS)
     add_executable(plugin_test tests/plugin_test.cpp src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
     target_include_directories(plugin_test PRIVATE src include)
     target_link_libraries(plugin_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
+    # Plugin-Store gegen eine lokale Quelle (Ordner mit index.json)
+    add_executable(store_test tests/store_test.cpp src/PluginStore.cpp src/PluginStore.h src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
+    target_include_directories(store_test PRIVATE src include)
+    target_link_libraries(store_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Xml lumen_mpv)
+    lumen_optional_libs(store_test)
     lumen_optional_libs(plugin_test)
     if(LUMEN_BUILD_PLUGIN_EXAMPLES)
         add_dependencies(plugin_test demo_plugin)

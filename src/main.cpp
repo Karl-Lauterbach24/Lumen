@@ -19,6 +19,7 @@
 #include "DriveManager.h"
 #include "MpvController.h"
 #include "PluginManager.h"
+#include "PluginStore.h"
 #include "ProfileManager.h"
 #include "VcdNav.h"
 
@@ -40,6 +41,7 @@ int main(int argc, char *argv[])
     // Plugins vor libmpv/libbluray laden: Umgebung, Disc-Bibliotheken, mpv-Skripte
     PluginManager plugins;
     plugins.loadEnabled();
+    PluginStore store(&plugins);
     DisplayManager displays;
     DriveManager drives;
     ProfileManager profiles;
@@ -107,6 +109,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Dcp", &dcp);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "I18n", &i18n);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Plugins", &plugins);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Store", &store);
     QObject::connect(&i18n, &I18n::languageChanged, &profiles, &ProfileManager::retranslate);
 
     QQmlApplicationEngine engine;
