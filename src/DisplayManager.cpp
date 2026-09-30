@@ -2,6 +2,10 @@
 #include "Tr.h"
 
 #include <QGuiApplication>
+#include <QSettings>
+
+#include <limits>
+#include <tuple>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -237,6 +241,7 @@ int DisplayManager::pickRate(const QList<double> &rates, double fps)
 DisplayManager::DisplayManager(QObject *parent)
     : QObject(parent)
 {
+    m_autoScreens = QSettings().value(QStringLiteral("ui/autoScreens"), true).toBool();
 #ifdef Q_OS_WIN
     m_backend = QStringLiteral("windows");
     m_canRefresh = m_canHdr = true;
@@ -322,11 +327,72 @@ void DisplayManager::refresh()
     }
 }
 
+// Wiedergabe: meiste Pixel, dann Bildwiederholrate, dann HDR; bei Gleichstand der
+// Nicht-Hauptbildschirm (Projektor/TV hängen meist als zweiter Bildschirm dran)
+QString DisplayManager::pickMain(const QVariantList &outputs)
+{
+    QString best;
+    std::tuple<qint64, int, int, int> bestKey{-1, 0, 0, 0};
+    for (const auto &v : outputs) {
+        const QVariantMap o = v.toMap();
+        const std::tuple<qint64, int, int, int> key{qint64(o.value("width").toInt()) * o.value("height").toInt(), o.value("refresh").toInt(),
+                                                   o.value("hdrSupported").toBool() ? 1 : 0, o.value("primary").toBool() ? 0 : 1};
+        if (key > bestKey) {
+            bestKey = key;
+            best = o.value("id").toString();
+        }
+    }
+    return best;
+}
+
+// Steuerung: kleinster übriger Bildschirm (bei Gleichstand der Hauptbildschirm des Systems)
+QString DisplayManager::pickControl(const QVariantList &outputs, const QString &mainId)
+{
+    QString best;
+    std::tuple<qint64, int> bestKey{std::numeric_limits<qint64>::max(), 1};
+    for (const auto &v : outputs) {
+        const QVariantMap o = v.toMap();
+        if (o.value("id").toString() == mainId)
+            continue;
+        const std::tuple<qint64, int> key{qint64(o.value("width").toInt()) * o.value("height").toInt(), o.value("primary").toBool() ? 0 : 1};
+        if (key < bestKey) {
+            bestKey = key;
+            best = o.value("id").toString();
+        }
+    }
+    return best;
+}
+
+QString DisplayManager::mainOutput() const
+{
+    if (m_autoScreens && m_outputs.size() > 1)
+        return pickMain(m_outputs);
+    for (const auto &v : m_outputs)
+        if (v.toMap().value("primary").toBool())
+            return v.toMap().value("id").toString();
+    return {};
+}
+
+QString DisplayManager::controlOutput() const
+{
+    return m_autoScreens && m_outputs.size() > 1 ? pickControl(m_outputs, mainOutput()) : QString();
+}
+
+void DisplayManager::setAutoScreens(bool on)
+{
+    if (on == m_autoScreens)
+        return;
+    m_autoScreens = on;
+    QSettings().setValue(QStringLiteral("ui/autoScreens"), on);
+    emit outputsChanged();
+}
+
 QVariantMap DisplayManager::output(const QString &outputId) const
 {
+    const QString id = outputId.isEmpty() ? mainOutput() : outputId;
     for (const auto &v : m_outputs) {
         const QVariantMap o = v.toMap();
-        if (outputId.isEmpty() ? o.value("primary").toBool() : o.value("id").toString() == outputId)
+        if (o.value("id").toString() == id)
             return o;
     }
     // Fallback: nach Anzeigenamen suchen (z. B. Profil von anderem Rechner)
@@ -341,7 +407,8 @@ QVariantMap DisplayManager::output(const QString &outputId) const
 QVariantMap DisplayManager::mpvScreenOptions(const QString &outputId) const
 {
     QVariantMap opts;
-    if (outputId.isEmpty())
+    // leer = Automatisch: nur mit mehreren Bildschirmen festlegen
+    if (outputId.isEmpty() && (!m_autoScreens || m_outputs.size() < 2))
         return opts;
     const QVariantMap o = output(outputId);
     if (o.isEmpty())

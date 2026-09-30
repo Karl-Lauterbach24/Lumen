@@ -1022,6 +1022,20 @@ void MpvController::removeOverlay(int id)
     mpv_command_async(m_mpv, 0, args);
 }
 
+// Bildschirme geändert: Profil-Ausgabe "Automatisch" neu anwenden
+void MpvController::onOutputsChanged()
+{
+    if (!m_mpv || !m_displays || !m_profile.value("output").toString().isEmpty())
+        return;
+    if (m_window) {
+        placeEmbeddedWindow();
+        return;
+    }
+    const QVariantMap screen = m_displays->mpvScreenOptions(QString());
+    for (auto it = screen.cbegin(); it != screen.cend(); ++it)
+        setOptionRaw(it.key(), it.value(), false);
+}
+
 void MpvController::setVcdNav(VcdNav *vcd)
 {
     m_vcd = vcd;

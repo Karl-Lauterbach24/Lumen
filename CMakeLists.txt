@@ -423,6 +423,13 @@ if(LUMEN_BUILD_TESTS)
     add_executable(plugin_test tests/plugin_test.cpp src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
     target_include_directories(plugin_test PRIVATE src include)
     target_link_libraries(plugin_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
+    # Automatische Bildschirmzuordnung
+    add_executable(display_test tests/display_test.cpp src/DisplayManager.cpp src/DisplayManager.h)
+    target_include_directories(display_test PRIVATE src)
+    target_link_libraries(display_test PRIVATE Qt6::Core Qt6::Gui)
+    if(APPLE)
+        target_link_libraries(display_test PRIVATE "-framework ApplicationServices")
+    endif()
     # Medienserver (Jellyfin/Emby/Plex) gegen tools/mock_media_server.py
     add_executable(media_test tests/media_test.cpp src/MediaServers.cpp src/MediaServers.h)
     target_include_directories(media_test PRIVATE src)

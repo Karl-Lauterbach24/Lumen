@@ -20,6 +20,11 @@ class DisplayManager : public QObject
     Q_PROPERTY(bool canSwitchRefresh READ canSwitchRefresh CONSTANT)
     Q_PROPERTY(bool canSwitchHdr READ canSwitchHdr CONSTANT)
     Q_PROPERTY(QString backend READ backend CONSTANT)
+    // Mehrere Bildschirme: Wiedergabe automatisch auf dem höchstauflösenden, Steuerung
+    // auf dem kleinsten übrigen (Profil-Ausgabe "Automatisch")
+    Q_PROPERTY(bool autoScreens READ autoScreens WRITE setAutoScreens NOTIFY outputsChanged)
+    Q_PROPERTY(QString mainOutput READ mainOutput NOTIFY outputsChanged)
+    Q_PROPERTY(QString controlOutput READ controlOutput NOTIFY outputsChanged)
 
 public:
     explicit DisplayManager(QObject *parent = nullptr);
@@ -31,6 +36,15 @@ public:
     QString backend() const { return m_backend; }
 
     Q_INVOKABLE void refresh();
+
+    bool autoScreens() const { return m_autoScreens; }
+    void setAutoScreens(bool on);
+    // Ausgabe für "Automatisch" (leere Profil-Ausgabe) bzw. für das Steuerfenster (leer = keins)
+    QString mainOutput() const;
+    QString controlOutput() const;
+    // Auswahlregeln (für Tests ohne echte Bildschirme)
+    static QString pickMain(const QVariantList &outputs);
+    static QString pickControl(const QVariantList &outputs, const QString &mainId);
 
     // Liefert die mpv-Optionen, die das native Player-Fenster auf dieses Gerät legen.
     QVariantMap mpvScreenOptions(const QString &outputId) const;
@@ -53,6 +67,7 @@ signals:
 
 private:
     QVariantList m_outputs;
+    bool m_autoScreens = true;
     QString m_backend;
     bool m_canRefresh = false;
     bool m_canHdr = false;

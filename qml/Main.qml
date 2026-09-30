@@ -58,6 +58,10 @@ ApplicationWindow {
     readonly property real curDur: navMode ? nav.duration : Player.duration
     readonly property var curChapters: navMode ? nav.chapters : Player.chapters
     readonly property int curChapter: navMode ? nav.chapter : Player.currentChapter
+    function outputName(id) {
+        const o = Displays.outputs.find(x => x.id === id)
+        return o ? o.name + " (" + o.width + "×" + o.height + ")" : "–"
+    }
     function seekAbs(s) { if (navMode) nav.seek(s); else Player.seek(s, false) }
     function seekRel(d) { if (navMode) nav.seekRelative(d); else Player.seek(d, true) }
     function nextChapter() { if (navMode) nav.nextChapter(); else Player.nextChapter() }
@@ -1065,6 +1069,17 @@ ApplicationWindow {
                                     valueRole: "code"
                                     currentIndex: indexFor(I18n.language)
                                     onActivated: I18n.language = currentValue
+                                }
+
+                                SectionLabel { text: qsTr("Bildschirme") }
+                                Toggle {
+                                    Layout.fillWidth: true
+                                    label: qsTr("Bildschirme automatisch zuordnen")
+                                    hint: Displays.outputs.length > 1
+                                          ? qsTr("Wiedergabe: %1 · Steuerung: %2").arg(win.outputName(Displays.mainOutput)).arg(win.outputName(Displays.controlOutput))
+                                          : qsTr("Nur ein Bildschirm angeschlossen")
+                                    checked: Displays.autoScreens
+                                    onToggled: Displays.autoScreens = checked
                                 }
 
                                 SectionLabel { text: qsTr("Aktives Profil") }

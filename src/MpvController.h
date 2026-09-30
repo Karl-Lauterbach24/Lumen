@@ -124,6 +124,7 @@ public:
     QVariantMap osdDimensions() const { return m_osdDims; }
     void setDvdNav(DvdNav *dvd);
     void setVcdNav(VcdNav *vcd);
+    void onOutputsChanged();
 
     // Transport
     Q_INVOKABLE void togglePause();

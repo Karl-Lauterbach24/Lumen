@@ -48,7 +48,7 @@ Popup {
         return d
     }
 
-    readonly property var outputModel: [{ id: "", label: qsTr("Hauptbildschirm") }].concat(Displays.outputs)
+    readonly property var outputModel: [{ id: "", label: qsTr("Automatisch (höchstauflösender Bildschirm)") }].concat(Displays.outputs)
     readonly property var audioDeviceModel: Player.audioDevices.length
         ? Player.audioDevices.map(d => ({ id: d.name, label: d.description || d.name }))
         : [{ id: "auto", label: qsTr("Automatisch") }]

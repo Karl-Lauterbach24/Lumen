@@ -5,6 +5,7 @@
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QScreen>
 #include <QTimer>
 #include <QUrl>
 
@@ -160,6 +161,35 @@ int main(int argc, char *argv[])
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
     engine.loadFromModule("Lumen", "Main");
+
+    // Mehrere Bildschirme: Steuerfenster auf den kleinsten, Wiedergabe auf den größten
+    auto placeControl = [&] {
+        if (engine.rootObjects().isEmpty())
+            return;
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+        const QString id = displays.controlOutput();
+        if (!window || id.isEmpty())
+            return;
+        const QVariantMap o = displays.output(id);
+        for (QScreen *s : QGuiApplication::screens()) {
+            if (s->name() != id && s->geometry().topLeft() != QPoint(o.value("x").toInt(), o.value("y").toInt()))
+                continue;
+            if (window->screen() == s)
+                return;
+            const QRect area = s->availableGeometry();
+            window->setScreen(s);
+            window->resize(std::min(window->width(), int(area.width() * 0.95)), std::min(window->height(), int(area.height() * 0.95)));
+            window->setPosition(area.center() - QPoint(window->width() / 2, window->height() / 2));
+            return;
+        }
+    };
+    placeControl();
+    QObject::connect(&displays, &DisplayManager::outputsChanged, &app, [&] {
+        placeControl();
+        player.onOutputsChanged();
+    });
+    QObject::connect(qApp, &QGuiApplication::screenAdded, &displays, &DisplayManager::refresh);
+    QObject::connect(qApp, &QGuiApplication::screenRemoved, &displays, &DisplayManager::refresh);
 
     // lumen [--menu] [--kdm <datei>] <datei|iso|ordner|laufwerk|dcp|cue>
     QStringList args = app.arguments().mid(1);
