@@ -10,21 +10,46 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v5
 
+      # Qt, libass, libplacebo, libbluray ... kommen von Homebrew; x264, FFmpeg-mvc und mpv baut
+      # tools/build_deps.sh – dieselben Versionen wie unter Windows und Linux.
       - name: Abhängigkeiten (Homebrew)
         run: |
           brew update --quiet
-          brew install --quiet qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja dvdauthor vcdimager || true
+          brew install --quiet qt libbluray libdvdnav libdvdread libcdio openssl@3 libxml2 pkgconf ninja meson nasm \
+               dav1d libass libplacebo luajit little-cms2 libarchive jpeg-turbo uchardet zimg rubberband xz dvdauthor vcdimager || true
           # dvdauthor/vcdimager erzeugen nur Testmaterial – alles andere muss da sein
-          for f in qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 ninja; do brew list --versions "$f" >/dev/null || { echo "::error::$f fehlt"; exit 1; }; done
+          for f in qt libbluray libdvdnav libcdio openssl@3 libxml2 ninja meson nasm dav1d libass libplacebo luajit little-cms2 libarchive; do
+            brew list --versions "$f" >/dev/null || { echo "::error::$f fehlt"; exit 1; }
+          done
+
+      - name: Medienbibliotheken (Cache)
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: 3rdparty/prefix
+          key: deps-macos-arm64-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
+
+      - name: Medienbibliotheken bauen (x264, FFmpeg-mvc, mpv)
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          if ! tools/build_deps.sh > deps.log 2>&1; then
+            tail -60 deps.log
+            tail -25 deps.log | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+          grep -E "^===|applied|Done" deps.log
 
       - name: Konfigurieren
         run: |
+          echo "$PWD/3rdparty/prefix/bin" >> "$GITHUB_PATH"
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUMEN_BUILD_TESTS=ON \
                 -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" 2>&1 | tee configure.log
+          grep -q "Medienbibliotheken aus" configure.log || { echo "::error::Präfix aus build_deps.sh nicht benutzt"; exit 1; }
           grep -q "OpenSSL (DCP-Entschlüsselung): TRUE" configure.log || echo "::warning::OpenSSL nicht gefunden"
           grep -qE "libdvdnav: (1|TRUE)" configure.log || echo "::warning::libdvdnav nicht gefunden"
           grep -qE "libxml2 \(KDM-Signatur\): (1|TRUE)" configure.log || echo "::warning::libxml2 nicht gefunden"
@@ -97,6 +122,24 @@ jobs:
           [ -d build/Lumen-Plugins/plugins/disc-identify ] || { echo "::warning::Plugin disc-identify fehlt im Store – Test übersprungen"; exit 0; }
           build/discinfo_test build/Lumen-Plugins/plugins python3 tools/mock_disc_server.py
 
+      - name: "Test: Blu-ray 3D (MVC-Decoder, beide Ansichten)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/bd3d.txt) 2>&1
+          tools/test_bd3d.sh build build/tests/bd3d
+
+      - name: "Test: Übertragung (Sendestrom, Ton-Bild-Abgleich, DLNA, Chromecast, AirPlay, TV-App)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/cast.txt) 2>&1
+          set -e
+          ffmpeg -hide_banner -loglevel error -y \
+                 -f lavfi -i "color=c=black:s=640x360:r=30,drawbox=c=white:t=fill:enable='lt(mod(t\,1)\,0.1)'" \
+                 -f lavfi -i "aevalsrc='0.5*sin(2*PI*1000*t)*lt(mod(t\,1)\,0.1)':s=48000:c=stereo" \
+                 -t 20 -c:v libx264 -g 30 -pix_fmt yuv420p -c:a aac build/tests/sync.mp4
+          rc=0
+          build/cast_test python3 tools/mock_cast_devices.py "$(brew --prefix openssl@3)/bin/openssl" build/tests/sync.mp4 > build/tests/cast.txt 2>&1 || rc=$?
+          cat build/tests/cast.txt
+          grep -q BESTANDEN build/tests/cast.txt && [ "$rc" -eq 0 ]
+
       - name: "Test: Video-CD-Menüs (PBC, mit vcdxbuild erstellt)"
         run: |
           mkdir -p build/logs; exec > >(tee -a build/logs/vcd.txt) 2>&1
@@ -149,9 +192,17 @@ jobs:
             echo "libdvdcss.2.dylib = Lumen-Shim"
           fi
           # das Bundle muss ohne Homebrew-Pfade auskommen
-          if find build/Lumen.app/Contents -type f -print0 | xargs -0 file | grep Mach-O | cut -d: -f1                | while read -r f; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar)"; then
+          if find build/Lumen.app/Contents -type f -print0 | xargs -0 file | grep Mach-O | cut -d: -f1                | while read -r f; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar)|3rdparty/prefix"; then
             echo "::error::Lumen.app verweist noch auf Homebrew-Bibliotheken"; exit 1
           fi
+          # ohne das Build-Präfix: das Bundle muss alles selbst mitbringen
+          mv 3rdparty/prefix 3rdparty/prefix.off
+          trap 'mv 3rdparty/prefix.off 3rdparty/prefix' EXIT
+          build/Lumen.app/Contents/MacOS/Lumen --selftest /tmp/selftest.json
+          cat /tmp/selftest.json
+          for key in mvc cast lua bluray dvdnav; do
+            grep -q "\"$key\": true" /tmp/selftest.json || { echo "::error::Selbsttest: $key fehlt"; exit 1; }
+          done
           # das ausgelieferte Bundle muss starten (Steuerfenster als Bild speichern)
           rm -f /tmp/lumen-bundle.png
           LUMEN_SNAPSHOT=/tmp/lumen-bundle.png build/Lumen.app/Contents/MacOS/Lumen &

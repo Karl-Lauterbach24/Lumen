@@ -59,6 +59,11 @@ MINGW*|MSYS*)
     # configure scripts cannot handle backslashes, compilers no POSIX paths: use "C:/..."
     PREFIX="$(cygpath -m "$PREFIX")"
     FF_PLATFORM=(--pkg-config=pkgconf --enable-d3d11va --enable-dxva2 --enable-d3d12va --enable-mediafoundation)
+    # CLANG environments (Windows on ARM): no gcc
+    if ! command -v gcc >/dev/null && command -v clang >/dev/null; then
+        export CC=clang CXX=clang++
+        FF_PLATFORM+=(--cc=clang --cxx=clang++)
+    fi
     ;;
 Darwin)
     OS=macos

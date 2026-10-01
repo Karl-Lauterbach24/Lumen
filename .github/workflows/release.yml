@@ -41,27 +41,51 @@ jobs:
         with:
           msystem: ${{ matrix.msystem }}
           update: true
-          install: git make zip
+          install: git make zip diffutils perl
+          # Qt, libass, libplacebo, libbluray ... come from MSYS2; x264, FFmpeg-mvc and mpv are
+          # built by tools/build_deps.sh - the same versions as on macOS and Linux.
           pacboy: >-
-            toolchain:p cmake:p ninja:p pkgconf:p python:p nasm:p dav1d:p
+            toolchain:p cmake:p ninja:p pkgconf:p python:p nasm:p meson:p dav1d:p
             qt6-base:p qt6-declarative:p qt6-svg:p qt6-imageformats:p qt6-tools:p
-            mpv:p ffmpeg:p libbluray:p libdvdnav:p libcdio:p openssl:p libxml2:p
+            libbluray:p libdvdnav:p libcdio:p openssl:p libxml2:p
+            libass:p libplacebo:p lua51:p lcms2:p libarchive:p libjpeg-turbo:p uchardet:p zimg:p rubberband:p
+            vulkan-headers:p vulkan-loader:p shaderc:p spirv-cross:p zlib:p bzip2:p xz:p
 
-      - name: FFmpeg-mvc (Blu-ray 3D decoder, matched to MSYS2's FFmpeg)
-        id: mvc
-        if: matrix.arch == 'x64'
-        continue-on-error: true
+      - name: Media libraries (cache)
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: 3rdparty/prefix
+          key: deps-windows-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
+
+      - name: Build media libraries (x264, FFmpeg-mvc, mpv)
+        if: steps.deps.outputs.cache-hit != 'true'
         run: |
-          ver=$(ffmpeg -hide_banner -version | head -1 | sed -E 's/^ffmpeg version n?([0-9]+\.[0-9]+).*/\1/')
-          echo "MSYS2 FFmpeg $ver -> FFmpeg-mvc release/$ver"
-          FFMPEG_MVC_BRANCH="release/$ver" SRC=/d/ffmpeg-mvc-src DEST="$PWD/3rdparty/ffmpeg-mvc" tools/build_ffmpeg_mvc.sh
-          ls 3rdparty/ffmpeg-mvc/bin
+          set -o pipefail
+          # short source path: deep build trees exceed the 260 character limit
+          if ! SRCROOT=/d/lumen-deps tools/build_deps.sh > deps.log 2>&1; then
+            tail -60 deps.log
+            tail -25 deps.log | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+          grep -E "^===|applied|Done" deps.log
+          ls 3rdparty/prefix/bin
 
       - name: Build
         run: |
+          set -o pipefail
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$MINGW_PREFIX \
-                -DMPV_ROOT=$MINGW_PREFIX -DBLURAY_ROOT=$MINGW_PREFIX
-          cmake --build build --target lumen
+                -DBLURAY_ROOT=$MINGW_PREFIX -DLUMEN_BUILD_TESTS=ON 2>&1 | tee configure.log
+          grep -q "Medienbibliotheken aus" configure.log || { echo "::error::prefix from build_deps.sh not used"; exit 1; }
+          if ! cmake --build build --target lumen mvcmerge_test 2>&1 | tee build.log; then
+            grep -E "error|undefined reference" build.log | head -30 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+
+      - name: "Test: Blu-ray 3D (MVC decoder, both views)"
+        run: |
+          export PATH="$PWD/3rdparty/prefix/bin:$PATH"
+          tools/test_bd3d.sh build build/tests/bd3d
 
       - name: Package (portable ZIP)
         run: |
@@ -71,8 +95,8 @@ jobs:
           mkdir -p $S
           cp build/lumen.exe build/libdvdcss-2.dll $S/
           windeployqt6 --qmldir qml --no-translations --no-compiler-runtime --dir $S $S/lumen.exe
-          SEARCH="$MINGW_PREFIX/bin"
-          [ -d 3rdparty/ffmpeg-mvc/bin ] && SEARCH="3rdparty/ffmpeg-mvc/bin $SEARCH"
+          # the prefix first: its FFmpeg and libmpv take precedence over anything in MSYS2
+          SEARCH="3rdparty/prefix/bin $MINGW_PREFIX/bin"
           python tools/deploy_windows.py $S/lumen.exe --search $SEARCH --own libdvdcss-2.dll
           cp LICENSE THIRD_PARTY.md README.md $S/
           # libdvdcss must be Lumen's stand-in, never the real library
@@ -89,6 +113,13 @@ jobs:
           for ($i = 0; $i -lt 40 -and -not (Test-Path $env:LUMEN_SNAPSHOT); $i++) { Start-Sleep -Milliseconds 500 }
           Stop-Process -Id $p.Id -ErrorAction SilentlyContinue
           if (-not (Test-Path $env:LUMEN_SNAPSHOT)) { Write-Error "Lumen did not start from the package"; exit 1 }
+          # self-test: what the packaged libraries can do (Blu-ray 3D, casting, Lua scripts)
+          $st = Start-Process dist\Lumen\lumen.exe -ArgumentList "--selftest", "$PWD\selftest.json" -PassThru -Wait
+          Get-Content selftest.json
+          $j = Get-Content selftest.json -Raw | ConvertFrom-Json
+          foreach ($key in "mvc", "cast", "lua", "bluray", "dvdnav") {
+            if (-not $j.$key) { Write-Error "self-test: $key is missing"; exit 1 }
+          }
 
       - name: MSI installer (WiX)
         shell: pwsh
@@ -121,18 +152,43 @@ jobs:
           - { arch: x64, runner: macos-15-intel }
     name: macos (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
         with:
           ref: ${{ env.REF }}
       - name: Dependencies
-        run: brew install --quiet qt mpv ffmpeg libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja
+        run: |
+          brew install --quiet qt libbluray libdvdnav libdvdread libcdio openssl@3 libxml2 pkgconf ninja meson nasm \
+               dav1d libass libplacebo luajit little-cms2 libarchive jpeg-turbo uchardet zimg rubberband xz
+      - name: Media libraries (cache)
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: 3rdparty/prefix
+          key: deps-macos-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
+      - name: Build media libraries (x264, FFmpeg-mvc, mpv)
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          if ! tools/build_deps.sh > deps.log 2>&1; then
+            tail -60 deps.log
+            tail -25 deps.log | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+          grep -E "^===|applied|Done" deps.log
       - name: Build + DMG
         run: |
+          set -o pipefail
           VER=$(grep -oE 'project[(]Lumen VERSION [0-9.]+' CMakeLists.txt | awk '{print $3}')
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
-          cmake --build build
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)" \
+                -DLUMEN_BUILD_TESTS=ON 2>&1 | tee configure.log
+          grep -q "Medienbibliotheken aus" configure.log || { echo "::error::prefix from build_deps.sh not used"; exit 1; }
+          if ! cmake --build build --target lumen mvcmerge_test 2>&1 | tee build.log; then
+            grep -E "error|Undefined symbols" build.log | head -30 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+          PATH="$PWD/3rdparty/prefix/bin:$PATH" tools/test_bd3d.sh build build/tests/bd3d
           cmake --build build --target lumen_dmg
           mv build/Lumen.dmg "Lumen-$VER-macos-${{ matrix.arch }}.dmg"
           ls -la Lumen-*.dmg
@@ -140,9 +196,16 @@ jobs:
       - name: Bundle check (no Homebrew paths, the app starts)
         run: |
           if find build/Lumen.app/Contents -type f -print0 | xargs -0 file | grep Mach-O | cut -d: -f1 \
-               | while read -r f; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar|lib)"; then
-            echo "::error::Lumen.app still refers to Homebrew libraries"; exit 1
+               | while read -r f; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar|lib)|3rdparty/prefix"; then
+            echo "::error::Lumen.app still refers to libraries outside the bundle"; exit 1
           fi
+          # without the build prefix: the bundle has to bring everything itself
+          mv 3rdparty/prefix 3rdparty/prefix.off
+          build/Lumen.app/Contents/MacOS/Lumen --selftest /tmp/selftest.json
+          cat /tmp/selftest.json
+          for key in mvc cast lua bluray dvdnav; do
+            grep -q "\"$key\": true" /tmp/selftest.json || { echo "::error::self-test: $key is missing"; exit 1; }
+          done
           rm -f /tmp/lumen-bundle.png
           LUMEN_SNAPSHOT=/tmp/lumen-bundle.png build/Lumen.app/Contents/MacOS/Lumen &
           PID=$!

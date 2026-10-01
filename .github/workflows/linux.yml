@@ -28,34 +28,70 @@ jobs:
     name: ${{ matrix.name }} (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.image }}
-    timeout-minutes: 45
+    timeout-minutes: 100
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
+      # Qt, libass, libplacebo, libbluray ... kommen von der Distribution; x264, FFmpeg-mvc, mpv
+      # (und unter Debian libdvdnav 7) baut tools/build_deps.sh – überall dieselben Versionen.
       - name: Abhängigkeiten
         run: |
           if command -v apt-get >/dev/null; then
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -q
-            apt-get install -y -q --no-install-recommends ca-certificates git cmake ninja-build g++ pkg-config file dpkg-dev python3 \
-              qt6-base-dev qt6-declarative-dev libmpv-dev libbluray-dev libdvdnav-dev libdvdread-dev libcdio-dev libiso9660-dev \
-              libssl-dev libxml2-dev openssl ffmpeg xvfb xauth libgl1-mesa-dri procps
+            apt-get install -y -q --no-install-recommends ca-certificates git cmake ninja-build g++ make pkg-config file dpkg-dev python3 \
+              patchelf meson nasm zstd perl \
+              qt6-base-dev qt6-declarative-dev libbluray-dev libcdio-dev libiso9660-dev libssl-dev libxml2-dev openssl \
+              libdav1d-dev zlib1g-dev libbz2-dev liblzma-dev libva-dev libvdpau-dev \
+              libass-dev libplacebo-dev libluajit-5.1-dev libarchive-dev liblcms2-dev libjpeg-dev libuchardet-dev libzimg-dev librubberband-dev \
+              libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxpresent-dev libxss-dev libxinerama-dev \
+              libwayland-dev wayland-protocols libxkbcommon-dev libegl-dev libgl-dev libvulkan-dev libdrm-dev libgbm-dev \
+              xvfb xauth libgl1-mesa-dri procps
           else
-            dnf install -y -q git cmake ninja-build gcc-c++ pkgconf-pkg-config file rpm-build python3 \
-              qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg mpv-devel libbluray-devel libdvdnav-devel libdvdread-devel \
-              libcdio-devel openssl-devel libxml2-devel openssl ffmpeg-free xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers procps-ng
+            dnf install -y -q git cmake ninja-build gcc-c++ gcc make pkgconf-pkg-config file rpm-build python3 \
+              patchelf meson nasm zstd perl-interpreter \
+              qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg libbluray-devel libdvdnav-devel libdvdread-devel libcdio-devel \
+              openssl-devel libxml2-devel openssl \
+              libdav1d-devel zlib-devel bzip2-devel xz-devel libva-devel libvdpau-devel \
+              libass-devel libplacebo-devel luajit-devel libarchive-devel lcms2-devel libjpeg-turbo-devel uchardet-devel zimg-devel rubberband-devel \
+              alsa-lib-devel pulseaudio-libs-devel pipewire-devel libX11-devel libXext-devel libXrandr-devel libXpresent-devel libXScrnSaver-devel \
+              libXinerama-devel wayland-devel wayland-protocols-devel libxkbcommon-devel mesa-libEGL-devel mesa-libGL-devel vulkan-loader-devel \
+              libdrm-devel mesa-libgbm-devel \
+              xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers procps-ng
           fi
 
       - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || github.ref }}
 
-      - name: Konfigurieren
+      - name: Medienbibliotheken (Cache)
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: 3rdparty/prefix
+          key: deps-linux-${{ matrix.name }}-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
+
+      - name: Medienbibliotheken bauen (x264, FFmpeg-mvc, mpv, ggf. libdvdnav 7)
+        if: steps.deps.outputs.cache-hit != 'true'
+        shell: bash
         run: |
+          set -o pipefail
+          if ! tools/build_deps.sh > deps.log 2>&1; then
+            tail -60 deps.log
+            tail -25 deps.log | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+          grep -E "^===|applied|Done" deps.log
+
+      - name: Konfigurieren
+        shell: bash
+        run: |
+          echo "$PWD/3rdparty/prefix/bin" >> "$GITHUB_PATH"
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DLUMEN_BUILD_TESTS=ON 2>&1 | tee configure.log
           grep "Lumen:" configure.log
+          grep -q "Medienbibliotheken aus" configure.log || { echo "::error::Präfix aus build_deps.sh nicht benutzt"; exit 1; }
           grep -q "OpenSSL (DCP-Entschlüsselung): TRUE" configure.log || { echo "::error::OpenSSL nicht gefunden"; exit 1; }
-          grep -qE "libdvdnav: (1|TRUE)" configure.log || { echo "::error::libdvdnav nicht gefunden"; exit 1; }
+          grep -qE "libdvdnav: (1|TRUE) \(7" configure.log || { echo "::error::libdvdnav 7 nicht gefunden"; exit 1; }
           grep -qE "libcdio: (1|TRUE)" configure.log || { echo "::error::libcdio nicht gefunden"; exit 1; }
 
       - name: Bauen
@@ -86,9 +122,8 @@ jobs:
           set -e
           build/plugin_test build/plugins build/tests/dcp | tee build/tests/plugins.txt
           grep -q BESTANDEN build/tests/plugins.txt
-          # ffmpeg-free (Fedora) hat kein H.264/AAC: VP9/Opus, mpv erkennt den Container am Inhalt
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=640x360:rate=24 -f lavfi -i sine=f=440 -t 2 \
-                 -c:v libvpx-vp9 -c:a libopus -f matroska build/tests/stream.mp4
+                 -c:v libx264 -c:a aac -pix_fmt yuv420p build/tests/stream.mp4
           build/media_test python3 tools/mock_media_server.py build/tests/stream.mp4
           build/display_test
 
@@ -99,6 +134,26 @@ jobs:
           git clone -q --depth 1 https://github.com/Karl-Lauterbach24/Lumen-Plugins build/Lumen-Plugins
           [ -d build/Lumen-Plugins/plugins/disc-identify ] || { echo "::warning::Plugin disc-identify fehlt im Store – Test übersprungen"; exit 0; }
           build/discinfo_test build/Lumen-Plugins/plugins python3 tools/mock_disc_server.py
+
+      - name: "Test: Blu-ray 3D (MVC-Decoder, beide Ansichten)"
+        shell: bash
+        run: tools/test_bd3d.sh build build/tests/bd3d
+
+      - name: "Test: Übertragung (Sendestrom, Ton-Bild-Abgleich, DLNA, Chromecast, AirPlay, TV-App)"
+        shell: bash
+        run: |
+          set -e
+          ffmpeg -hide_banner -loglevel error -y \
+                 -f lavfi -i "color=c=black:s=640x360:r=30,drawbox=c=white:t=fill:enable='lt(mod(t\,1)\,0.1)'" \
+                 -f lavfi -i "aevalsrc='0.5*sin(2*PI*1000*t)*lt(mod(t\,1)\,0.1)':s=48000:c=stereo" \
+                 -t 20 -c:v libx264 -g 30 -pix_fmt yuv420p -c:a aac build/tests/sync.mp4
+          # OpenGL ohne Grafikkarte: virtueller X-Server mit Mesa (llvmpipe)
+          export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1
+          rc=0
+          xvfb-run -a -s "-screen 0 1280x720x24" build/cast_test python3 tools/mock_cast_devices.py openssl build/tests/sync.mp4 > build/tests/cast.txt 2>&1 || rc=$?
+          cat build/tests/cast.txt
+          grep -E "^FAIL" build/tests/cast.txt | while IFS= read -r l; do echo "::error::$l"; done
+          grep -q BESTANDEN build/tests/cast.txt && [ "$rc" -eq 0 ]
 
       - name: Paket bauen (${{ matrix.generator }})
         shell: bash
@@ -113,12 +168,28 @@ jobs:
         shell: bash
         run: |
           set -e
+          # das installierte Programm darf nichts aus dem Build-Baum laden
+          mv 3rdparty/prefix 3rdparty/prefix.off
+          trap 'mv 3rdparty/prefix.off 3rdparty/prefix' EXIT
           if [ "${{ matrix.generator }}" = DEB ]; then
             apt-get install -y -q ./build/Lumen-*.deb
           else
             dnf install -y -q ./build/Lumen-*.rpm
           fi
           command -v lumen
+          ldd "$(command -v lumen)" | grep -E "libmpv|libavcodec|libx264|libdvdnav" || true
+          if ldd "$(command -v lumen)" | grep -E "libmpv|libavcodec" | grep -v "/usr/lib/lumen/"; then
+            echo "::error::lumen lädt Medienbibliotheken nicht aus /usr/lib/lumen"; exit 1
+          fi
+          if ldd "$(command -v lumen)" | grep -q "not found"; then
+            ldd "$(command -v lumen)" | grep "not found" | while IFS= read -r l; do echo "::error::$l"; done; exit 1
+          fi
+          # Selbsttest: mitgelieferte Bibliotheken (Blu-ray 3D, Übertragung, Lua-Skripte)
+          lumen --selftest /tmp/selftest.json
+          cat /tmp/selftest.json
+          for key in mvc cast lua bluray dvdnav; do
+            grep -q "\"$key\": true" /tmp/selftest.json || { echo "::error::Selbsttest: $key fehlt"; exit 1; }
+          done
           # Steuerfenster des installierten Programms rendern (virtueller X-Server, Software-Rendering)
           export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software LUMEN_SNAPSHOT=/tmp/lumen.png
           # der virtuelle X-Server startet im Container nicht immer zuverlässig: bis zu 3 Versuche

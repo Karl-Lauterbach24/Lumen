@@ -2,7 +2,6 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
-#include <QTemporaryFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QQmlApplicationEngine>
@@ -58,18 +57,24 @@ static int selfTest(const QString &file)
             // Blu-ray 3D: FFmpeg-mvc meldet sich mit "mvc" in der Versionskennung
             out["mvc"] = prop("ffmpeg-version").contains(QLatin1String("mvc"), Qt::CaseInsensitive);
             // Lua-Skripte (Plugins, yt-dlp)
-            QTemporaryFile script(QDir::tempPath() + QStringLiteral("/lumen-selftest-XXXXXX.lua"));
+            const QString scriptPath = QDir::tempPath() + QStringLiteral("/lumen-selftest-%1.lua").arg(QCoreApplication::applicationPid());
+            QFile script(scriptPath);
             bool lua = false;
-            if (script.open()) {
-                script.write("mp.set_property('user-data/lumen-selftest', 'ok')\n");
+            if (script.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                script.write("mp.commandv('script-message', 'lumen-selftest-lua')\n");
                 script.close();
-                const QByteArray path = script.fileName().toUtf8();
+                const QByteArray path = scriptPath.toUtf8();
                 const char *load[] = {"load-script", path.constData(), nullptr};
                 mpv_command(mpv, load);
-                for (int i = 0; i < 40 && !lua; ++i) {
-                    mpv_wait_event(mpv, 0.05);
-                    lua = prop("user-data/lumen-selftest") == QLatin1String("ok");
+                // das Skript meldet sich mit einer Nachricht an alle Clients
+                for (int i = 0; i < 60 && !lua; ++i) {
+                    const mpv_event *ev = mpv_wait_event(mpv, 0.05);
+                    if (ev->event_id == MPV_EVENT_CLIENT_MESSAGE) {
+                        const auto *m = static_cast<mpv_event_client_message *>(ev->data);
+                        lua = m->num_args > 0 && !qstrcmp(m->args[0], "lumen-selftest-lua");
+                    }
                 }
+                QFile::remove(scriptPath);
             }
             out["lua"] = lua;
         }
