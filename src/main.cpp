@@ -22,6 +22,7 @@
 #include "DriveManager.h"
 #include "MpvController.h"
 #include "PluginManager.h"
+#include "Recent.h"
 #include "PluginStore.h"
 #include "ProfileManager.h"
 #include "VcdNav.h"
@@ -121,6 +122,38 @@ int main(int argc, char *argv[])
         servers.reportStart(item, start);
         serverPlay = {true, url, start};
     });
+    // Zuletzt gespielt (Startseite): lokale Quellen mit Position zum Fortsetzen
+    Recent recent;
+    auto recentKey = [&]() -> QString {
+        if (player.sourceKind() == QLatin1String("file"))
+            return QFileInfo::exists(player.path()) ? player.path() : QString();
+        return player.device();
+    };
+    // mpv meldet "Datei geladen" und den Pfad unabhängig voneinander – beides abwarten
+    auto noteCurrent = [&] {
+        if (player.idle())
+            return;
+        const bool file = player.sourceKind() == QLatin1String("file");
+        recent.note(recentKey(), player.sourceKind(), file ? QString() : scanner.info().value("discName").toString());
+    };
+    QObject::connect(&player, &MpvController::fileLoaded, &recent, noteCurrent);
+    QObject::connect(&player, &MpvController::mediaChanged, &recent, noteCurrent);
+    QObject::connect(&player, &MpvController::idleChanged, &recent, noteCurrent);
+    QObject::connect(&scanner, &DiscScanner::infoChanged, &recent, [&] {
+        // Disc-Name (auch nachträglich von einem Plugin) als Titel übernehmen
+        const QString name = scanner.info().value("discName").toString();
+        if (!player.idle() && !name.isEmpty() && player.sourceKind() != QLatin1String("file")
+            && scanner.info().value("device").toString() == player.device())
+            recent.note(player.device(), player.sourceKind(), name);
+    });
+    QTimer recentProgress;
+    recentProgress.setInterval(5000);
+    QObject::connect(&recentProgress, &QTimer::timeout, &recent, [&] {
+        if (!player.idle() && player.sourceKind() == QLatin1String("file") && player.duration() > 60)
+            recent.notePosition(recentKey(), player.position(), player.duration());
+    });
+    recentProgress.start();
+
     QTimer serverProgress;
     serverProgress.setInterval(10000);
     QObject::connect(&serverProgress, &QTimer::timeout, &servers, [&] {
@@ -169,6 +202,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Plugins", &plugins);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Store", &store);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Servers", &servers);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Recent", &recent);
     Updater updater;
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Updater", &updater);
     QTimer::singleShot(4000, &updater, &Updater::checkAutomatically);
@@ -234,6 +268,12 @@ int main(int argc, char *argv[])
     if (!snapshot.isEmpty() && !engine.rootObjects().isEmpty()) {
         auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
         const int delay = qEnvironmentVariableIntValue("LUMEN_SNAPSHOT_DELAY");
+        // LUMEN_SNAPSHOT_HELP=1: mit geöffnetem Hilfe-Dialog (für README-Bilder)
+        if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_HELP"))
+            QMetaObject::invokeMethod(window, "showHelp");
+        // LUMEN_SNAPSHOT_RECENT=<n>: n-ten Eintrag aus „Zuletzt gespielt“ öffnen (Test des Fortsetzens)
+        if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_RECENT"))
+            QMetaObject::invokeMethod(window, "openRecentIndex", Q_ARG(QVariant, qEnvironmentVariableIntValue("LUMEN_SNAPSHOT_RECENT")));
         QTimer::singleShot(delay > 0 ? delay : 2500, window, [window, snapshot] { window->grabWindow().save(snapshot); });
     }
 

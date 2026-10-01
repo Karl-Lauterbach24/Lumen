@@ -170,6 +170,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/PluginStore.h       src/PluginStore.cpp
     src/MediaServers.h      src/MediaServers.cpp
     src/Updater.h           src/Updater.cpp
+    src/Recent.h            src/Recent.cpp
     include/lumen/plugin.h
     src/Tr.h
     ${LUMEN_DCP_SOURCES}
@@ -190,6 +191,7 @@ set(LUMEN_QML
     qml/CinemaPane.qml
     qml/PluginsPane.qml
     qml/StreamingPane.qml
+    qml/HelpDialog.qml
 )
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Alle QML-Dateien ins Modul-Wurzelverzeichnis legen (gemeinsames qmldir -> Singleton "Theme")
@@ -208,7 +210,7 @@ qt_add_qml_module(lumen
         icons/fullscreen.svg icons/eject.svg icons/disc.svg icons/folder.svg
         icons/tune.svg icons/loop.svg icons/camera.svg icons/info.svg
         icons/frame-back.svg icons/frame-fwd.svg icons/refresh.svg
-        icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg
+        icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg icons/help.svg icons/close.svg
         profiles/presets.json
         resources/logo/lumen-emblem-small.png resources/logo/lumen-icon-256.png resources/logo/lumen-logo.png
         i18n/en.json i18n/fr.json i18n/es.json i18n/it.json i18n/pt.json i18n/nl.json i18n/pl.json

@@ -13,7 +13,7 @@ ApplicationWindow {
     minimumWidth: 900
     minimumHeight: 560
     visible: true
-    title: qsTr("Lumen")
+    title: Player.idle || !nowTitle ? qsTr("Lumen") : nowTitle + " – " + qsTr("Lumen")
     color: Theme.bg
     font.family: Theme.font
     font.pixelSize: 13
@@ -46,6 +46,14 @@ ApplicationWindow {
     // Zustand
     // ------------------------------------------------------------------
     property string currentDevice: ""
+    // Name dessen, was gerade läuft (große Zeile links, Fenstertitel)
+    readonly property string nowTitle: (Dcp.active && Dcp.current.title) ? Dcp.current.title
+        : (isDvd && DvdNav.discTitle) ? DvdNav.discTitle
+        : (Player.isDisc && Disc.info.discName) ? Disc.info.discName
+        : (Player.isDisc && selectedDrive && selectedDrive.label) ? selectedDrive.label
+        : Player.mediaTitle
+    // Position, an der eine Datei aus „Zuletzt gespielt“ fortgesetzt wird
+    property real pendingResume: 0
     readonly property var selectedDrive: driveSelect.currentIndex >= 0 ? Drives.drives[driveSelect.currentIndex] : null
     readonly property var vinfo: Player.videoInfo
     readonly property var ainfo: Player.audioInfo
@@ -89,6 +97,25 @@ ApplicationWindow {
         Player.openSource(path, withMenu ? "menu" : "main", -1)
     }
 
+    function showHelp() { helpDialog.open() }
+    function openRecentIndex(i) { if (Recent.items[i]) openRecent(Recent.items[i]) }
+    function openRecent(item) {
+        pendingResume = item.kind === "file" && item.position > 5 ? item.position : 0
+        openPath(item.path, settings.startWithMenu)
+    }
+    // Aus dem Dateimanager oder Browser ins Fenster gezogen
+    function openDropped(drop) {
+        if (drop.hasUrls && drop.urls.length > 0) {
+            const u = drop.urls[0].toString()
+            if (u.startsWith("file:")) openPath(localPath(u), settings.startWithMenu)
+            else { currentDevice = ""; Disc.clear(); Player.openStream(u) }
+            return true
+        }
+        const text = drop.hasText ? drop.text.trim() : ""
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) { currentDevice = ""; Disc.clear(); Player.openStream(text); return true }
+        return false
+    }
+
     function stereoLabel(v) {
         return ({ none: "2D", fp: qsTr("HDMI Frame Packing"), sbs2l: qsTr("Side-by-Side Half"), sbsl: qsTr("Side-by-Side Full"),
                   ab2l: qsTr("Top-and-Bottom Half"), abl: qsTr("Top-and-Bottom Full"), irl: qsTr("Zeilenverschachtelt"),
@@ -116,6 +143,19 @@ ApplicationWindow {
     }
 
     Connections {
+        target: Player
+        // Dauer und "läuft" meldet mpv in beliebiger Reihenfolge
+        function tryResume() {
+            if (win.pendingResume > 0 && !Player.idle && Player.duration > win.pendingResume) {
+                Player.seek(win.pendingResume, false)
+                win.pendingResume = 0
+            }
+        }
+        function onDurationChanged() { tryResume() }
+        function onIdleChanged() { tryResume() }
+    }
+
+    Connections {
         target: Drives
         function onDiscInserted(drive) {
             if (settings.autoPlay && Player.idle) win.playDrive(drive)
@@ -136,7 +176,22 @@ ApplicationWindow {
         onAccepted: win.openPath(win.localPath(selectedFolder), settings.startWithMenu)
     }
 
+    FileDialog {
+        id: subtitleDialog
+        title: qsTr("Untertiteldatei laden")
+        nameFilters: [qsTr("Untertitel (*.srt *.ass *.ssa *.sub *.idx *.sup *.vtt *.smi)"), qsTr("Alle Dateien (*)")]
+        onAccepted: Player.addSubtitleFile(selectedFile)
+    }
+
     ProfileEditor { id: editor }
+    HelpDialog { id: helpDialog }
+
+    // Dateien, Ordner und Links ins Fenster ziehen
+    DropArea {
+        id: dropArea
+        anchors.fill: parent
+        onDropped: drop => { if (win.openDropped(drop)) drop.acceptProposedAction() }
+    }
 
     // ------------------------------------------------------------------
     // Tastatur (Steuerfenster)
@@ -167,6 +222,7 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Open]; onActivated: fileDialog.open() }
     Shortcut { sequence: "Ctrl+E"; onActivated: win.ejectSelected() }
     Shortcut { sequence: "Ctrl+D"; onActivated: settings.tab = 5 }
+    Shortcut { sequence: "F1"; onActivated: helpDialog.open() }
 
     // ------------------------------------------------------------------
     // Layout
@@ -251,6 +307,7 @@ ApplicationWindow {
                     onActivated: Profiles.currentId = currentValue
                 }
                 IconButton { iconName: "tune"; tip: qsTr("Profil bearbeiten"); onClicked: editor.openFor(Profiles.current) }
+                IconButton { iconName: "help"; tip: qsTr("Hilfe und Tastenkürzel (F1)"); onClicked: helpDialog.open() }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
         }
@@ -274,14 +331,20 @@ ApplicationWindow {
                     spacing: 8
                     visible: !Player.idle
 
+                    Image {
+                        // Cover der erkannten Audio-CD (von einem Plugin geliefert)
+                        visible: status === Image.Ready
+                        source: (Player.sourceKind === "cdda" && Disc.info.meta && Disc.info.meta.cover) || ""
+                        Layout.preferredWidth: 132; Layout.preferredHeight: 132
+                        Layout.bottomMargin: 6
+                        sourceSize.width: 264; sourceSize.height: 264
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                    }
                     SectionLabel { text: win.kindLabel(Player.sourceKind) + (Dcp.active && Dcp.current.contentKind ? " · " + Dcp.current.contentKind : "") }
                     Text {
                         Layout.fillWidth: true
-                        text: (Dcp.active && Dcp.current.title) ? Dcp.current.title
-                            : (win.isDvd && DvdNav.discTitle) ? DvdNav.discTitle
-                            : (Player.isDisc && Disc.info.discName) ? Disc.info.discName
-                            : (Player.isDisc && win.selectedDrive && win.selectedDrive.label) ? win.selectedDrive.label
-                            : Player.mediaTitle
+                        text: win.nowTitle
                         color: Theme.text
                         font.pixelSize: 28
                         font.weight: Font.DemiBold
@@ -520,6 +583,84 @@ ApplicationWindow {
                                             color: Theme.textDim; font.pixelSize: 11; elide: Text.ElideRight
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                    RowLayout {
+                        visible: Recent.items.length > 0
+                        Layout.fillWidth: true
+                        SectionLabel { text: qsTr("Zuletzt gespielt"); Layout.fillWidth: true }
+                        Button {
+                            text: qsTr("Liste leeren")
+                            flat: true
+                            focusPolicy: Qt.NoFocus
+                            font.pixelSize: 11
+                            palette.windowText: Theme.textFaint
+                            onClicked: Recent.clear()
+                        }
+                    }
+                    Flow {
+                        id: recentFlow
+                        visible: Recent.items.length > 0
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Repeater {
+                            model: Recent.items.slice(0, 4)
+                            delegate: Rectangle {
+                                id: recentTile
+                                required property var modelData
+                                width: Math.max(220, Math.min(360, (recentFlow.width - 10) / 2))
+                                height: 60
+                                radius: Theme.radius
+                                color: recentHover.hovered ? Theme.hover : Theme.raised
+                                border.color: Theme.line
+                                clip: true
+                                HoverHandler { id: recentHover; cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: if (!recentRemove.hovered) win.openRecent(recentTile.modelData) }
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 14
+                                    anchors.rightMargin: 8
+                                    spacing: 12
+                                    Image {
+                                        source: Theme.icon(recentTile.modelData.kind === "file" ? "play" : recentTile.modelData.kind === "dcp" ? "folder" : "disc")
+                                        sourceSize: Qt.size(22, 22)
+                                        opacity: 0.7
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: recentTile.modelData.title || recentTile.modelData.path
+                                            color: Theme.text; font.pixelSize: 13; font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: win.kindLabel(recentTile.modelData.kind)
+                                                  + (recentTile.modelData.position > 5 ? "  ·  " + qsTr("Weiter bei %1").arg(Theme.time(recentTile.modelData.position)) : "")
+                                            color: Theme.textDim; font.pixelSize: 11
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                    IconButton {
+                                        id: recentRemove
+                                        iconName: "close"
+                                        size: 26; iconSize: 14
+                                        opacity: recentHover.hovered ? 1 : 0
+                                        tip: qsTr("Aus der Liste entfernen")
+                                        onClicked: Recent.remove(recentTile.modelData.path)
+                                    }
+                                }
+                                Rectangle {
+                                    // Fortschritt der zuletzt erreichten Position
+                                    visible: recentTile.modelData.position > 5 && recentTile.modelData.duration > 0
+                                    anchors.bottom: parent.bottom
+                                    height: 2
+                                    width: parent.width * Math.min(1, recentTile.modelData.position / Math.max(1, recentTile.modelData.duration))
+                                    color: Theme.accent
                                 }
                             }
                         }
@@ -806,7 +947,7 @@ ApplicationWindow {
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                SectionLabel { text: qsTr("Titel / Playlists"); Layout.fillWidth: true }
+                                SectionLabel { text: Disc.info.kind === "cdda" ? qsTr("Tracks") : qsTr("Titel / Playlists"); Layout.fillWidth: true }
                                 Button {
                                     text: qsTr("Disc-Menü")
                                     flat: true
@@ -819,7 +960,7 @@ ApplicationWindow {
                                     text: qsTr("Hauptfilm")
                                     flat: true
                                     visible: win.currentDevice.length > 0 && Player.sourceKind !== "dcp" && !!Disc.info.kind
-                                             && Disc.info.kind !== "dcp" && Disc.info.kind !== "file"
+                                             && Disc.info.kind !== "dcp" && Disc.info.kind !== "file" && Disc.info.kind !== "cdda"
                                     palette.windowText: Theme.accent
                                     onClicked: Player.openSource(win.currentDevice, "main", -1)
                                 }
@@ -904,6 +1045,13 @@ ApplicationWindow {
                                 color: win.ainfo.passthrough ? Theme.good : Theme.textDim
                                 font.pixelSize: 12
                             }
+                            Toggle {
+                                Layout.fillWidth: true
+                                label: qsTr("Nachtmodus")
+                                hint: qsTr("Leise Stellen lauter, laute leiser – wirkt nicht bei Bitstream-Ausgabe")
+                                checked: Player.nightMode
+                                onToggled: Player.nightMode = checked
+                            }
                             ValueSlider {
                                 Layout.fillWidth: true
                                 label: qsTr("Audio-Verzögerung")
@@ -936,6 +1084,15 @@ ApplicationWindow {
                                        : [{ label: qsTr("Aus"), selected: Player.subtitleId === 0, id: 0 }]
                                          .concat(Player.subtitleTracks.map(t => ({ label: t.label, selected: t.id === Player.subtitleId, id: t.id })))
                                 onPicked: (i, item) => win.isDvd ? DvdNav.selectSubtitle(item.id) : Player.setSubtitleId(item.id)
+                            }
+                            Button {
+                                text: qsTr("Untertiteldatei laden …")
+                                flat: true
+                                focusPolicy: Qt.NoFocus
+                                enabled: !Player.idle && !win.navMode
+                                opacity: enabled ? 1 : 0.4
+                                palette.windowText: Theme.accent
+                                onClicked: subtitleDialog.open()
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
@@ -1271,6 +1428,22 @@ ApplicationWindow {
                 }
                 Text { text: qsTr("Lumen ") + Qt.application.version; color: Theme.textFaint; font.pixelSize: 11 }
             }
+        }
+    }
+
+    // Hinweis, solange etwas über das Fenster gezogen wird
+    Rectangle {
+        anchors.fill: parent
+        visible: dropArea.containsDrag
+        color: "#d00a0b0e"
+        border.color: Theme.accent
+        border.width: 2
+        Text {
+            anchors.centerIn: parent
+            text: qsTr("Hier ablegen zum Abspielen")
+            color: Theme.text
+            font.pixelSize: 22
+            font.weight: Font.DemiBold
         }
     }
 }

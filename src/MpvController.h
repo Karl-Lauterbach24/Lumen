@@ -31,6 +31,8 @@ class MpvController : public QObject
     Q_PROPERTY(double volumeMax READ volumeMax NOTIFY volumeChanged)
     Q_PROPERTY(bool muted READ muted NOTIFY mutedChanged)
     Q_PROPERTY(double speed READ speed NOTIFY speedChanged)
+    // Nachtmodus: Dynamik komprimieren (leise Stellen lauter, laute leiser); bleibt gespeichert
+    Q_PROPERTY(bool nightMode READ nightMode WRITE setNightMode NOTIFY nightModeChanged)
     Q_PROPERTY(QString mediaTitle READ mediaTitle NOTIFY mediaChanged)
     Q_PROPERTY(QString path READ path NOTIFY mediaChanged)
     Q_PROPERTY(bool isDisc READ isDisc NOTIFY mediaChanged)
@@ -145,6 +147,10 @@ public:
     Q_INVOKABLE void setVolume(double v);
     Q_INVOKABLE void setMuted(bool m);
     Q_INVOKABLE void setSpeed(double s);
+    bool nightMode() const { return m_nightMode; }
+    void setNightMode(bool on);
+    // Untertiteldatei (SRT, ASS, SUP …) zur laufenden Wiedergabe laden und auswählen
+    Q_INVOKABLE void addSubtitleFile(const QUrl &file);
     Q_INVOKABLE void setAudioId(int id);
     Q_INVOKABLE void setSubtitleId(int id);
     Q_INVOKABLE void setAudioDelay(double s);
@@ -226,6 +232,7 @@ signals:
     void volumeChanged();
     void mutedChanged();
     void speedChanged();
+    void nightModeChanged();
     void mediaChanged();
     void titlesChanged();
     void chaptersChanged();
@@ -317,6 +324,7 @@ private:
     double m_volume = 100;
     double m_volumeMax = 130;
     bool m_muted = false;
+    bool m_nightMode = false;
     double m_speed = 1.0;
     QString m_mediaTitle;
     QString m_path;

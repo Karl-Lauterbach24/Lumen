@@ -25,6 +25,7 @@
 #include <QRegularExpression>
 #include <QLocale>
 #include <QSet>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QtDebug>
 
@@ -35,6 +36,8 @@
 #include <vector>
 
 namespace {
+// Nachtmodus: Lautheit angleichen (FFmpeg dynaudnorm); wirkt nicht bei Bitstream-Ausgabe
+const char kNightFilter[] = "@lumen-night:lavfi=[dynaudnorm=f=250:g=13:p=0.75]";
 
 enum PropId : quint64 {
     P_PAUSE = 1, P_TIMEPOS, P_DURATION, P_VOLUME, P_VOLMAX, P_MUTE, P_SPEED,
@@ -391,6 +394,15 @@ bool MpvController::create(const QVariantMap &options)
     };
     for (auto it = base.cbegin(); it != base.cend(); ++it)
         setOptionRaw(it.key(), it.value(), true);
+    // Lautstärke und Nachtmodus der letzten Sitzung
+    {
+        QSettings s;
+        const double volume = s.value(QStringLiteral("audio/volume"), 100.0).toDouble();
+        setOptionRaw(QStringLiteral("volume"), QString::number(qBound(0.0, volume, 150.0), 'f', 1), true);
+        m_nightMode = s.value(QStringLiteral("audio/nightMode"), false).toBool();
+        if (m_nightMode)
+            setOptionRaw(QStringLiteral("af"), QString::fromLatin1(kNightFilter), true);
+    }
     if (!m_ytdl.isEmpty())
         setOptionRaw(QStringLiteral("script-opts"), QStringLiteral("ytdl_hook-ytdl_path=") + m_ytdl, true);
     for (const auto &provider : m_optionProviders) {
@@ -1194,7 +1206,29 @@ void MpvController::clearAbLoop()
     setOptionRaw(QStringLiteral("ab-loop-b"), QStringLiteral("no"), false);
 }
 
-void MpvController::setVolume(double v) { setOptionRaw(QStringLiteral("volume"), v, false); }
+void MpvController::setVolume(double v)
+{
+    setOptionRaw(QStringLiteral("volume"), v, false);
+    QSettings().setValue(QStringLiteral("audio/volume"), v);
+}
+
+void MpvController::setNightMode(bool on)
+{
+    if (on == m_nightMode)
+        return;
+    m_nightMode = on;
+    QSettings().setValue(QStringLiteral("audio/nightMode"), on);
+    command({QStringLiteral("af"), on ? QStringLiteral("add") : QStringLiteral("remove"),
+             on ? QString::fromLatin1(kNightFilter) : QStringLiteral("@lumen-night")});
+    emit nightModeChanged();
+}
+
+void MpvController::addSubtitleFile(const QUrl &file)
+{
+    const QString path = file.isLocalFile() ? file.toLocalFile() : file.toString();
+    if (!m_idle && !path.isEmpty())
+        command({QStringLiteral("sub-add"), path, QStringLiteral("select")});
+}
 void MpvController::setMuted(bool m) { setOptionRaw(QStringLiteral("mute"), m, false); }
 void MpvController::setSpeed(double s) { setOptionRaw(QStringLiteral("speed"), s, false); }
 

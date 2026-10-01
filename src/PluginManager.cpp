@@ -1,5 +1,6 @@
 #include "PluginManager.h"
 #include "DcpStream.h"
+#include "Platform.h"
 #include "Tr.h"
 
 #include <QCoreApplication>
@@ -27,22 +28,14 @@
 
 namespace {
 
-const char *platformKey()
-{
-#if defined(Q_OS_WIN)
-    return "windows";
-#elif defined(Q_OS_MACOS)
-    return "macos";
-#else
-    return "linux";
-#endif
-}
-
-// Manifest-Wert: "pfad" oder {"windows": …, "macos": …, "linux": …}
+// Manifest-Wert: "pfad" oder {"windows": …, "macos": …, "linux": …}; mit Architektur
+// ("windows-arm64", "linux-arm64", "macos-x64" …) hat der genauere Eintrag Vorrang
 QString platformValue(const QVariant &v)
 {
-    if (v.typeId() == QMetaType::QVariantMap)
-        return v.toMap().value(QLatin1String(platformKey())).toString();
+    if (v.typeId() == QMetaType::QVariantMap) {
+        const QVariantMap m = v.toMap();
+        return m.contains(Platform::osArch()) ? m.value(Platform::osArch()).toString() : m.value(Platform::os()).toString();
+    }
     return v.toString();
 }
 

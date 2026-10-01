@@ -1,4 +1,5 @@
 #include "PluginStore.h"
+#include "Platform.h"
 #include "PluginManager.h"
 #include "Tr.h"
 
@@ -17,19 +18,15 @@
 #include <QThread>
 #include <QVersionNumber>
 
+#include <algorithm>
 #include <memory>
 
 namespace {
 
-const char *platformKey()
+// Passt eine Datei des Index (bin/<plattform>/…) zu diesem Build?
+bool platformMatches(const QString &platform)
 {
-#if defined(Q_OS_WIN)
-    return "windows";
-#elif defined(Q_OS_MACOS)
-    return "macos";
-#else
-    return "linux";
-#endif
+    return Platform::binaryTags().contains(platform);
 }
 
 QNetworkRequest request(const QUrl &url)
@@ -228,7 +225,7 @@ void PluginStore::rebuild()
                         platforms << platform;
                 }
             }
-            if (native && !platforms.contains(QLatin1String(platformKey())))
+            if (native && std::none_of(platforms.cbegin(), platforms.cend(), platformMatches))
                 supported = false;
             const QString installed = installedVersion(id);
             const bool update = !installed.isEmpty()
@@ -262,7 +259,7 @@ void PluginStore::install(const QString &source, const QString &id)
     for (const QVariant &f : entry.value("files").toList()) {
         const QVariantMap m = f.toMap();
         const QString platform = m.value("platform").toString();
-        if (!platform.isEmpty() && platform != QLatin1String(platformKey()))
+        if (!platform.isEmpty() && !platformMatches(platform))
             continue;
         const QString rel = m.value("path").toString();
         if (!safeRelative(rel)) {
