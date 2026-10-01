@@ -370,7 +370,135 @@ Popup {
                             { value: "ab2l", text: qsTr("Top-and-Bottom Half") },
                             { value: "abl", text: qsTr("Top-and-Bottom Full") },
                             { value: "irl", text: qsTr("Zeilenverschachtelt (passiv)") },
-                            { value: "arcd", text: qsTr("Anaglyph Rot/Cyan") }
+                            { value: "arcd", text: qsTr("Anaglyph Rot/Cyan") },
+                            { value: "seq", text: qsTr("Bildfolge für Shutterbrillen (experimentell)") }
+                        ]
+                    }
+                }
+
+                // ---- Bildfolge (Shutterbrille): Muster und Feinabstimmung ----
+                Text {
+                    visible: editor.draft.stereoOut === "seq"
+                    Layout.fillWidth: true
+                    Layout.columnSpan: 2
+                    wrapMode: Text.WordWrap
+                    color: Theme.warn
+                    font.pixelSize: 11
+                    text: qsTr("Experimentell und ohne Gewähr: Lumen zeigt je Bildwechsel abwechselnd das linke und rechte Auge. Synchronbilder (S) sind ein Versuch, DLP-Link-Brillen auf einem schnellen Fernseher zu takten – ob eine Brille darauf einrastet, hängt vom Modell ab. Das Messfeld ist für Lichtsensoren gedacht, die eine Shutterbrille steuern. Nötig sind ein Bildschirm mit 120 Hz oder mehr, abgeschaltete Bewegungsglättung und Vollbild; ein ausgelassenes Bild vertauscht die Augen.")
+                }
+                Field {
+                    visible: editor.draft.stereoOut === "seq"
+                    title: qsTr("Bildwiederholrate des Geräts")
+                    EnumSelect {
+                        key: "seqRate"
+                        options: [96, 100, 120, 144, 165, 180, 200, 240, 288, 360].map(hz => ({ value: hz, text: hz + " Hz" }))
+                    }
+                }
+                Field {
+                    visible: editor.draft.stereoOut === "seq"
+                    title: qsTr("Muster je Durchlauf (L links, R rechts, S Synchronbild, B Schwarzbild)")
+                    RowLayout {
+                        width: parent.width
+                        EnumSelect {
+                            key: "seqPattern"
+                            Layout.fillWidth: true
+                            options: [
+                                { value: "LR", text: qsTr("L R – einfacher Wechsel") },
+                                { value: "LSRS", text: qsTr("L S R S – Synchronbild nach jedem Auge") },
+                                { value: "LRS", text: qsTr("L R S – ein Synchronbild je Bildpaar") },
+                                { value: "LBRB", text: qsTr("L B R B – Schwarzbild nach jedem Auge") },
+                                { value: "LLRR", text: qsTr("L L R R – jedes Auge zwei Bildwechsel lang") },
+                                { value: "LLSRRS", text: "L L S R R S" }
+                            ]
+                            placeholder: qsTr("eigenes Muster")
+                        }
+                        TextField {
+                            Layout.preferredWidth: 120
+                            text: editor.draft.seqPattern || "LR"
+                            maximumLength: 12
+                            color: Theme.text; font.family: Theme.mono; font.pixelSize: 12
+                            background: Rectangle { radius: Theme.radiusSmall; color: Theme.raised; border.color: Theme.line }
+                            onEditingFinished: editor.set("seqPattern", text.toUpperCase().replace(/[^LRSB]/g, "") || "LR")
+                        }
+                    }
+                }
+                Field {
+                    visible: editor.draft.stereoOut === "seq"
+                    title: qsTr("Farbe der Synchronbilder")
+                    EnumSelect {
+                        key: "seqSyncColor"
+                        options: [
+                            { value: "#ff0000", text: qsTr("Rot") },
+                            { value: "#ffffff", text: qsTr("Weiß") },
+                            { value: "#00ff00", text: qsTr("Grün") },
+                            { value: "#0000ff", text: qsTr("Blau") }
+                        ]
+                    }
+                }
+                ValueSlider {
+                    visible: editor.draft.stereoOut === "seq"
+                    Layout.fillWidth: true
+                    label: qsTr("Helligkeit der Synchronbilder")
+                    from: 5; to: 100; stepSize: 5; unit: " %"
+                    value: editor.draft.seqSyncLevel === undefined ? 100 : editor.draft.seqSyncLevel
+                    onMoved: v => editor.set("seqSyncLevel", v)
+                }
+                Field {
+                    visible: editor.draft.stereoOut === "seq"
+                    title: qsTr("Messfeld für Lichtsensor")
+                    EnumSelect {
+                        key: "seqBox"
+                        options: [
+                            { value: "none", text: qsTr("Aus") },
+                            { value: "tl", text: qsTr("Oben links") },
+                            { value: "tr", text: qsTr("Oben rechts") },
+                            { value: "bl", text: qsTr("Unten links") },
+                            { value: "br", text: qsTr("Unten rechts") }
+                        ]
+                    }
+                }
+                ValueSlider {
+                    visible: editor.draft.stereoOut === "seq"
+                    Layout.fillWidth: true
+                    label: qsTr("Größe des Messfelds")
+                    from: 2; to: 20; stepSize: 1; unit: " %"
+                    value: editor.draft.seqBoxSize || 6
+                    onMoved: v => editor.set("seqBoxSize", v)
+                }
+                ValueSlider {
+                    visible: editor.draft.stereoOut === "seq"
+                    Layout.fillWidth: true
+                    label: qsTr("Muster verschieben (Bilder)")
+                    from: 0; to: 11; stepSize: 1; unit: ""
+                    value: editor.draft.seqPhase || 0
+                    onMoved: v => editor.set("seqPhase", v)
+                }
+                Toggle {
+                    visible: editor.draft.stereoOut === "seq"
+                    label: qsTr("Augen tauschen")
+                    hint: qsTr("Wenn die Tiefe verkehrt herum wirkt")
+                    checked: !!editor.draft.seqSwap
+                    onToggled: editor.set("seqSwap", checked)
+                    Layout.fillWidth: true
+                }
+                Toggle {
+                    visible: editor.draft.stereoOut === "seq"
+                    label: qsTr("Bildschirm auf diese Rate umschalten")
+                    hint: qsTr("Bei 3D-Wiedergabe; sonst muss der Bildschirm schon so eingestellt sein")
+                    checked: !!editor.draft.seqSwitchMode
+                    onToggled: editor.set("seqSwitchMode", checked)
+                    Layout.fillWidth: true
+                }
+                Field {
+                    visible: editor.draft.stereoOut === "seq" && !!editor.draft.seqSwitchMode
+                    title: qsTr("Auflösung für die 3D-Bildfolge")
+                    EnumSelect {
+                        key: "seqResolution"
+                        options: [
+                            { value: "", text: qsTr("Unverändert") },
+                            { value: "1920x1080", text: "1920 × 1080" },
+                            { value: "2560x1440", text: "2560 × 1440" },
+                            { value: "3840x2160", text: "3840 × 2160" }
                         ]
                     }
                 }

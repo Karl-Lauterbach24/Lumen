@@ -59,7 +59,10 @@ MINGW*|MSYS*)
     fi
     # configure scripts cannot handle backslashes, compilers no POSIX paths: use "C:/..."
     PREFIX="$(cygpath -m "$PREFIX")"
-    FF_PLATFORM=(--pkg-config=pkgconf --enable-d3d11va --enable-dxva2 --enable-d3d12va --enable-mediafoundation)
+    # gfxcapture (screen capture, C++/WinRT) is not needed; with clang its C++ headers pick up the
+    # file VERSION of the FFmpeg source tree as <version> on the case-insensitive file system
+    FF_PLATFORM=(--pkg-config=pkgconf --enable-d3d11va --enable-dxva2 --enable-d3d12va --enable-mediafoundation
+                 --disable-filter=gfxcapture)
     # CLANG environments (Windows on ARM): no gcc
     if ! command -v gcc >/dev/null && command -v clang >/dev/null; then
         export CC=clang CXX=clang++
@@ -72,8 +75,6 @@ Darwin)
     BREW="$(brew --prefix)"
     FF_PLATFORM=(--enable-videotoolbox --enable-audiotoolbox "--extra-ldflags=-L$BREW/lib")
     FF_CFLAGS="-I$BREW/include"
-    # the embedded player window uses the render API; mpv's own Cocoa window (Swift) is not needed
-    MPV_PLATFORM=(-Dswift-build=disabled -Dmacos-cocoa-cb=disabled -Dmacos-media-player=disabled)
     for keg in openssl@3 libxml2 libarchive; do
         p="$(brew --prefix "$keg" 2>/dev/null || true)"
         [ -d "$p/lib/pkgconfig" ] && export PKG_CONFIG_PATH="$p/lib/pkgconfig:${PKG_CONFIG_PATH:-}"

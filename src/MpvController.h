@@ -220,7 +220,6 @@ public:
     bool mvcActive() const;
     // 3D-Ausgabe gewünscht und möglich (Profil + FFmpeg-mvc + libbluray)
     bool want3D() const;
-    static QString stereoFilter(const QString &in, const QString &out);
     static QString stereoOutLabel(const QString &out);
     static bool isDisc3D(const QString &device);
 

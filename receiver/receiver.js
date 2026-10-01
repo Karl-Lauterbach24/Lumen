@@ -174,7 +174,7 @@
   function focusFirst() {
     var f = focusables();
     // on a TV, do not open the on-screen keyboard right away
-    var first = mode === 'connect' && !embedded ? f[0] : f[f.length - 1];
+    var first = f[f.length - 1];
     if (first) first.focus();
   }
   function moveFocus(delta) {
@@ -307,7 +307,9 @@
 
   function search() {
     var my = ++session;
-    show('', tr('searching'), '');
+    // the address can be typed while the search runs
+    $('address').value = (store('lumen.address') || '').replace(/^https?:\/\//, '');
+    show('connect', tr('searching'), tr('enter'));
     localPrefixes(function (prefixes) {
       if (my !== session) return;
       var hosts = [];
@@ -316,10 +318,10 @@
       var next = 0, open = 0, found = false;
       function pump() {
         if (my !== session || found) return;
-        while (open < 24 && next < hosts.length) {
+        while (open < 40 && next < hosts.length) {
           (function (address) {
             open++;
-            request('GET', address + '/api/info', 1200, function (status, info) {
+            request('GET', address + '/api/info', 1000, function (status, info) {
               open--;
               if (my !== session || found) return;
               if (status === 200 && info && info.name === 'Lumen') {

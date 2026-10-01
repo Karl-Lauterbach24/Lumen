@@ -192,6 +192,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/MediaServers.h      src/MediaServers.cpp
     src/Updater.h           src/Updater.cpp
     src/Recent.h            src/Recent.cpp
+    src/Stereo3D.h          src/Stereo3D.cpp
     src/AudioTap.h          src/AudioTap.cpp
     src/CastStream.h        src/CastStream.cpp
     src/CastAudio.h         src/CastAudio.cpp
@@ -495,6 +496,10 @@ if(LUMEN_BUILD_TESTS)
     add_executable(media_test tests/media_test.cpp src/MediaServers.cpp src/MediaServers.h)
     target_include_directories(media_test PRIVATE src)
     target_link_libraries(media_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network lumen_mpv)
+    # 3D-Bildfolge: gibt die Filterkette aus (tools/test_seq3d.sh prüft sie mit FFmpeg)
+    add_executable(stereo_test tests/stereo_test.cpp src/Stereo3D.cpp src/Stereo3D.h)
+    target_include_directories(stereo_test PRIVATE src)
+    target_link_libraries(stereo_test PRIVATE Qt6::Core Qt6::Gui)
     # Übertragung: Sendestrom (H.264/AAC, Ton-Bild-Abgleich), Geräteerkennung, DLNA/Chromecast/AirPlay/TV-App
     # gegen tools/mock_cast_devices.py
     qt_add_executable(cast_test tests/cast_test.cpp

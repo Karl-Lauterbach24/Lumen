@@ -425,7 +425,7 @@ QVariantMap DisplayManager::mpvScreenOptions(const QString &outputId) const
 
 bool DisplayManager::matchRefreshRate(const QString &outputId, double fps, QString *info, const QSize &size)
 {
-    if (!m_canRefresh || fps < 10 || fps > 200)
+    if (!m_canRefresh || fps < 10 || fps > 500)
         return false;
     const QVariantMap o = output(outputId);
     if (o.isEmpty())

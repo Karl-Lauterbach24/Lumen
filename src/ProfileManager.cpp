@@ -89,6 +89,17 @@ QVariantMap ProfileManager::defaults() const
         // 3D
         {"stereoOut", QStringLiteral("none")},
         {"subtitleDepth", 0},
+        // Bildfolge für Shutterbrillen (stereoOut "seq"), siehe Stereo3D.h
+        {"seqRate", 120},
+        {"seqPattern", QStringLiteral("LR")},
+        {"seqSyncColor", QStringLiteral("#ff0000")},
+        {"seqSyncLevel", 100},
+        {"seqBox", QStringLiteral("none")},
+        {"seqBoxSize", 6},
+        {"seqSwap", false},
+        {"seqPhase", 0},
+        {"seqSwitchMode", false},
+        {"seqResolution", QString()},
         // Audio
         {"audioDevice", QStringLiteral("auto")},
         {"audioPassthrough", QVariantList{}},

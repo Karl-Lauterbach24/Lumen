@@ -119,7 +119,7 @@ ApplicationWindow {
     function stereoLabel(v) {
         return ({ none: "2D", fp: qsTr("HDMI Frame Packing"), sbs2l: qsTr("Side-by-Side Half"), sbsl: qsTr("Side-by-Side Full"),
                   ab2l: qsTr("Top-and-Bottom Half"), abl: qsTr("Top-and-Bottom Full"), irl: qsTr("Zeilenverschachtelt"),
-                  arcd: qsTr("Anaglyph") })[v || "none"] || v
+                  arcd: qsTr("Anaglyph"), seq: qsTr("Bildfolge (Shutterbrille)") })[v || "none"] || v
     }
 
     function playDrive(drive, withMenu) {

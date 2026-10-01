@@ -9,6 +9,7 @@
 #include "OpticalMedia.h"
 #include "PathUtil.h"
 #include "PlayerWindow.h"
+#include "Stereo3D.h"
 #include "VcdNav.h"
 
 #ifdef Q_OS_WIN
@@ -245,7 +246,7 @@ QString MpvController::stereoOutLabel(const QString &out)
         {"none", "2D"}, {"sbs2l", QT_TRANSLATE_NOOP("Lumen", "Side-by-Side Half")}, {"sbsl", QT_TRANSLATE_NOOP("Lumen", "Side-by-Side Full")},
         {"ab2l", QT_TRANSLATE_NOOP("Lumen", "Top-and-Bottom Half")}, {"abl", QT_TRANSLATE_NOOP("Lumen", "Top-and-Bottom Full")},
         {"fp", QT_TRANSLATE_NOOP("Lumen", "HDMI Frame Packing 1080p")}, {"irl", QT_TRANSLATE_NOOP("Lumen", "Zeilenverschachtelt")},
-        {"arcd", QT_TRANSLATE_NOOP("Lumen", "Anaglyph")},
+        {"arcd", QT_TRANSLATE_NOOP("Lumen", "Anaglyph")}, {"seq", QT_TRANSLATE_NOOP("Lumen", "Bildfolge (Shutterbrille)")},
     };
     return labels.contains(out) ? LTR(labels.value(out)) : out;
 }
@@ -1327,31 +1328,19 @@ QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
     // eine 3D-Quelle auf das linke Auge (2D) reduziert.
     // Übertragung: immer 2D
     const QString out = m_castEncoder ? QStringLiteral("none") : profile.value("stereoOut", "none").toString();
-    o["vf"] = stereoFilter(m_stereoIn, out);
+    QVariantMap stereoProfile = profile;
+    stereoProfile["stereoOut"] = out;
+    o["vf"] = Stereo3D::filter(m_stereoIn, stereoProfile);
+    if (out == QLatin1String("seq") && m_stereoIn != QLatin1String("none")) {
+        // Bildfolge: jedes Bild genau einen Bildwechsel lang, also streng im Takt des Bildschirms
+        o["video-sync"] = QStringLiteral("display-resample");
+        o["interpolation"] = QStringLiteral("no");
+    }
     if (m_nav) {
         m_nav->setStereo(m_mvcCapable && BlurayNav::available() && out != QLatin1String("none"), out);
         m_nav->setSubtitleDepth(profile.value("subtitleDepth").toInt());
     }
     return o;
-}
-
-// Filterkette Quellformat -> Geräteformat.
-//   Frame Packing (HDMI 1.4, 1080p24): linkes Auge oben, 45 Zeilen Lücke, rechtes
-//   Auge unten = 1920x2205. Erfordert am Ausgang einen 1920x2205-Anzeigemodus.
-QString MpvController::stereoFilter(const QString &in, const QString &out)
-{
-    if (in == QLatin1String("none"))
-        return QString();
-    const QString target = out == QLatin1String("none") ? QStringLiteral("ml") : out;
-    if (target == QLatin1String("fp")) {
-        // Zuerst auf Side-by-Side Full, linkes Auge links, normalisieren
-        const QString norm = (in == QLatin1String("sbsl")) ? QString() : QStringLiteral("stereo3d=%1:sbsl,").arg(in);
-        return QStringLiteral("lavfi=[%1split[a][b];[a]crop=iw/2:ih:0:0[l];[b]crop=iw/2:ih:iw/2:0,"
-                              "pad=iw:ih+45:0:45[r];[l][r]vstack]").arg(norm);
-    }
-    if (target == in)
-        return QString();
-    return QStringLiteral("lavfi=[stereo3d=%1:%2]").arg(in, target);
 }
 
 void MpvController::setStereoInput(const QString &format)
@@ -1360,9 +1349,16 @@ void MpvController::setStereoInput(const QString &format)
         return;
     m_stereoIn = format;
     const QVariantMap opts = buildOptions(m_profile);
-    m_appliedOptions["vf"] = opts.value("vf");
-    setOptionRaw(QStringLiteral("vf"), opts.value("vf"), false);
+    for (const char *key : {"vf", "video-sync", "interpolation"}) {
+        const QString k = QLatin1String(key);
+        if (!opts.contains(k) || m_appliedOptions.value(k) == opts.value(k))
+            continue;
+        m_appliedOptions[k] = opts.value(k);
+        setOptionRaw(k, opts.value(k), false);
+    }
     emit stereoInputChanged();
+    m_matchedFps = 0; // Bildfolge braucht ggf. eine andere Bildwiederholrate
+    onContentFormatKnown();
 }
 
 void MpvController::applyProfile(const QVariantMap &profile)
@@ -1413,9 +1409,27 @@ void MpvController::onContentFormatKnown()
     const QString out = m_profile.value("output").toString();
     QStringList status;
 
+    // Bildfolge (Shutterbrille): der Bildschirm muss genau mit der gewählten Rate laufen
+    const bool sequential = m_stereoIn != QLatin1String("none") && !m_castEncoder
+                            && m_profile.value("stereoOut").toString() == QLatin1String("seq");
+    if (sequential && m_profile.value("seqSwitchMode").toBool()) {
+        const double rate = qBound(48, m_profile.value("seqRate", 120).toInt(), 480);
+        if (std::abs(rate - m_matchedFps) > 0.01) {
+            QString info;
+            const QStringList wh = m_profile.value("seqResolution").toString().split(QLatin1Char('x'));
+            const QSize size = wh.size() == 2 ? QSize(wh[0].toInt(), wh[1].toInt()) : QSize();
+            if (m_displays->matchRefreshRate(out, rate, &info, size.isValid() && !size.isEmpty() ? size : QSize())) {
+                m_matchedFps = rate;
+                status << LTR("3D-Bildfolge %1").arg(info);
+            } else if (!info.isEmpty()) {
+                status << info;
+            }
+        }
+    }
+
     // HDMI Frame Packing braucht den Modus 1920x2205 (bei 3D immer, sonst optional Bildrate)
     const bool framePacking = mvcActive() && m_profile.value("stereoOut").toString() == QLatin1String("fp");
-    if ((m_profile.value("matchRefreshRate").toBool() || framePacking) && m_containerFps > 1
+    if (!sequential && (m_profile.value("matchRefreshRate").toBool() || framePacking) && m_containerFps > 1
         && std::abs(m_containerFps - m_matchedFps) > 0.01) {
         QString info;
         if (m_displays->matchRefreshRate(out, m_containerFps, &info, framePacking ? QSize(1920, 2205) : QSize())) {
