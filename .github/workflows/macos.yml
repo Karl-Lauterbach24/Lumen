@@ -38,8 +38,12 @@ jobs:
         run: |
           set -o pipefail
           if ! tools/build_deps.sh > deps.log 2>&1; then
-            grep -vE "^(INSTALL|CC|CXX|AR|LD|STRIP|X86ASM|GEN|HOSTCC|HOSTLD|BIN2C|\\[[0-9]+/[0-9]+\\])" deps.log | tail -60
-            body=$(grep -vE "^(INSTALL|CC|CXX|AR|LD|STRIP|X86ASM|GEN|HOSTCC|HOSTLD|BIN2C|\\[[0-9]+/[0-9]+\\])" deps.log | tail -30 | cut -c1-300 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            # the lines that say what went wrong, then the end of the log
+            grep -nE "(error|Error|ERROR|FAILED|fatal|undefined reference|No such file)" deps.log | grep -vE "Werror|-Wno-error|error_resilience|errors?\\.[ch]|strerror" | head -40 > deps.err || true
+            cat deps.err
+            echo "----"
+            tail -40 deps.log
+            body=$( (head -25 deps.err; echo "----"; tail -8 deps.log) | cut -c1-300 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=build_deps.sh::$body"
             exit 1
           fi
