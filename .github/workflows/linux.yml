@@ -37,11 +37,11 @@ jobs:
             apt-get update -q
             apt-get install -y -q --no-install-recommends ca-certificates git cmake ninja-build g++ pkg-config file dpkg-dev python3 \
               qt6-base-dev qt6-declarative-dev libmpv-dev libbluray-dev libdvdnav-dev libdvdread-dev libcdio-dev libiso9660-dev \
-              libssl-dev libxml2-dev openssl ffmpeg xvfb xauth libgl1-mesa-dri
+              libssl-dev libxml2-dev openssl ffmpeg xvfb xauth libgl1-mesa-dri procps
           else
             dnf install -y -q git cmake ninja-build gcc-c++ pkgconf-pkg-config file rpm-build python3 \
               qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg mpv-devel libbluray-devel libdvdnav-devel libdvdread-devel \
-              libcdio-devel openssl-devel libxml2-devel openssl ffmpeg-free xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers
+              libcdio-devel openssl-devel libxml2-devel openssl ffmpeg-free xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers procps-ng
           fi
 
       - uses: actions/checkout@v5
@@ -121,7 +121,7 @@ jobs:
           export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software LUMEN_SNAPSHOT=/tmp/lumen.png
           xvfb-run -a -s "-screen 0 1600x900x24" lumen > /tmp/lumen.log 2>&1 &
           for i in $(seq 1 60); do [ -s /tmp/lumen.png ] && break; sleep 1; done
-          pkill -x lumen || true
+          pkill -x lumen || true; sleep 1
           tail -30 /tmp/lumen.log
           [ -s /tmp/lumen.png ] || { echo "::error::installiertes Lumen startet nicht"; exit 1; }
           echo "installiertes Lumen startet: Steuerfenster gerendert"
@@ -130,11 +130,11 @@ jobs:
         shell: bash
         continue-on-error: true
         run: |
-          export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software LUMEN_PLAYER_SNAPSHOT="/tmp/player.png@1.0"
+          export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software LUMEN_PLAYER_SNAPSHOT="/tmp/player.png@1.0" LUMEN_MPV_LOG=v
           xvfb-run -a -s "-screen 0 1600x900x24" lumen "av://lavfi:testsrc2=size=1280x720:rate=24" > /tmp/player.log 2>&1 &
           for i in $(seq 1 40); do [ -s /tmp/player.png ] && break; sleep 1; done
           pkill -x lumen || true
-          tail -20 /tmp/player.log
+          grep -iE "vo/|vo:|gpu|opengl|egl|x11|error|fail|Playing|AO:|VO:" /tmp/player.log | head -60
           if [ -s /tmp/player.png ]; then echo "::notice::Player-Fenster rendert unter Xvfb (${{ matrix.name }})"; else echo "::warning::Player-Fenster lieferte unter Xvfb kein Bild (${{ matrix.name }})"; fi
 
       - uses: actions/upload-artifact@v5
