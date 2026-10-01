@@ -432,7 +432,9 @@ int main(int argc, char **argv)
     if (playing()) {
         const Analysis a = analyzeWhileServing(cast.server()->hlsUrl(QHostAddress::LocalHost), 8.0);
         check(a.opened, "Strom (HLS) lässt sich öffnen " + a.error);
-        check(a.video == "h264" && a.width == 1280 && a.height == 720, QStringLiteral("Bild: %1 %2x%3").arg(a.video).arg(a.width).arg(a.height));
+        const QStringList want = qEnvironmentVariable("LUMEN_CAST_SIZE", QStringLiteral("1280x720")).split(QLatin1Char('x'));
+        check(a.video == "h264" && a.width == want.value(0).toInt() && a.height == want.value(1).toInt(),
+              QStringLiteral("Bild: %1 %2x%3").arg(a.video).arg(a.width).arg(a.height));
         check(a.audio == "aac" && a.sampleRate == 48000 && a.channels == 2,
               QStringLiteral("Ton: %1 %2 Hz %3 Kanäle").arg(a.audio).arg(a.sampleRate).arg(a.channels));
         check(a.markTop > a.frames / 2 && a.markBottom == 0,

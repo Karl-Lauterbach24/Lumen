@@ -179,7 +179,7 @@ if want mpv; then
         -Dlua=enabled -Dlibbluray=enabled -Ddvdnav=enabled -Dlcms2=enabled -Dlibarchive=enabled \
         -Dvapoursynth=disabled -Dcdda=disabled -Dcaca=disabled -Dsdl2-audio=disabled -Dsdl2-video=disabled \
         -Dsdl2-gamepad=disabled -Dopenal=disabled -Djack=disabled -Ddvbin=disabled -Dsixel=disabled \
-        "${MPV_PLATFORM[@]}"
+        ${MPV_PLATFORM[@]+"${MPV_PLATFORM[@]}"}
     meson compile -C "$SRCROOT/mpv-build"
     meson install -C "$SRCROOT/mpv-build"
 fi

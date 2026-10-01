@@ -218,6 +218,12 @@ void CastManager::start(const QString &deviceId)
     CastEncoder::Settings settings;
     settings.height = m_height;
     settings.width = m_height == 720 ? 1280 : 1920;
+    // Entwickler/Tests: LUMEN_CAST_SIZE=<breite>x<höhe> (z. B. für Software-OpenGL ohne Grafikkarte)
+    const QStringList size = qEnvironmentVariable("LUMEN_CAST_SIZE").split(QLatin1Char('x'));
+    if (size.size() == 2 && size[0].toInt() >= 160 && size[1].toInt() >= 90) {
+        settings.width = size[0].toInt() & ~1;
+        settings.height = size[1].toInt() & ~1;
+    }
     settings.fpsLimit = m_fps;
     settings.videoKbps = m_bitrate;
     m_encoder = new CastEncoder(&m_stream, &m_tap, settings, this);
