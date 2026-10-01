@@ -1,0 +1,41 @@
+# Schneller Test des Windows-Installers ohne kompletten Build: nimmt das portable ZIP des
+# letzten Releases, baut daraus zwei MSI (aktuelle und eine höhere Version) und prüft
+# Installation, Start, Update und Deinstallation. Der Release-Workflow baut das echte MSI.
+name: MSI
+
+on:
+  push:
+    branches: ["feature/msi**"]
+    paths: ["packaging/windows/**", "tools/make_msi.ps1", "tools/test_msi.ps1", ".github/workflows/msi.yml"]
+  workflow_dispatch:
+
+jobs:
+  msi:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Portables ZIP des letzten Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo $env:GITHUB_REPOSITORY --pattern "*windows-x64.zip" --dir .
+          Expand-Archive (Get-Item Lumen-*-windows-x64.zip).FullName -DestinationPath dist
+          Get-ChildItem dist\Lumen | Select-Object -First 5
+      - name: MSI bauen (WiX)
+        shell: pwsh
+        run: |
+          if (-not $env:WIX) { choco install wixtoolset --no-progress -y }
+          ./tools/make_msi.ps1 -Stage dist\Lumen -Version 0.0.1 -Out Lumen-0.0.1-windows-x64.msi
+          ./tools/make_msi.ps1 -Stage dist\Lumen -Version 99.0.0 -Out Lumen-99.0.0-windows-x64.msi
+      - name: "Test: installieren, starten, aktualisieren, deinstallieren"
+        shell: pwsh
+        run: ./tools/test_msi.ps1 -Msi Lumen-0.0.1-windows-x64.msi -Upgrade Lumen-99.0.0-windows-x64.msi
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: msi-logs
+          path: |
+            msi-*.log
+            msi-snapshot.png

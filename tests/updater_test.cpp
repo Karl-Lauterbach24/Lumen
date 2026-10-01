@@ -55,15 +55,20 @@ QByteArray read(const QString &path)
 }
 void release(const QString &dir, int port, const QString &version, const QByteArray &sumsOverride = {})
 {
-    const QString asset = Updater::assetName(version);
+    // wie im Release: ZIP (portable) und MSI (Installer) nebeneinander
+    const QString asset = Updater::assetName(version), msi = Updater::assetName(version, true);
     const QByteArray zip = read(QDir(dir).filePath(QStringLiteral("pkg.zip")));
+    const QByteArray msiData = "MSI-Paket " + version.toUtf8();
     write(QDir(dir).filePath(asset), zip);
+    write(QDir(dir).filePath(msi), msiData);
     const QByteArray sum = sumsOverride.isEmpty() ? QCryptographicHash::hash(zip, QCryptographicHash::Sha256).toHex() : sumsOverride;
-    write(QDir(dir).filePath(QStringLiteral("SHA256SUMS.txt")), sum + "  " + asset.toUtf8() + "\n");
+    write(QDir(dir).filePath(QStringLiteral("SHA256SUMS.txt")),
+          sum + "  " + asset.toUtf8() + "\n" + QCryptographicHash::hash(msiData, QCryptographicHash::Sha256).toHex() + "  " + msi.toUtf8() + "\n");
     const QString base = QStringLiteral("http://127.0.0.1:%1/").arg(port);
     const QJsonObject latest{
         {"tag_name", "v" + version}, {"html_url", base + "release"}, {"body", "Neu: Test-Release"},
         {"assets", QJsonArray{QJsonObject{{"name", asset}, {"browser_download_url", base + asset}},
+                              QJsonObject{{"name", msi}, {"browser_download_url", base + msi}},
                               QJsonObject{{"name", "SHA256SUMS.txt"}, {"browser_download_url", base + "SHA256SUMS.txt"}}}},
     };
     write(QDir(dir).filePath(QStringLiteral("latest.json")), QJsonDocument(latest).toJson());
@@ -138,6 +143,19 @@ int main(int argc, char **argv)
     up.install();
     waitFor([&] { return ready || (!up.busy() && up.status().contains(QLatin1String("stimmt nicht"))); }, 20000);
     check(!ready && up.status().contains(QLatin1String("stimmt nicht")), QStringLiteral("falsche Prüfsumme verworfen (%1)").arg(up.status()));
+
+    // 4. per MSI installierte Kopie -> lädt das MSI statt des ZIP
+    check(!up.msiInstalled(), QStringLiteral("portable Kopie: kein MSI"));
+    write(QDir(installTo).filePath(QStringLiteral("install-type.txt")), "msi\r\n");
+    check(up.msiInstalled(), QStringLiteral("install-type.txt: per MSI installiert"));
+    release(web, port, QStringLiteral("9.9.2"));
+    up.check();
+    waitFor([&] { return !up.busy() && up.latestVersion() == QLatin1String("9.9.2"); }, 10000);
+    ready = false;
+    up.install();
+    waitFor([&] { return ready || (!up.busy() && up.status().contains(QLatin1String("stimmt"))); }, 20000);
+    check(ready && up.preparedDir().endsWith(QLatin1String("Lumen-9.9.2-windows-x64.msi")) && read(up.preparedDir()) == "MSI-Paket 9.9.2",
+          QStringLiteral("MSI heruntergeladen und geprüft (%1)").arg(QFileInfo(up.preparedDir()).fileName()));
 
     server.kill();
     server.waitForFinished(3000);

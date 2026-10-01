@@ -44,16 +44,17 @@ Updater::Updater(QObject *parent)
                                       QStringLiteral("https://api.github.com/repos/%1/releases/latest").arg(repository())));
 }
 
-QString Updater::assetName(const QString &version)
+QString Updater::assetName(const QString &version, bool msi)
 {
 #if defined(Q_OS_WIN)
-    return QStringLiteral("Lumen-%1-windows-x64.zip").arg(version);
+    return QStringLiteral("Lumen-%1-windows-x64.%2").arg(version, msi ? QStringLiteral("msi") : QStringLiteral("zip"));
 #elif defined(Q_OS_MACOS)
     if (QSysInfo::currentCpuArchitecture() != QLatin1String("arm64"))
         return {}; // bisher nur Apple-Silicon-Builds
     return QStringLiteral("Lumen-%1-macos-arm64.dmg").arg(version);
 #else
     Q_UNUSED(version)
+    Q_UNUSED(msi)
     return {};
 #endif
 }
@@ -112,7 +113,7 @@ void Updater::check()
         m_latest = tag;
         m_page = o.value("html_url").toString();
         m_notes = o.value("body").toString().left(2000);
-        m_assetName = assetName(tag);
+        m_assetName = assetName(tag, msiInstalled());
         m_asset = QUrl();
         m_sums = QUrl();
         for (const QJsonValue &a : o.value("assets").toArray()) {
@@ -193,6 +194,17 @@ void Updater::verifyAndApply(const QByteArray &data, const QByteArray &expectedS
         QCoreApplication::quit(); // das Hilfsskript ersetzt die Dateien und startet neu
 }
 
+bool Updater::msiInstalled() const
+{
+#ifdef Q_OS_WIN
+    // Der MSI-Installer legt diese Datei in den Programmordner
+    QFile f(QDir(installDir()).filePath(QStringLiteral("install-type.txt")));
+    return f.open(QIODevice::ReadOnly) && f.readAll().trimmed() == "msi";
+#else
+    return false;
+#endif
+}
+
 QString Updater::installDir() const
 {
     if (!m_installDir.isEmpty())
@@ -213,6 +225,32 @@ bool Updater::apply(const QString &archive)
     const QString pid = QString::number(QCoreApplication::applicationPid());
 
 #if defined(Q_OS_WIN)
+    if (archive.endsWith(QLatin1String(".msi"), Qt::CaseInsensitive)) {
+        // Per MSI installiert: der Installer ersetzt die alte Version selbst (Windows fragt
+        // dabei nach Administratorrechten); danach Lumen neu starten
+        m_prepared = archive;
+        if (m_dryRun) {
+            m_busy = false;
+            setStatus(LTR("Update bereit"));
+            emit readyToRestart();
+            return true;
+        }
+        const QString script = QDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation)).filePath(QStringLiteral("lumen-update.cmd"));
+        QFile s(script);
+        if (!s.open(QIODevice::WriteOnly)) {
+            fail(LTR("Update-Skript nicht schreibbar"));
+            return false;
+        }
+        s.write(QStringLiteral("@echo off\r\n"
+                               ":wait\r\n"
+                               "tasklist /FI \"PID eq %1\" 2>NUL | find \"%1\" >NUL && (timeout /t 1 /nobreak >NUL & goto wait)\r\n"
+                               "msiexec /i %2 /passive /norestart\r\n"
+                               "if exist %3 start \"\" %3\r\n")
+                    .arg(pid, quoted(archive), quoted(QDir(target).filePath(QStringLiteral("lumen.exe"))))
+                    .toLocal8Bit());
+        s.close();
+        return QProcess::startDetached(QStringLiteral("cmd.exe"), {QStringLiteral("/c"), QDir::toNativeSeparators(script)});
+    }
     // Windows 10/11 bringen bsdtar mit, das auch ZIP entpackt
     if (QProcess::execute(QStringLiteral("tar"), {QStringLiteral("-xf"), archive, QStringLiteral("-C"), staging}) != 0) {
         fail(LTR("Update-Archiv nicht entpackbar"));

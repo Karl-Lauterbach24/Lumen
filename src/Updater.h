@@ -6,6 +6,9 @@
 
 // Update-Prüfung gegen die GitHub-Releases von Lumen und Ein-Klick-Aktualisierung:
 //   Windows  Lumen-<ver>-windows-x64.zip  -> entpacken, nach dem Beenden ersetzen, neu starten
+//            Lumen-<ver>-windows-x64.msi  -> wenn Lumen per MSI installiert wurde (Datei
+//                                            "install-type.txt" mit "msi" im Programmordner):
+//                                            Installer nach dem Beenden ausführen, neu starten
 //   macOS    Lumen-<ver>-macos-arm64.dmg  -> einhängen, Lumen.app ersetzen, neu starten
 //   sonst    Release-Seite im Browser
 // Jede Datei wird gegen SHA256SUMS.txt des Releases geprüft.
@@ -26,7 +29,10 @@ public:
     explicit Updater(QObject *parent = nullptr);
 
     static QString repository() { return QStringLiteral("Karl-Lauterbach24/Lumen"); }
-    static QString assetName(const QString &version);
+    // msi: Paketname für eine per MSI installierte Kopie (nur Windows)
+    static QString assetName(const QString &version, bool msi = false);
+    // Wurde diese Kopie per MSI installiert? (dann aktualisiert sie sich auch per MSI)
+    bool msiInstalled() const;
 
     bool available() const { return m_available; }
     QString latestVersion() const { return m_latest; }
