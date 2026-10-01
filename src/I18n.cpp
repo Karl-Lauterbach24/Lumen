@@ -19,6 +19,8 @@ struct Language
 const Language kLanguages[] = {
     {"de", "Deutsch"},  {"en", "English"},   {"fr", "Français"}, {"es", "Español"},
     {"it", "Italiano"}, {"pt", "Português"}, {"nl", "Nederlands"}, {"pl", "Polski"},
+    {"sv", "Svenska"},  {"cs", "Čeština"},   {"tr", "Türkçe"},     {"uk", "Українська"},
+    {"ru", "Русский"},  {"ja", "日本語"},     {"zh", "简体中文"},    {"ko", "한국어"},
 };
 
 } // namespace

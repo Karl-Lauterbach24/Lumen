@@ -2,17 +2,19 @@
 
 # Lumen – Disc & Digital Cinema Player
 
-**English** · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Português](README.pt.md)
+**English** · [Deutsch](README.de.md) · [Français](README.fr.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Português](README.pt.md) · [Nederlands](README.nl.md) · [Polski](README.pl.md) · [Svenska](README.sv.md) · [Čeština](README.cs.md) · [Türkçe](README.tr.md) · [Українська](README.uk.md) · [Русский](README.ru.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [한국어](README.ko.md)
 
 A fast, minimalist player for home cinemas, screening rooms and small cinemas with **two windows**:
 
 - **Player window** – native mpv window (gpu-next, D3D11/Vulkan/Wayland), can be pinned to an output device, HDR passthrough.
-- **Control window** – Qt Quick: source, transport, titles, chapters, audio, subtitles, picture, cinema, output profiles.
+- **Control window** – Qt Quick: source, transport, titles, chapters, audio, subtitles, picture, cinema, streaming, output profiles, plugins.
 
 Plays **Blu-ray / UHD / Blu-ray 3D, DVD-Video (with menus), HD DVD, Video-CD / Super Video-CD, Audio-CD,
 Digital Cinema Packages (DCP, JPEG 2000, SMPTE and Interop, encrypted with KDM)** and every file format mpv can play.
 
-> The interface is in English by default and can be switched on the start page to German, French, Spanish, Italian, Portuguese, Dutch or Polish.
+> The interface is in English by default. On the start page you can switch between 16 languages: German, English, French,
+> Spanish, Italian, Portuguese, Dutch, Polish, Swedish, Czech, Turkish, Ukrainian, Russian, Japanese, Simplified Chinese and Korean.
+> English and German are maintained by hand; the other translations were made with machine assistance, corrections are welcome.
 
 ## Screenshots
 
@@ -26,6 +28,7 @@ Digital Cinema Packages (DCP, JPEG 2000, SMPTE and Interop, encrypted with KDM)*
 </p>
 <p align="center">
   <img src="docs/screenshots/output.png" width="49%" alt="Output: language, updates, automatic screen assignment, profiles">
+  <img src="docs/screenshots/help.png" width="49%" alt="Help dialog with version, licence and keyboard shortcuts">
 </p>
 
 ## Copy protection / encryption
@@ -50,12 +53,22 @@ supply DCP keys. Lumen ships and downloads none of these.
 
 ## Downloads
 
-Precompiled releases are on the [Releases page](https://github.com/Karl-Lauterbach24/Lumen/releases):
-- Windows: an MSI installer (Start menu entry, uninstall through *Apps & features*) or a portable ZIP;
-- macOS: a DMG for Apple Silicon;
-- Linux: a DEB (built on Debian 13) and an RPM (built on Fedora 44), both x86-64. Install with
-  `sudo apt install ./Lumen-<version>-linux-amd64.deb` or `sudo dnf install ./Lumen-<version>-linux-x86_64.rpm`;
-  the package manager pulls in Qt 6, libmpv and the disc libraries.
+Precompiled releases are on the [Releases page](https://github.com/Karl-Lauterbach24/Lumen/releases), for
+x86-64 (Intel/AMD) and ARM64 (Apple Silicon, Windows on ARM, Linux aarch64):
+
+| System | x86-64 | ARM64 |
+|--------|--------|-------|
+| Windows 10/11, installer | `Lumen-<version>-windows-x64.msi` | `Lumen-<version>-windows-arm64.msi` |
+| Windows 10/11, portable | `Lumen-<version>-windows-x64.zip` | `Lumen-<version>-windows-arm64.zip` |
+| macOS 15 | `Lumen-<version>-macos-x64.dmg` (Intel) | `Lumen-<version>-macos-arm64.dmg` (Apple Silicon) |
+| Debian 13 and derivatives | `Lumen-<version>-linux-amd64.deb` | `Lumen-<version>-linux-arm64.deb` |
+| Fedora 44 | `Lumen-<version>-linux-x86_64.rpm` | `Lumen-<version>-linux-aarch64.rpm` |
+
+- The MSI installs for all users with a Start menu entry and is removed through *Apps & features*.
+- Linux: `sudo apt install ./Lumen-….deb` or `sudo dnf install ./Lumen-….rpm`; the package manager pulls in
+  Qt 6, libmpv and the disc libraries.
+- Blu-ray 3D decoding (FFmpeg-mvc) is included in the Windows x64 package only; elsewhere 3D discs play in 2D
+  unless you build FFmpeg-mvc yourself (see *Building*).
 
 Lumen checks for new releases at start, at most once a day and only if enabled. On Windows and macOS it
 installs an update with one click, after verifying the download against the release's `SHA256SUMS.txt`;
@@ -121,8 +134,9 @@ Documentation and examples: [plugins/README.md](plugins/README.md).
 | Video-CD / SVCD | Sector-exact reading of Mode 2 Form 2 tracks via libcdio (drive or CUE/BIN/NRG), entry points (ENTRIES.VCD/SVD) as chapters, **PBC menus** (VCD 2.0 playback control: selection lists with number keys, play lists, Next/Previous/Return/Default, wait times, loops, segment stills), fallback via the file system |
 | Audio-CD | Drives and images (CUE/BIN …) read through libcdio; tracks as chapters, names from CD-Text or a plugin |
 | Transport | Play/pause, stop, ±10 s/±60 s, chapters, frame step back/forward, A-B loop, speed, scrubbing with chapter marks, screenshot, **show playlist** (ads, trailers, feature back to back) |
-| Audio | Track selection, bitstream (TrueHD/Atmos, DTS-HD MA/DTS:X, DD+, DD), WASAPI exclusive, channel layout, audio delay; **cinema fader** (Dolby scale, 7.0 = reference) and **DCP channel routing** (5.1, 7.1 DS, HI, VI-N) |
-| Subtitles | Track selection (PGS/SRT/ASS/VobSub/DCP), forced only, delay, size, position (cinemascope screens) |
+| Audio | Track selection, bitstream (TrueHD/Atmos, DTS-HD MA/DTS:X, DD+, DD), WASAPI exclusive, channel layout, audio delay, **night mode** (dynamic range compression), volume remembered; **cinema fader** (Dolby scale, 7.0 = reference) and **DCP channel routing** (5.1, 7.1 DS, HI, VI-N) |
+| Subtitles | Track selection (PGS/SRT/ASS/VobSub/DCP), **external subtitle files**, forced only, delay, size, position (cinemascope screens) |
+| Everyday use | **Recently played** on the start page (files resume where you stopped), **drag and drop** of files, folders and links, help dialog with all shortcuts (F1), window title shows what is playing |
 | Picture | Aspect ratio, pan & scan, zoom, brightness/contrast/saturation/gamma, deinterlacing, 3D source format for files |
 | Output profiles | Target device, fullscreen, refresh-rate matching, automatic system HDR, HDR passthrough or tone mapping, **reference scaling** (EWA Lanczos 4, error diffusion, HDR contrast recovery), **calibration** (system/own ICC profile, 3D LUT `.cube`, native contrast, dither depth, GLSL shaders), sync, 3D output format, audio device, expert options |
 

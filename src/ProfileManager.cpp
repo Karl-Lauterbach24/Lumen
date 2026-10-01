@@ -30,10 +30,11 @@ QVariantList readArray(const QString &file)
 
 QString yesNo(bool b) { return b ? QStringLiteral("yes") : QStringLiteral("no"); }
 
-// Unveränderte Vorlagen in der Oberflächensprache zeigen (gespeichert bleibt Deutsch)
+// Vorlagen in der Oberflächensprache zeigen (gespeichert bleibt Deutsch). Auch angepasste
+// Vorlagen: ein vom Nutzer geänderter Name hat keine Übersetzung und bleibt, wie er ist.
 QVariantMap localized(QVariantMap p)
 {
-    if (p.value("builtin").toBool() && !p.value("modified").toBool()) {
+    if (p.value("builtin").toBool()) {
         p["name"] = ltrDynamic(p.value("name").toString());
         if (!p.value("description").toString().isEmpty())
             p["description"] = ltrDynamic(p.value("description").toString());

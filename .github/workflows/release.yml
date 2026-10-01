@@ -182,4 +182,12 @@ jobs:
           TAG="v$VER"
           NOTES="../docs/release-notes/$VER.md"
           [ -f "$NOTES" ] || { echo "Lumen $VER" > /tmp/notes.md; NOTES=/tmp/notes.md; }
-          gh release create "$TAG" Lumen-* SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --title "Lumen $VER" --notes-file "$NOTES"
+          # Release notes that start with "<!-- draft -->" create a draft: all assets are attached,
+          # but the release only becomes public (and visible to the updater) when it is published
+          # on the Releases page.
+          DRAFT=""
+          if head -1 "$NOTES" | grep -q '<!-- draft -->'; then
+            DRAFT="--draft"
+            tail -n +2 "$NOTES" > /tmp/notes-body.md; NOTES=/tmp/notes-body.md
+          fi
+          gh release create "$TAG" Lumen-* SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --title "Lumen $VER" --notes-file "$NOTES" $DRAFT

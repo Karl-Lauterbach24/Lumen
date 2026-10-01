@@ -123,7 +123,10 @@ int main(int argc, char **argv)
     check(!target.exists(QStringLiteral("src")), QStringLiteral("Quelltext nicht mitinstalliert"));
     const QVariantMap installed = plugin(pm, id);
     check(!installed.isEmpty() && !installed.value("enabled").toBool(), QStringLiteral("erscheint im Plugin-Tab, zunächst deaktiviert"));
-    check(entry(store, source, id).value("installed") == QLatin1String("1.0.0"), QStringLiteral("Store zeigt installierte Version"));
+    // Version des Plugins im Store (ändert sich mit dessen Releases)
+    const QString storeVersion = entry(store, source, id).value("version").toString();
+    check(!storeVersion.isEmpty() && entry(store, source, id).value("installed") == storeVersion,
+          QStringLiteral("Store zeigt installierte Version %1").arg(storeVersion));
 
     // Manipulierte Quelle: Datei passt nicht zur Prüfsumme
     QTemporaryDir tmp;
@@ -139,13 +142,13 @@ int main(int argc, char **argv)
         f.open(QIODevice::ReadOnly);
         QByteArray json = f.readAll();
         f.close();
-        json.replace("\"version\": \"1.0.0\"", "\"version\": \"1.1.0\"");
+        json.replace("\"version\": \"" + storeVersion.toUtf8() + "\"", "\"version\": \"99.0.0\"");
         f.open(QIODevice::WriteOnly | QIODevice::Truncate);
         f.write(json);
     }
     check(store.addSource(tmp.path()), QStringLiteral("zweite (manipulierte) Quelle"));
     check(waitFor([&] { return !store.busy() && !entry(store, tmp.path(), id).isEmpty(); }, 20000), QStringLiteral("Index gelesen"));
-    check(entry(store, tmp.path(), id).value("update").toBool(), QStringLiteral("Update 1.0.0 -> 1.1.0 erkannt"));
+    check(entry(store, tmp.path(), id).value("update").toBool(), QStringLiteral("Update %1 -> 99.0.0 erkannt").arg(storeVersion));
     done = false;
     store.install(tmp.path(), id);
     finished = waitFor([&] { return done; }, 20000);

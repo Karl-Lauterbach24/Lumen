@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 0.2.2 LANGUAGES CXX)
+project(Lumen VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -214,6 +214,7 @@ qt_add_qml_module(lumen
         profiles/presets.json
         resources/logo/lumen-emblem-small.png resources/logo/lumen-icon-256.png resources/logo/lumen-logo.png
         i18n/en.json i18n/fr.json i18n/es.json i18n/it.json i18n/pt.json i18n/nl.json i18n/pl.json
+        i18n/sv.json i18n/cs.json i18n/tr.json i18n/uk.json i18n/ru.json i18n/ja.json i18n/zh.json i18n/ko.json
 )
 
 target_compile_definitions(lumen PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")

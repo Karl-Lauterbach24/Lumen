@@ -52,6 +52,12 @@ All keys except `id` are optional. Paths are relative to the plugin folder, and 
 string or an object with `windows`/`macos`/`linux` entries. `${pluginDir}` and `${configDir}` (a
 writable folder for this plugin) are expanded.
 
+Native code depends on the processor architecture. Since Lumen 1.0 an object can also carry entries with
+the architecture, which take precedence: `windows-arm64`, `linux-arm64`, `windows-x64`, `linux-x64`,
+`macos-arm64`, `macos-x64`. Without one, `windows` and `linux` mean x64, and `macos` should be a universal
+library (Apple Silicon and Intel). In a store, files below `bin/<platform>/` are only installed on that
+platform; ARM64 builds of Lumen for Windows and Linux install `bin/windows-arm64/` and `bin/linux-arm64/`.
+
 | Key | Effect |
 |-----|--------|
 | `library` | Native plugin (C ABI, below). The file extension may be left out. |

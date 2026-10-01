@@ -2,7 +2,7 @@
 
 # Lumen – Disc- & Digitalkino-Player
 
-[English](README.md) · **Deutsch** · [Français](README.fr.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Português](README.pt.md)
+[English](README.md) · **Deutsch** · [Français](README.fr.md) · [Español](README.es.md) · [Italiano](README.it.md) · [Português](README.pt.md) · [Nederlands](README.nl.md) · [Polski](README.pl.md) · [Svenska](README.sv.md) · [Čeština](README.cs.md) · [Türkçe](README.tr.md) · [Українська](README.uk.md) · [Русский](README.ru.md) · [日本語](README.ja.md) · [简体中文](README.zh.md) · [한국어](README.ko.md)
 
 Schneller, minimalistischer Player für Heimkinos, Vorführräume und kleine Kinos mit **zwei Fenstern**:
 
@@ -49,11 +49,24 @@ URL-Schemata anmelden oder DCP-Schlüssel liefern. Lumen liefert nichts davon mi
 ## Downloads
 
 Fertige Builds gibt es auf der [Release-Seite](https://github.com/Karl-Lauterbach24/Lumen/releases):
-- Windows: MSI-Installer (Startmenü-Eintrag, Deinstallation über *Apps & Features*) oder portables ZIP;
-- macOS: DMG für Apple Silicon;
-- Linux: ein DEB (gebaut auf Debian 13) und ein RPM (gebaut auf Fedora 44), beide x86-64. Installation mit
-  `sudo apt install ./Lumen-<version>-linux-amd64.deb` bzw. `sudo dnf install ./Lumen-<version>-linux-x86_64.rpm`;
-  die Paketverwaltung holt Qt 6, libmpv und die Disc-Bibliotheken dazu.
+
+| System | x86-64 | ARM64 |
+|--------|--------|-------|
+| Windows 10/11, Installer | `Lumen-<version>-windows-x64.msi` | `Lumen-<version>-windows-arm64.msi` |
+| Windows 10/11, portabel | `Lumen-<version>-windows-x64.zip` | `Lumen-<version>-windows-arm64.zip` |
+| macOS 15 | `Lumen-<version>-macos-x64.dmg` (Intel) | `Lumen-<version>-macos-arm64.dmg` (Apple Silicon) |
+| Debian 13 und Abkömmlinge | `Lumen-<version>-linux-amd64.deb` | `Lumen-<version>-linux-arm64.deb` |
+| Fedora 44 | `Lumen-<version>-linux-x86_64.rpm` | `Lumen-<version>-linux-aarch64.rpm` |
+
+- Das MSI installiert für alle Benutzer mit Startmenü-Eintrag; Deinstallation über *Apps & Features*.
+- Linux: `sudo apt install ./Lumen-….deb` bzw. `sudo dnf install ./Lumen-….rpm`; die Paketverwaltung holt
+  Qt 6, libmpv und die Disc-Bibliotheken dazu.
+- Die Blu-ray-3D-Dekodierung (FFmpeg-mvc) steckt nur im Windows-x64-Paket; sonst spielen 3D-Discs in 2D,
+  solange FFmpeg-mvc nicht selbst gebaut wird (siehe *Bauen*).
+- Die Oberfläche gibt es in 16 Sprachen (Startseite). Deutsch und Englisch sind von Hand gepflegt, die
+  übrigen Übersetzungen entstanden mit maschineller Hilfe – Korrekturen sind willkommen.
+- Neu in 1.0: „Zuletzt gespielt“ mit Fortsetzen, Drag & Drop, Hilfe-Dialog (F1), Nachtmodus, externe
+  Untertiteldateien, gemerkte Lautstärke.
 
 Lumen sucht beim Start nach neuen Versionen, höchstens einmal täglich und nur wenn eingeschaltet. Ein Update
 installiert es mit einem Klick, nachdem es den Download gegen die `SHA256SUMS.txt` des Releases geprüft hat.
