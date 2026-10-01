@@ -274,6 +274,8 @@ int main(int argc, char **argv)
         };
         const bool opened = waitFor([&] { return prop("duration").toDouble() > 5.9; }, 10000);
         check(opened && std::abs(prop("duration").toDouble() - 6.0) < 0.05, QStringLiteral("Abbild spielt: Dauer %1 s").arg(prop("duration")));
+        // Tonparameter und Kapitel folgen kurz nach der Dauer
+        waitFor([&] { return !prop("audio-params/samplerate").isEmpty() && prop("chapter-list/count") == QLatin1String("3"); }, 10000);
         check(prop("audio-params/samplerate") == QLatin1String("44100") && prop("audio-params/channel-count") == QLatin1String("2"),
               QStringLiteral("44,1 kHz Stereo (%1 Hz, %2 Kanäle)").arg(prop("audio-params/samplerate"), prop("audio-params/channel-count")));
         check(prop("chapter-list/count") == QLatin1String("3") && prop("chapter-list/2/title") == QLatin1String("3. Finale")
