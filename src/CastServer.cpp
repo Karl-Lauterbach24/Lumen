@@ -433,6 +433,11 @@ void CastServer::handleApi(QTcpSocket *socket, const Request &req)
         QString id = param("id").left(64);
         if (id.isEmpty())
             id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        // höchstens so viele angemeldete Empfänger (Schutz vor Unfug im Netz)
+        if (!m_clients.contains(id) && m_clients.size() >= 32) {
+            respondJson(socket, {{"error", "too many receivers"}}, 503);
+            return;
+        }
         Client &c = m_clients[id];
         c.name = param("name").left(80);
         if (c.name.isEmpty())
