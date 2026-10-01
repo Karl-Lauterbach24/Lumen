@@ -51,7 +51,7 @@ supply DCP keys. Lumen ships and downloads none of these.
 ## Downloads
 
 Precompiled releases are on the [Releases page](https://github.com/Karl-Lauterbach24/Lumen/releases):
-- Windows: a portable ZIP;
+- Windows: an MSI installer (Start menu entry, uninstall through *Apps & features*) or a portable ZIP;
 - macOS: a DMG for Apple Silicon;
 - Linux: a DEB (built on Debian 13) and an RPM (built on Fedora 44), both x86-64. Install with
   `sudo apt install ./Lumen-<version>-linux-amd64.deb` or `sudo dnf install ./Lumen-<version>-linux-x86_64.rpm`;
@@ -59,7 +59,8 @@ Precompiled releases are on the [Releases page](https://github.com/Karl-Lauterba
 
 Lumen checks for new releases at start, at most once a day and only if enabled. On Windows and macOS it
 installs an update with one click, after verifying the download against the release's `SHA256SUMS.txt`;
-on Linux it tells you that a new version exists and you install the new package.
+on Linux it tells you that a new version exists and you install the new package. A copy installed with the
+MSI updates itself with the new MSI (Windows asks for administrator rights), the portable copy with the ZIP.
 
 ## Streaming and media servers
 

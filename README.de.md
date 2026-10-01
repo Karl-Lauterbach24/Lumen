@@ -49,7 +49,7 @@ URL-Schemata anmelden oder DCP-Schlüssel liefern. Lumen liefert nichts davon mi
 ## Downloads
 
 Fertige Builds gibt es auf der [Release-Seite](https://github.com/Karl-Lauterbach24/Lumen/releases):
-- Windows: portables ZIP;
+- Windows: MSI-Installer (Startmenü-Eintrag, Deinstallation über *Apps & Features*) oder portables ZIP;
 - macOS: DMG für Apple Silicon;
 - Linux: ein DEB (gebaut auf Debian 13) und ein RPM (gebaut auf Fedora 44), beide x86-64. Installation mit
   `sudo apt install ./Lumen-<version>-linux-amd64.deb` bzw. `sudo dnf install ./Lumen-<version>-linux-x86_64.rpm`;

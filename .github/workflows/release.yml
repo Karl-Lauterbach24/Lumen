@@ -1,4 +1,4 @@
-# Precompiled release: Windows (portable ZIP), macOS (DMG), Linux (DEB + RPM), SHA256SUMS.txt, GitHub release.
+# Precompiled release: Windows (portable ZIP + MSI installer), macOS (DMG), Linux (DEB + RPM), SHA256SUMS.txt, GitHub release.
 # Triggered by a tag "v<version>" (e.g. v0.2.0).
 name: Release
 
@@ -81,10 +81,27 @@ jobs:
           Stop-Process -Id $p.Id -ErrorAction SilentlyContinue
           if (-not (Test-Path $env:LUMEN_SNAPSHOT)) { Write-Error "Lumen did not start from the package"; exit 1 }
 
+      - name: MSI installer (WiX)
+        shell: pwsh
+        run: |
+          if (-not $env:WIX) { choco install wixtoolset --no-progress -y }
+          $ver = (Select-String -Path CMakeLists.txt -Pattern 'project\(Lumen VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          ./tools/make_msi.ps1 -Stage dist\Lumen -Version $ver -Out "Lumen-$ver-windows-x64.msi"
+          # second MSI with a higher version, only for the upgrade test
+          ./tools/make_msi.ps1 -Stage dist\Lumen -Version 99.0.0 -Out "$env:RUNNER_TEMP\Lumen-99.0.0-windows-x64.msi"
+
+      - name: "MSI test: install, start, upgrade, uninstall"
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path CMakeLists.txt -Pattern 'project\(Lumen VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          ./tools/test_msi.ps1 -Msi "Lumen-$ver-windows-x64.msi" -Upgrade "$env:RUNNER_TEMP\Lumen-99.0.0-windows-x64.msi"
+
       - uses: actions/upload-artifact@v5
         with:
           name: windows
-          path: Lumen-*.zip
+          path: |
+            Lumen-*.zip
+            Lumen-*.msi
 
   macos:
     runs-on: macos-15

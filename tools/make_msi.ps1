@@ -49,7 +49,7 @@ Invoke-Tool "heat.exe" @("dir", $files, "-nologo", "-cg", "LumenFiles", "-dr", "
 $defines = @("-dVersion=$Version", "-dStage=$files", "-dIcon=$(Join-Path $repo 'resources\logo\lumen.ico')", "-dLicense=$rtf")
 Invoke-Tool "candle.exe" (@("-nologo", "-arch", "x64", "-ext", "WixUIExtension", "-out", "$work\") + $defines +
                           @((Join-Path $repo "packaging\windows\lumen.wxs"), $filesWxs))
-Invoke-Tool "light.exe" @("-nologo", "-ext", "WixUIExtension", "-cultures:en-us", "-out", $Out,
+Invoke-Tool "light.exe" @("-nologo", "-sw1076", "-ext", "WixUIExtension", "-cultures:en-us", "-out", $Out,
                           (Join-Path $work "lumen.wixobj"), (Join-Path $work "files.wixobj"))
 
 Remove-Item -LiteralPath $work -Recurse -Force
