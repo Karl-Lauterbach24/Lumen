@@ -44,7 +44,7 @@ jobs:
               qt6-base-dev qt6-declarative-dev libbluray-dev libcdio-dev libiso9660-dev libssl-dev libxml2-dev openssl \
               libdav1d-dev zlib1g-dev libbz2-dev liblzma-dev libva-dev libvdpau-dev \
               libass-dev libplacebo-dev libluajit-5.1-dev libarchive-dev liblcms2-dev libjpeg-dev libuchardet-dev libzimg-dev librubberband-dev \
-              libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxpresent-dev libxss-dev libxinerama-dev \
+              libasound2-dev libpulse-dev libpipewire-0.3-dev libx11-dev libxext-dev libxrandr-dev libxpresent-dev libxss-dev libxinerama-dev libxfixes-dev \
               libwayland-dev wayland-protocols libxkbcommon-dev libegl-dev libgl-dev libvulkan-dev libdrm-dev libgbm-dev \
               xvfb xauth libgl1-mesa-dri procps
           else
@@ -55,7 +55,7 @@ jobs:
               libdav1d-devel zlib-devel bzip2-devel xz-devel libva-devel libvdpau-devel \
               libass-devel libplacebo-devel luajit-devel libarchive-devel lcms2-devel libjpeg-turbo-devel uchardet-devel zimg-devel rubberband-devel \
               alsa-lib-devel pulseaudio-libs-devel pipewire-devel libX11-devel libXext-devel libXrandr-devel libXpresent-devel libXScrnSaver-devel \
-              libXinerama-devel wayland-devel wayland-protocols-devel libxkbcommon-devel mesa-libEGL-devel mesa-libGL-devel vulkan-loader-devel \
+              libXinerama-devel libXfixes-devel wayland-devel wayland-protocols-devel libxkbcommon-devel mesa-libEGL-devel mesa-libGL-devel vulkan-loader-devel \
               libdrm-devel mesa-libgbm-devel \
               xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers procps-ng
           fi
