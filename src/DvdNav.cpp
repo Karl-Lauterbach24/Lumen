@@ -536,6 +536,7 @@ QVariantMap DvdNav::scan(const QString &device)
         mt["main"] = true;
         titles[mainIndex] = mt;
     }
+#ifdef LUMEN_DVDNAV7
     int32_t region = 0;
     if (dvdnav_get_disk_region_mask(dvd, &region) == DVDNAV_STATUS_OK) {
         QStringList regions;
@@ -544,6 +545,7 @@ QVariantMap DvdNav::scan(const QString &device)
                 regions << QString::number(r + 1);
         m["regions"] = regions.join(QLatin1Char(','));
     }
+#endif
     m["titles"] = titles;
     dvdnav_close(dvd);
 #else
@@ -884,7 +886,9 @@ void DvdNav::seek(double seconds)
         if (!m_session || m_menuDomain)
             return;
         const uint64_t t = uint64_t(std::max(0.0, seconds) * kTicks);
+#ifdef LUMEN_DVDNAV7
         if (dvdnav_jump_to_sector_by_time(m_session->dvd, t, SEEK_SET) != DVDNAV_STATUS_OK)
+#endif
             dvdnav_time_search(m_session->dvd, t);
     }
     m_position = seconds;
@@ -964,10 +968,14 @@ void DvdNav::selectSubtitle(int physical)
         if (!m_session)
             return;
         if (physical >= 0) {
+#ifdef LUMEN_DVDNAV7
             dvdnav_set_active_stream(m_session->dvd, uint8_t(physical), DVD_SUBTITLE_STREAM);
+#endif
             m_session->spuStream = physical;
         }
+#ifdef LUMEN_DVDNAV7
         dvdnav_toggle_spu_stream(m_session->dvd, physical >= 0 ? 1 : 0);
+#endif
     }
     m_userSpu = physical;
     m_queue.clear();
@@ -985,8 +993,12 @@ void DvdNav::noteAudioSelected(int srcId)
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_session)
         return;
+#ifdef LUMEN_DVDNAV7
     const int phys = srcId >= 0x1c0 ? srcId - 0x1c0 : (srcId & 0x07);
     dvdnav_set_active_stream(m_session->dvd, uint8_t(phys), DVD_AUDIO_STREAM);
+#else
+    Q_UNUSED(srcId) // libdvdnav 6: der Navigator erfährt die Wahl nicht, mpv spielt die gewählte Spur trotzdem
+#endif
 #else
     Q_UNUSED(srcId)
 #endif

@@ -139,7 +139,7 @@ if(LUMEN_WITH_IAB)
     endif()
 endif()
 
-message(STATUS "Lumen: OpenSSL (DCP-Entschlüsselung): ${LUMEN_HAVE_OPENSSL} · libdvdnav: ${LUMEN_HAVE_DVDNAV} · libcdio: ${LUMEN_HAVE_CDIO} · libxml2 (KDM-Signatur): ${LUMEN_HAVE_LIBXML2} · IAB/Atmos: ${LUMEN_HAVE_IAB}")
+message(STATUS "Lumen: OpenSSL (DCP-Entschlüsselung): ${LUMEN_HAVE_OPENSSL} · libdvdnav: ${LUMEN_HAVE_DVDNAV} (${DVDNAV_VERSION}) · libcdio: ${LUMEN_HAVE_CDIO} · libxml2 (KDM-Signatur): ${LUMEN_HAVE_LIBXML2} · IAB/Atmos: ${LUMEN_HAVE_IAB}")
 
 # DCP-Kern (ohne GUI, auch für das Testprogramm)
 set(LUMEN_DCP_SOURCES
@@ -229,6 +229,11 @@ function(lumen_optional_libs target)
     if(LUMEN_HAVE_DVDNAV)
         target_link_libraries(${target} PRIVATE PkgConfig::DVDNAV)
         target_compile_definitions(${target} PRIVATE LUMEN_HAVE_DVDNAV=1)
+        # libdvdnav 7: genaues Springen, Ton-/Untertitelwahl im Navigator, Regionscode der Disc.
+        # Mit libdvdnav 6 (z. B. Debian 13) laufen Menüs und Wiedergabe ohne diese Extras.
+        if(DVDNAV_VERSION VERSION_GREATER_EQUAL 7.0)
+            target_compile_definitions(${target} PRIVATE LUMEN_DVDNAV7=1)
+        endif()
     endif()
     if(LUMEN_HAVE_CDIO)
         target_link_libraries(${target} PRIVATE PkgConfig::CDIO)
