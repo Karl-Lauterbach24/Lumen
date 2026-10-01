@@ -15,6 +15,10 @@ on:
         required: false
         default: ""
 
+concurrency:
+  group: linux-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   package:
     strategy:
