@@ -2,16 +2,24 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QTemporaryFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QSet>
 #include <QTimer>
 #include <QUrl>
+
+#include <mpv/client.h>
 
 #include <clocale>
 
 #include "BlurayNav.h"
+#include "CastManager.h"
+#include "CastOutput.h"
 #include "DcpManager.h"
 #include "DiscScanner.h"
 #include "DvdNav.h"
@@ -27,6 +35,58 @@
 #include "ProfileManager.h"
 #include "VcdNav.h"
 
+// "lumen --selftest <datei.json>": meldet, was die mitgelieferten Bibliotheken können, und endet.
+// Damit prüfen die Paket-Builds auf jeder Plattform dasselbe (FFmpeg-mvc, libmpv mit Ton-Abgriff).
+static int selfTest(const QString &file)
+{
+    QJsonObject out{{"version", LUMEN_VERSION}};
+    mpv_handle *mpv = mpv_create();
+    if (mpv) {
+        mpv_set_option_string(mpv, "vo", "null");
+        mpv_set_option_string(mpv, "ao", "null");
+        mpv_set_option_string(mpv, "config", "no");
+        mpv_set_option_string(mpv, "terminal", "no");
+        if (mpv_initialize(mpv) >= 0) {
+            auto prop = [&](const char *name) {
+                char *v = mpv_get_property_string(mpv, name);
+                const QString text = QString::fromUtf8(v ? v : "");
+                mpv_free(v);
+                return text;
+            };
+            out["mpv"] = prop("mpv-version");
+            out["ffmpeg"] = prop("ffmpeg-version");
+            // Blu-ray 3D: FFmpeg-mvc meldet sich mit "mvc" in der Versionskennung
+            out["mvc"] = prop("ffmpeg-version").contains(QLatin1String("mvc"), Qt::CaseInsensitive);
+            // Lua-Skripte (Plugins, yt-dlp)
+            QTemporaryFile script(QDir::tempPath() + QStringLiteral("/lumen-selftest-XXXXXX.lua"));
+            bool lua = false;
+            if (script.open()) {
+                script.write("mp.set_property('user-data/lumen-selftest', 'ok')\n");
+                script.close();
+                const QByteArray path = script.fileName().toUtf8();
+                const char *load[] = {"load-script", path.constData(), nullptr};
+                mpv_command(mpv, load);
+                for (int i = 0; i < 40 && !lua; ++i) {
+                    mpv_wait_event(mpv, 0.05);
+                    lua = prop("user-data/lumen-selftest") == QLatin1String("ok");
+                }
+            }
+            out["lua"] = lua;
+        }
+        mpv_terminate_destroy(mpv);
+    }
+    out["encoder"] = CastEncoder::videoEncoderName();
+    out["audioTap"] = castTapAvailable();
+    out["cast"] = !CastEncoder::videoEncoderName().isEmpty() && castTapAvailable();
+    out["bluray"] = BlurayNav::available();
+    out["dvdnav"] = DvdNav::available();
+    QFile f(file);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return 1;
+    f.write(QJsonDocument(out).toJson());
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
@@ -39,6 +99,12 @@ int main(int argc, char *argv[])
 
     // libmpv verlangt den C-Locale für Zahlen
     std::setlocale(LC_NUMERIC, "C");
+    {
+        const QStringList a = app.arguments();
+        const int i = a.indexOf(QStringLiteral("--selftest"));
+        if (i >= 0 && i + 1 < a.size())
+            return selfTest(a.at(i + 1));
+    }
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     I18n i18n; // vor allen anderen: Texte der Objekte sind dann schon übersetzt
@@ -182,7 +248,49 @@ int main(int argc, char *argv[])
             serverStop();
     });
 
+    // Übertragung an Empfänger im Netz; Tasten der TV-Fernbedienung steuern den Player
+    CastManager cast(&player);
+    QObject::connect(&cast, &CastManager::remoteKey, &player, [&](const QString &key) {
+        static const QSet<QString> nav = {"up", "down", "left", "right", "enter", "menu"};
+        if (nav.contains(key))
+            player.command({"script-message", "lumen-key", key});
+        else if (key == QLatin1String("back"))
+            player.command({"script-message", "lumen-key",
+                            player.sourceKind().endsWith(QLatin1String("vcd")) ? "return" : "popup"});
+        else if (key == QLatin1String("playpause"))
+            player.togglePause();
+        else if (key == QLatin1String("play") || key == QLatin1String("pause"))
+            player.setPaused(key == QLatin1String("pause"));
+        else if (key == QLatin1String("stop"))
+            player.stop();
+        else if (key == QLatin1String("rewind") || key == QLatin1String("forward"))
+            player.seek(key == QLatin1String("forward") ? 10 : -10, true);
+        else if (key == QLatin1String("next"))
+            player.nextChapter();
+        else if (key == QLatin1String("prev"))
+            player.prevChapter();
+    });
+
+    // Entwickler-Hilfe: LUMEN_CAST_AUTO=<Text> überträgt an den ersten Empfänger, dessen Kennung
+    // oder Name den Text enthält, sobald er gefunden ist (z. B. "tv:" für die erste TV-App)
+    const QString castAuto = qEnvironmentVariable("LUMEN_CAST_AUTO");
+    if (!castAuto.isEmpty()) {
+        cast.openDialog();
+        QObject::connect(&cast, &CastManager::devicesChanged, &cast, [&cast, castAuto] {
+            if (cast.active())
+                return;
+            for (const QVariant &v : cast.devices()) {
+                const QVariantMap d = v.toMap();
+                if (d.value("id").toString().contains(castAuto) || d.value("name").toString().contains(castAuto)) {
+                    cast.start(d.value("id").toString());
+                    return;
+                }
+            }
+        });
+    }
+
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
+        cast.shutdown();
         serverStop();
         plugins.sendEvent(QStringLiteral("shutdown"));
         player.shutdown();
@@ -203,6 +311,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Store", &store);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Servers", &servers);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Recent", &recent);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Cast", &cast);
     Updater updater;
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Updater", &updater);
     QTimer::singleShot(4000, &updater, &Updater::checkAutomatically);

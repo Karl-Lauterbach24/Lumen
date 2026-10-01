@@ -1,0 +1,133 @@
+--- a/audio/out/ao_null.c
++++ b/audio/out/ao_null.c
+@@ -24,6 +24,8 @@
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <stdint.h>
++#include <string.h>
+ #include <math.h>
+ 
+ #include "mpv_talloc.h"
+@@ -58,8 +60,39 @@
+ 
+     struct m_channels channel_layouts;
+     int format;
++
++    // Lumen: audio tap. The simulated device keeps playback timed like a real
++    // one; every block it accepts is also written to this file or pipe, with
++    // the time at which the simulated device plays it (see tap_record()).
++    char *outfile;
++    FILE *fp;
+ };
+ 
++// Record layout (native byte order), followed by the samples for TAP_DATA
++// (interleaved, format/rate/channels as negotiated):
++//   char magic[4] "LAO1"; uint32 type; int64 time_us; uint32 samples; uint32 reserved
++// time_us is in the time base of mpv_get_time_us(). For TAP_DATA it is the
++// moment the first sample of the block is played; otherwise the current time.
++enum { TAP_DATA = 1, TAP_PAUSE = 2, TAP_RESUME = 3, TAP_RESET = 4 };
++
++static void tap_record(struct ao *ao, uint32_t type, int64_t time_us,
++                       void *data, uint32_t samples)
++{
++    struct priv *priv = ao->priv;
++    if (!priv->fp)
++        return;
++    unsigned char head[24] = {'L', 'A', 'O', '1'};
++    uint32_t reserved = 0;
++    memcpy(head + 4, &type, 4);
++    memcpy(head + 8, &time_us, 8);
++    memcpy(head + 16, &samples, 4);
++    memcpy(head + 20, &reserved, 4);
++    fwrite(head, sizeof(head), 1, priv->fp);
++    if (data && samples)
++        fwrite(data, ao->sstride, samples, priv->fp);
++    fflush(priv->fp);
++}
++
+ static void drain(struct ao *ao)
+ {
+     struct priv *priv = ao->priv;
+@@ -90,6 +123,9 @@
+ 
+     ao->untimed = priv->untimed;
+ 
++    if (priv->outfile && priv->outfile[0])
++        ao->format = af_fmt_from_planar(ao->format);
++
+     struct mp_chmap_sel sel = {.tmp = ao};
+     if (priv->channel_layouts.num_chmaps) {
+         for (int n = 0; n < priv->channel_layouts.num_chmaps; n++)
+@@ -108,12 +144,26 @@
+ 
+     priv->last_time = mp_time_sec();
+ 
++    if (priv->outfile && priv->outfile[0]) {
++        priv->fp = fopen(priv->outfile, "wb");
++        if (!priv->fp) {
++            MP_ERR(ao, "Failed to open %s for writing!\n", priv->outfile);
++            return -1;
++        }
++    }
++
+     return 0;
+ }
+ 
+ // close audio device
+ static void uninit(struct ao *ao)
+ {
++    struct priv *priv = ao->priv;
++
++    tap_record(ao, TAP_RESET, mp_time_ns() / 1000, NULL, 0);
++    if (priv->fp)
++        fclose(priv->fp);
++    priv->fp = NULL;
+ }
+ 
+ // stop playing and empty buffers (for seeking)
+@@ -123,6 +173,7 @@
+     priv->paused = false;
+     priv->buffered = 0;
+     priv->playing = false;
++    tap_record(ao, TAP_RESET, mp_time_ns() / 1000, NULL, 0);
+ }
+ 
+ static void start(struct ao *ao)
+@@ -151,6 +202,8 @@
+         priv->paused = paused;
+         if (!priv->paused)
+             priv->last_time = mp_time_sec();
++        tap_record(ao, paused ? TAP_PAUSE : TAP_RESUME, mp_time_ns() / 1000,
++                   NULL, 0);
+     }
+ 
+     return true;
+@@ -160,9 +213,19 @@
+ {
+     struct priv *priv = ao->priv;
+ 
++    if (priv->fp)
++        drain(ao); // bring the simulated buffer up to date
++
+     if (priv->buffered <= 0)
+         priv->buffered = priv->latency; // emulate fixed latency
+ 
++    if (priv->fp) {
++        // this block is played once everything buffered before it is through
++        double wait = priv->buffered / (ao->samplerate * (double)priv->speed);
++        tap_record(ao, TAP_DATA, mp_time_ns() / 1000 + (int64_t)(wait * 1e6),
++                   data[0], samples);
++    }
++
+     priv->buffered += samples;
+     return true;
+ }
+@@ -225,6 +288,7 @@
+         {"broken-delay", OPT_BOOL(broken_delay)},
+         {"channel-layouts", OPT_CHANNELS(channel_layouts)},
+         {"format", OPT_AUDIOFORMAT(format)},
++        {"outfile", OPT_STRING(outfile), .flags = M_OPT_FILE},
+         {0}
+     },
+     .options_prefix = "ao-null",

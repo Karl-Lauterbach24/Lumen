@@ -23,6 +23,17 @@ if(APPLE)
     endif()
 endif()
 
+# ---------------------------------------------------------------------------
+# Medienbibliotheken aus tools/build_deps.sh: FFmpeg-mvc (Blu-ray 3D, H.264-Encoder
+# für die Übertragung), libmpv und ggf. libdvdnav 7 – auf allen Plattformen dieselben
+# Versionen. Liegt das Präfix vor, hat es Vorrang vor den Paketen des Systems.
+# ---------------------------------------------------------------------------
+set(LUMEN_DEPS_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/prefix" CACHE PATH "Präfix von tools/build_deps.sh")
+if(EXISTS "${LUMEN_DEPS_PREFIX}/lib/pkgconfig")
+    list(PREPEND CMAKE_PREFIX_PATH "${LUMEN_DEPS_PREFIX}")
+    message(STATUS "Lumen: Medienbibliotheken aus ${LUMEN_DEPS_PREFIX}")
+endif()
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Network OpenGL Qml Quick QuickControls2 Xml)
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -49,6 +60,16 @@ elseif(PKG_CONFIG_FOUND)
 else()
     message(FATAL_ERROR "libmpv nicht gefunden: -DMPV_ROOT=<sdk> setzen oder pkg-config installieren")
 endif()
+
+# ---------------------------------------------------------------------------
+# FFmpeg  (Pflicht) – Lumen kodiert damit den Sendestrom für Empfänger im Netz
+# (H.264 + AAC in MPEG-TS). Es muss dasselbe FFmpeg sein, das libmpv lädt.
+# ---------------------------------------------------------------------------
+if(NOT PKG_CONFIG_FOUND)
+    message(FATAL_ERROR "pkg-config fehlt (für FFmpeg: libavcodec, libavformat, libavutil, libswscale)")
+endif()
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libavcodec libavformat libavutil libswscale)
+message(STATUS "Lumen: FFmpeg libavcodec ${FFMPEG_libavcodec_VERSION}")
 
 # ---------------------------------------------------------------------------
 # libbluray  (optional) – nur zum Auslesen von Disc-/Titel-Infos.
@@ -171,6 +192,15 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/MediaServers.h      src/MediaServers.cpp
     src/Updater.h           src/Updater.cpp
     src/Recent.h            src/Recent.cpp
+    src/AudioTap.h          src/AudioTap.cpp
+    src/CastStream.h        src/CastStream.cpp
+    src/CastAudio.h         src/CastAudio.cpp
+    src/CastEncoder.h       src/CastEncoder.cpp
+    src/CastRenderer.h      src/CastRenderer.cpp
+    src/CastServer.h        src/CastServer.cpp
+    src/CastDiscovery.h     src/CastDiscovery.cpp
+    src/CastTargets.h       src/CastTargets.cpp
+    src/CastManager.h       src/CastManager.cpp
     include/lumen/plugin.h
     src/Tr.h
     ${LUMEN_DCP_SOURCES}
@@ -192,6 +222,7 @@ set(LUMEN_QML
     qml/PluginsPane.qml
     qml/StreamingPane.qml
     qml/HelpDialog.qml
+    qml/CastDialog.qml
 )
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Alle QML-Dateien ins Modul-Wurzelverzeichnis legen (gemeinsames qmldir -> Singleton "Theme")
@@ -210,7 +241,7 @@ qt_add_qml_module(lumen
         icons/fullscreen.svg icons/eject.svg icons/disc.svg icons/folder.svg
         icons/tune.svg icons/loop.svg icons/camera.svg icons/info.svg
         icons/frame-back.svg icons/frame-fwd.svg icons/refresh.svg
-        icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg icons/help.svg icons/close.svg
+        icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg icons/help.svg icons/close.svg icons/cast.svg
         profiles/presets.json
         resources/logo/lumen-emblem-small.png resources/logo/lumen-icon-256.png resources/logo/lumen-logo.png
         i18n/en.json i18n/fr.json i18n/es.json i18n/it.json i18n/pt.json i18n/nl.json i18n/pl.json
@@ -222,7 +253,12 @@ target_include_directories(lumen PRIVATE include)
 
 target_link_libraries(lumen PRIVATE
     Qt6::Core Qt6::Gui Qt6::Network Qt6::OpenGL Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Xml
-    lumen_mpv)
+    lumen_mpv PkgConfig::FFMPEG)
+
+# Empfänger-Seite für Browser und TV-Apps (liefert der eingebaute HTTP-Server aus)
+qt_add_resources(lumen "lumen_receiver" PREFIX "/receiver" BASE "${CMAKE_CURRENT_SOURCE_DIR}/receiver"
+    FILES receiver/index.html receiver/receiver.js receiver/receiver.css receiver/icon.png
+          receiver/hls.light.min.js)
 
 function(lumen_optional_libs target)
     if(LUMEN_HAVE_OPENSSL)
@@ -334,6 +370,9 @@ if(APPLE)
             endif()
         endforeach()
     endif()
+    if(EXISTS "${LUMEN_DEPS_PREFIX}/lib")
+        list(APPEND _deploy_libpaths "-libpath=${LUMEN_DEPS_PREFIX}/lib")
+    endif()
     if(MACDEPLOYQT)
         # 1. Bundle füllen, 2. libdvdcss durch den Shim ersetzen, 3. ad hoc signieren, 4. DMG
         set(_frameworks "$<TARGET_BUNDLE_DIR:lumen>/Contents/Frameworks")
@@ -345,7 +384,7 @@ if(APPLE)
         add_custom_target(lumen_dmg
             COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml ${_deploy_libpaths} -always-overwrite
             ${_shim_cmd}
-            COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_macos_bundle.sh" "$<TARGET_BUNDLE_DIR:lumen>"
+            COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_macos_bundle.sh" "$<TARGET_BUNDLE_DIR:lumen>" "${LUMEN_DEPS_PREFIX}"
             COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:lumen>"
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_BUNDLE_DIR:lumen>" -DDMG=Lumen.dmg -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MakeDmg.cmake"
             DEPENDS lumen
@@ -356,17 +395,16 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Windows-Laufzeit: Qt (windeployqt) + alle DLL-Abhängigkeiten rekursiv.
-# LUMEN_DEPLOY_SEARCH: Suchordner in Reihenfolge – FFmpeg-mvc zuerst, damit
-# dessen avcodec/avformat/... die normalen FFmpeg-DLLs von libmpv ersetzen.
+# LUMEN_DEPLOY_SEARCH: Suchordner in Reihenfolge – das Präfix aus build_deps.sh
+# (FFmpeg-mvc, libmpv) zuerst, damit dessen DLLs Vorrang vor denen des Systems haben.
 # ---------------------------------------------------------------------------
-set(FFMPEG_MVC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/ffmpeg-mvc" CACHE PATH "FFmpeg-mvc-Installation (Blu-ray 3D)")
 set(LUMEN_DEPLOY_SEARCH "" CACHE STRING "Ordner mit Laufzeit-DLLs (;-getrennt), z. B. <msys2>/ucrt64/bin")
 if(WIN32 AND LUMEN_DEPLOY_SEARCH)
     find_package(Python3 COMPONENTS Interpreter)
     find_program(WINDEPLOYQT NAMES windeployqt6 windeployqt HINTS ${LUMEN_DEPLOY_SEARCH})
     set(_search "")
-    if(EXISTS "${FFMPEG_MVC_ROOT}/bin")
-        list(APPEND _search "${FFMPEG_MVC_ROOT}/bin")
+    if(EXISTS "${LUMEN_DEPS_PREFIX}/bin")
+        list(APPEND _search "${LUMEN_DEPS_PREFIX}/bin")
     endif()
     list(APPEND _search ${LUMEN_DEPLOY_SEARCH})
     if(WINDEPLOYQT)
@@ -457,6 +495,20 @@ if(LUMEN_BUILD_TESTS)
     add_executable(media_test tests/media_test.cpp src/MediaServers.cpp src/MediaServers.h)
     target_include_directories(media_test PRIVATE src)
     target_link_libraries(media_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network lumen_mpv)
+    # Übertragung: Sendestrom (H.264/AAC, Ton-Bild-Abgleich), Geräteerkennung, DLNA/Chromecast/AirPlay/TV-App
+    # gegen tools/mock_cast_devices.py
+    qt_add_executable(cast_test tests/cast_test.cpp
+        src/AudioTap.cpp src/AudioTap.h src/CastStream.cpp src/CastStream.h src/CastAudio.cpp src/CastAudio.h src/CastEncoder.cpp src/CastEncoder.h
+        src/CastRenderer.cpp src/CastRenderer.h src/CastServer.cpp src/CastServer.h src/CastDiscovery.cpp src/CastDiscovery.h
+        src/CastTargets.cpp src/CastTargets.h src/CastManager.cpp src/CastManager.h src/CastOutput.h)
+    target_include_directories(cast_test PRIVATE src)
+    target_compile_definitions(cast_test PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")
+    target_link_libraries(cast_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::OpenGL lumen_mpv PkgConfig::FFMPEG)
+    qt_add_resources(cast_test "cast_test_receiver" PREFIX "/receiver" BASE "${CMAKE_CURRENT_SOURCE_DIR}/receiver"
+        FILES receiver/index.html receiver/receiver.js receiver/receiver.css receiver/icon.png receiver/hls.light.min.js)
+    if(APPLE)
+        target_compile_definitions(cast_test PRIVATE GL_SILENCE_DEPRECATION)
+    endif()
     # Plugin-Store gegen eine lokale Quelle (Ordner mit index.json)
     add_executable(store_test tests/store_test.cpp src/PluginStore.cpp src/PluginStore.h src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
     target_include_directories(store_test PRIVATE src include)
@@ -469,6 +521,14 @@ if(LUMEN_BUILD_TESTS)
 endif()
 
 include(GNUInstallDirs)
+if(UNIX AND NOT APPLE AND EXISTS "${LUMEN_DEPS_PREFIX}/lib")
+    # Eigene Medienbibliotheken (FFmpeg-mvc, libmpv, x264, ggf. libdvdnav) liegen privat neben
+    # den Plugins; build_deps.sh hat ihnen den Suchpfad $ORIGIN gegeben.
+    set_target_properties(lumen PROPERTIES INSTALL_RPATH "$ORIGIN/../lib/lumen")
+    install(DIRECTORY "${LUMEN_DEPS_PREFIX}/lib/" DESTINATION lib/lumen
+            FILES_MATCHING PATTERN "*.so.*" PATTERN "pkgconfig" EXCLUDE PATTERN "cmake" EXCLUDE)
+    set(LUMEN_BUNDLED_LIBS ON)
+endif()
 install(TARGETS lumen BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ---------------------------------------------------------------------------
@@ -508,6 +568,10 @@ if(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_FILE_NAME "Lumen-${PROJECT_VERSION}-linux-${_deb_arch}.deb")
     set(CPACK_DEBIAN_PACKAGE_SECTION "video")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    if(LUMEN_BUNDLED_LIBS)
+        # die privaten Bibliotheken auflösen, ohne sie als Abhängigkeit zu verlangen
+        set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS "${LUMEN_DEPS_PREFIX}/lib")
+    endif()
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtquick-dialogs, qml6-module-qtcore, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qt-labs-folderlistmodel, qt6-svg-plugins")
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "yt-dlp")
 
@@ -521,5 +585,11 @@ if(UNIX AND NOT APPLE)
         /usr/share/applications /usr/share/doc /usr/share/icons /usr/share/icons/hicolor
         /usr/share/icons/hicolor/256x256 /usr/share/icons/hicolor/256x256/apps)
     set(CPACK_RPM_SPEC_MORE_DEFINE "%define _build_id_links none")
+    if(LUMEN_BUNDLED_LIBS)
+        # private Bibliotheken weder anbieten noch von außen verlangen
+        string(APPEND CPACK_RPM_SPEC_MORE_DEFINE "
+%global __provides_exclude_from ^/usr/lib/lumen/.*$
+%global __requires_exclude ^lib(mpv|avcodec|avformat|avutil|avfilter|avdevice|swscale|swresample|x264|dvdnav|dvdread)[.]so.*$")
+    endif()
     include(CPack)
 endif()

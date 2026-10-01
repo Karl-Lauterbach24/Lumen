@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CastOutput.h"
+
 #include <QObject>
 #include <QUrl>
 #include <QVariant>
@@ -10,6 +12,7 @@
 struct mpv_handle;
 struct mpv_event;
 class BlurayNav;
+class CastRenderer;
 class DisplayManager;
 class DvdNav;
 class VcdNav;
@@ -19,10 +22,12 @@ class PlayerWindow;
 // Steuert eine libmpv-Instanz. Das Player-Fenster ist entweder mpv's eigenes
 // natives Fenster (gpu-next / d3d11 / vulkan / wayland – volle HDR-Ausgabe) oder
 // ein eingebettetes Qt-Fenster über die Render-API (macOS, oder per Profil).
-class MpvController : public QObject
+class MpvController : public QObject, public CastOutput
 {
     Q_OBJECT
     Q_PROPERTY(bool embedded READ embedded NOTIFY profileApplied)
+    // Ausgabe geht an einen Empfänger im Netz statt in ein Fenster
+    Q_PROPERTY(bool casting READ casting NOTIFY profileApplied)
     Q_PROPERTY(bool idle READ idle NOTIFY idleChanged)
     Q_PROPERTY(bool paused READ paused NOTIFY pausedChanged)
     Q_PROPERTY(double position READ position NOTIFY positionChanged)
@@ -79,6 +84,10 @@ public:
     bool embedded() const { return m_window != nullptr; }
     // "auto" -> eingebettet nur dort, wo libmpv kein eigenes Fenster öffnen kann
     static bool wantsEmbedded(const QVariantMap &profile);
+
+    bool casting() const { return m_castEncoder != nullptr; }
+    void setCastOutput(CastEncoder *encoder, const QString &pcmPath = {}) override;
+    QString castTitle() const override { return m_mediaTitle; }
 
     bool initialize(const QVariantMap &profile);
     void shutdown();
@@ -303,6 +312,9 @@ private:
     int m_queueIndex = -1;
     bool m_queueActive = false;
     PlayerWindow *m_window = nullptr;
+    CastEncoder *m_castEncoder = nullptr;
+    CastRenderer *m_castRenderer = nullptr;
+    QString m_castPcm;
     mpv_handle *m_mpv = nullptr;
     QVariantList m_rawTracks;
     QString m_pendingUrl;          // wartet auf den Render-Kontext (eingebettetes Fenster)

@@ -2,6 +2,7 @@
 #include "Tr.h"
 
 #include "BlurayNav.h"
+#include "CastRenderer.h"
 #include "DcpPackage.h"
 #include "DisplayManager.h"
 #include "DvdNav.h"
@@ -251,7 +252,7 @@ QString MpvController::stereoOutLabel(const QString &out)
 
 bool MpvController::want3D() const
 {
-    return m_mvcCapable && m_nav && BlurayNav::available()
+    return m_mvcCapable && m_nav && BlurayNav::available() && !m_castEncoder
            && m_profile.value("stereoOut", "none").toString() != QLatin1String("none");
 }
 
@@ -436,7 +437,11 @@ bool MpvController::create(const QVariantMap &options)
     for (const auto &attach : m_protocols)
         attach(m_mpv);
 
-    if (options.value("vo").toString() == QLatin1String("libmpv")) {
+    if (m_castEncoder) {
+        m_castRenderer = new CastRenderer(m_mpv, m_castEncoder, this);
+        if (!m_castRenderer->ready())
+            setError(LTR("Übertragung: OpenGL steht nicht zur Verfügung"));
+    } else if (options.value("vo").toString() == QLatin1String("libmpv")) {
         m_window = new PlayerWindow(m_mpv);
         connect(m_window, &PlayerWindow::closeRequested, this, [this] {
             if (!m_quitting)
@@ -494,6 +499,8 @@ void MpvController::destroy()
     // Render-Kontext muss vor dem mpv-Kern freigegeben werden
     if (m_window)
         m_window->releaseRenderContext();
+    if (m_castRenderer)
+        m_castRenderer->releaseRenderContext();
     mpv_terminate_destroy(h);
     if (m_nav)
         m_nav->detach();
@@ -501,6 +508,22 @@ void MpvController::destroy()
         m_dvd->detach();
     delete m_window;
     m_window = nullptr;
+    delete m_castRenderer;
+    m_castRenderer = nullptr;
+}
+
+void MpvController::setCastOutput(CastEncoder *encoder, const QString &pcmPath)
+{
+    if (encoder == m_castEncoder && pcmPath == m_castPcm)
+        return;
+    m_castEncoder = encoder;
+    m_castPcm = encoder ? pcmPath : QString();
+    m_appliedOptions = buildOptions(m_profile);
+    if (!m_quitting)
+        restart(m_appliedOptions);
+    m_hdrState = -1;
+    m_matchedFps = 0;
+    emit profileApplied();
 }
 
 void MpvController::restart(const QVariantMap &options)
@@ -1280,7 +1303,14 @@ void MpvController::showText(const QString &text, int ms)
 QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
 {
     QVariantMap o = ProfileManager::toMpvOptions(profile);
-    if (wantsEmbedded(profile)) {
+    if (m_castEncoder) {
+        // Geräte-Einstellungen des Profils ruhen, solange übertragen wird
+        for (const char *key : {"gpu-api", "border", "ontop", "fullscreen", "audio-device", "icc-profile", "target-lut", "glsl-shaders"})
+            o.remove(QLatin1String(key));
+        const QVariantMap cast = castMpvOptions(m_castPcm);
+        for (auto it = cast.cbegin(); it != cast.cend(); ++it)
+            o.insert(it.key(), it.value());
+    } else if (wantsEmbedded(profile)) {
         // Eigenes Qt-Fenster: Platzierung/Rahmen übernimmt Qt, Bild über die Render-API
         o["vo"] = QStringLiteral("libmpv");
         o["force-window"] = QStringLiteral("no"); // das Qt-Fenster ist immer sichtbar
@@ -1295,7 +1325,8 @@ QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
 
     // 3D: Quellformat (Laufzeit) -> Geräteformat (Profil). Ohne 3D-Gerät wird
     // eine 3D-Quelle auf das linke Auge (2D) reduziert.
-    const QString out = profile.value("stereoOut", "none").toString();
+    // Übertragung: immer 2D
+    const QString out = m_castEncoder ? QStringLiteral("none") : profile.value("stereoOut", "none").toString();
     o["vf"] = stereoFilter(m_stereoIn, out);
     if (m_nav) {
         m_nav->setStereo(m_mvcCapable && BlurayNav::available() && out != QLatin1String("none"), out);

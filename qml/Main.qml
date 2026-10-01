@@ -185,6 +185,7 @@ ApplicationWindow {
 
     ProfileEditor { id: editor }
     HelpDialog { id: helpDialog }
+    CastDialog { id: castDialog }
 
     // Dateien, Ordner und Links ins Fenster ziehen
     DropArea {
@@ -307,6 +308,12 @@ ApplicationWindow {
                     onActivated: Profiles.currentId = currentValue
                 }
                 IconButton { iconName: "tune"; tip: qsTr("Profil bearbeiten"); onClicked: editor.openFor(Profiles.current) }
+                IconButton {
+                    iconName: "cast"
+                    active: Cast.active
+                    tip: Cast.active ? qsTr("Überträgt an „%1“").arg(Cast.deviceName) : qsTr("An Fernseher oder Empfänger übertragen")
+                    onClicked: castDialog.open()
+                }
                 IconButton { iconName: "help"; tip: qsTr("Hilfe und Tastenkürzel (F1)"); onClicked: helpDialog.open() }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }

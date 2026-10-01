@@ -5,16 +5,18 @@
 #    Homebrew-Pfade auf @rpath um,
 #  - entfernt Qt-Plugins, deren Qt-Module nicht im Bundle sind (z. B. VirtualKeyboard,
 #    Qt 3D, Qt PDF – Lumen nutzt sie nicht).
-# Aufruf: fix_macos_bundle.sh <Lumen.app>
+#  - behandelt das Präfix aus tools/build_deps.sh (FFmpeg-mvc, libmpv, x264) wie Homebrew.
+# Aufruf: fix_macos_bundle.sh <Lumen.app> [<deps-präfix>]
 set -euo pipefail
 APP="$1"
+DEPS="${2:-/nonexistent-lumen-deps}"
 FW="$APP/Contents/Frameworks"
 BREW=$(brew --prefix 2>/dev/null || echo /opt/homebrew)
 # benötigte Qt-Module, die macdeployqt gelegentlich nicht findet: werden mitkopiert
 COPY_FRAMEWORKS="QtSvg"
 
 find_brew_lib() { # <dateiname> -> Pfad in Homebrew
-    for d in "$BREW/lib" "$BREW"/opt/*/lib; do
+    for d in "$DEPS/lib" "$BREW/lib" "$BREW"/opt/*/lib; do
         [ -e "$d/$1" ] && { echo "$d/$1"; return 0; }
     done
     return 1
@@ -28,7 +30,7 @@ machos() { # alle Mach-O-Dateien (Framework-Binärdateien sind oft nicht ausfüh
 while IFS= read -r f; do
     id=$(otool -D "$f" | tail -n +2)
     case "$id" in
-    "$BREW"/*|/usr/local/opt/*|/usr/local/Cellar/*)
+    "$BREW"/*|"$DEPS"/*|/usr/local/opt/*|/usr/local/Cellar/*)
         if [[ "$id" == *.framework/* ]]; then new="@rpath/${id#*/lib/}"; else new="@rpath/$(basename "$id")"; fi
         chmod u+w "$f"
         install_name_tool -id "$new" "$f" 2>/dev/null
@@ -43,7 +45,7 @@ for pass in 1 2 3 4 5 6 7 8; do
         deps=$(otool -L "$f" | tail -n +2 | awk '{print $1}')
         for dep in $deps; do
             case "$dep" in
-            "$BREW"/*|/usr/local/opt/*|/usr/local/Cellar/*)
+            "$BREW"/*|"$DEPS"/*|/usr/local/opt/*|/usr/local/Cellar/*)
                 if [[ "$dep" == *.framework/* ]]; then
                     rel="${dep#*/lib/}"
                     chmod u+w "$f"

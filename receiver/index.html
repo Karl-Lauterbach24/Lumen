@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen TV</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="receiver.css">
+</head>
+<body>
+<video id="video" playsinline></video>
+
+<div id="panel">
+  <img id="logo" src="icon.png" alt="">
+  <h1>Lumen TV</h1>
+  <p id="status"></p>
+  <p id="hint"></p>
+
+  <div id="connect">
+    <input id="address" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="192.168.1.20:47800">
+    <button id="go"></button>
+    <button id="search"></button>
+  </div>
+
+  <div id="idle">
+    <label id="nameLabel" for="name"></label>
+    <input id="name" type="text" autocomplete="off" spellcheck="false" maxlength="40">
+    <button id="disconnect"></button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- A packaged TV app puts its platform file next to this page (see Lumen-TV); in a browser it is absent -->
+<script src="platform.js" onerror="void 0"></script>
+<script src="receiver.js"></script>
+</body>
+</html>
