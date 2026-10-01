@@ -389,8 +389,7 @@ void AirplayTarget::onReadyRead()
             m_keepAlive.stop();
             // neuere Geräte (AirPlay 2) verlangen eine Kopplung, die Lumen nicht beherrscht
             emit stateChanged(QStringLiteral("error"),
-                              LTR("Das AirPlay-Gerät lehnt ab (HTTP %1). Geräte, die eine Kopplung oder einen Code verlangen, "
-                                  "lassen sich nur über die Bildschirmsynchronisierung des Systems nutzen.").arg(status));
+                              LTR("Das AirPlay-Gerät lehnt ab (HTTP %1). Geräte, die eine Kopplung oder einen Code verlangen, lassen sich nur über die Bildschirmsynchronisierung des Systems nutzen.").arg(status));
         }
     }
 }

@@ -509,7 +509,7 @@ Popup {
                     font.pixelSize: 11
                     text: Player.mvcCapable
                           ? qsTr("Blu-ray 3D (MVC) wird mit beiden Ansichten dekodiert. Frame Packing: Beamer erkennt 3D automatisch, erfordert einen 1920×2205-Anzeigemodus (im Grafiktreiber anlegen). SBS/TAB: 3D-Modus am Beamer wählen.")
-                          : qsTr("Geladenes FFmpeg kann kein MVC – Blu-ray 3D läuft in 2D. Lumen mit FFmpeg-mvc bauen (tools/build_ffmpeg_mvc.sh).")
+                          : qsTr("Geladenes FFmpeg kann kein MVC – Blu-ray 3D läuft in 2D. Lumen mit FFmpeg-mvc bauen (tools/build_deps.sh).")
                 }
                 ValueSlider {
                     Layout.fillWidth: true
