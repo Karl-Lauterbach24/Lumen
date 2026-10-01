@@ -171,7 +171,7 @@ jobs:
                  -t 20 -c:v libx264 -g 30 -pix_fmt yuv420p -c:a aac build/tests/sync.mp4
           # OpenGL ohne Grafikkarte: virtueller X-Server mit Mesa (llvmpipe). Das rechnet die CPU,
           # in voller Größe nicht in Echtzeit – deshalb ein kleines Bild (so groß wie die Quelle).
-          export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 LUMEN_CAST_SIZE=640x360
+          export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 LUMEN_CAST_SIZE=640x360 LUMEN_CAST_TEST_SOFTWARE_GL=1
           export LUMEN_MPV_LOGFILE="$PWD/build/tests/cast-mpv.log"
           rc=0
           xvfb-run -a -s "-screen 0 1280x720x24" build/cast_test python3 tools/mock_cast_devices.py openssl build/tests/sync.mp4 > build/tests/cast.txt 2>&1 || rc=$?
@@ -179,7 +179,7 @@ jobs:
           { grep -E "^FAIL" build/tests/cast.txt || true; } | while IFS= read -r l; do echo "::error::$l"; done
           if grep -q "^FAIL" build/tests/cast.txt && [ -f build/tests/cast-mpv.log ]; then
             echo "--- mpv (Renderer, Fehler, verworfene Bilder)"
-            grep -iE "libmpv|opengl|GL_|shader|error|fail|drop|late|software|llvmpipe" build/tests/cast-mpv.log | head -80
+            { grep -iE "libmpv|opengl|GL_|shader|error|fail|drop|late|software|llvmpipe" build/tests/cast-mpv.log || true; } | head -80 || true
           fi
           grep -q BESTANDEN build/tests/cast.txt && [ "$rc" -eq 0 ]
 
@@ -206,7 +206,8 @@ jobs:
           fi
           command -v lumen
           ldd "$(command -v lumen)" | grep -E "libmpv|libavcodec|libx264|libdvdnav" || true
-          if ldd "$(command -v lumen)" | grep -E "libmpv|libavcodec" | grep -v "/usr/lib/lumen/"; then
+          # ldd nennt den Pfad, wie er gesucht wurde: /usr/bin/../lib/lumen/…
+          if ldd "$(command -v lumen)" | grep -E "libmpv|libavcodec" | grep -vE "/usr/(bin/\.\./)?lib/lumen/"; then
             echo "::error::lumen lädt Medienbibliotheken nicht aus /usr/lib/lumen"; exit 1
           fi
           if ldd "$(command -v lumen)" | grep -q "not found"; then

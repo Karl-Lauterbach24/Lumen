@@ -20,6 +20,7 @@ Commands on stdin (one per line):
 """
 import json
 import socket
+import socketserver
 import ssl
 import struct
 import sys
@@ -73,6 +74,15 @@ def fetch_ts(url):
         return ok, "%d bytes, type %s" % (len(data), headers.get("content-type"))
     except Exception as e:  # noqa: BLE001
         return False, repr(e)
+
+
+class Server(ThreadingHTTPServer):
+    """HTTPServer looks up the host name of its address when binding; on some systems (macOS CI)
+    that takes many seconds per server."""
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class Quiet(BaseHTTPRequestHandler):
@@ -304,9 +314,9 @@ def tv_app(base):
 
 def main():
     servers = {
-        "dlna": ThreadingHTTPServer(("127.0.0.1", 0), Dlna),
-        "airplay": ThreadingHTTPServer(("127.0.0.1", 0), airplay_handler("airplay", False)),
-        "locked": ThreadingHTTPServer(("127.0.0.1", 0), airplay_handler("locked", True)),
+        "dlna": Server(("127.0.0.1", 0), Dlna),
+        "airplay": Server(("127.0.0.1", 0), airplay_handler("airplay", False)),
+        "locked": Server(("127.0.0.1", 0), airplay_handler("locked", True)),
     }
     for s in servers.values():
         threading.Thread(target=s.serve_forever, daemon=True).start()
