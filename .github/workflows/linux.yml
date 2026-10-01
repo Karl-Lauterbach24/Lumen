@@ -157,6 +157,10 @@ jobs:
         shell: bash
         run: tools/test_bd3d.sh build build/tests/bd3d
 
+      - name: "Test: 3D-Bildfolge für Shutterbrillen (Muster, Synchronbilder, Messfeld)"
+        shell: bash
+        run: tools/test_seq3d.sh build build/tests/seq3d
+
       - name: "Test: Übertragung (Sendestrom, Ton-Bild-Abgleich, DLNA, Chromecast, AirPlay, TV-App)"
         shell: bash
         run: |
@@ -172,7 +176,7 @@ jobs:
           rc=0
           xvfb-run -a -s "-screen 0 1280x720x24" build/cast_test python3 tools/mock_cast_devices.py openssl build/tests/sync.mp4 > build/tests/cast.txt 2>&1 || rc=$?
           cat build/tests/cast.txt
-          grep -E "^FAIL" build/tests/cast.txt | while IFS= read -r l; do echo "::error::$l"; done
+          { grep -E "^FAIL" build/tests/cast.txt || true; } | while IFS= read -r l; do echo "::error::$l"; done
           if grep -q "^FAIL" build/tests/cast.txt && [ -f build/tests/cast-mpv.log ]; then
             echo "--- mpv (Renderer, Fehler, verworfene Bilder)"
             grep -iE "libmpv|opengl|GL_|shader|error|fail|drop|late|software|llvmpipe" build/tests/cast-mpv.log | head -80

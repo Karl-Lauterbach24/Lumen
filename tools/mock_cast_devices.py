@@ -89,7 +89,10 @@ class Quiet(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except OSError:
+            pass  # the sender closed the connection right after its last request
 
 
 # ---------------------------------------------------------------- DLNA

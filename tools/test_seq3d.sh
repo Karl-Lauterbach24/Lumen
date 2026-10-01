@@ -8,6 +8,7 @@ set -euo pipefail
 BUILD="$1"
 WORK="$2"
 mkdir -p "$WORK"
+PY="$(command -v python3 || command -v python)"
 SRC="$WORK/sbs.y4m"
 ffmpeg -hide_banner -loglevel error -y -f lavfi \
        -i "color=c=white:s=64x32:r=24,drawbox=x=32:y=0:w=32:h=32:c=gray@1:t=fill" -t 1 -pix_fmt yuv420p "$SRC"
@@ -18,9 +19,12 @@ check() {
     local name="$1" expected="$2"; shift 2
     local chain got count
     chain="$("$BUILD/stereo_test" "$@")"
-    # every picture: 32x32 grey; field 529 = centre, field 1 = top left corner
-    got="$(ffmpeg -hide_banner -loglevel error -i "$SRC" -vf "$chain" -f rawvideo -pix_fmt gray - \
-           | od -An -tu1 -w1024 -v | awk '{printf "%s,%s ", $529, $1}')"
+    # every picture: 32x32 grey; byte 528 = centre, byte 0 = top left corner
+    ffmpeg -hide_banner -loglevel error -i "$SRC" -vf "$chain" -f rawvideo -pix_fmt gray -y "$WORK/out.gray"
+    got="$("$PY" -c "
+import sys
+d = open(sys.argv[1], 'rb').read()
+print(' '.join('%d,%d' % (d[i + 528], d[i]) for i in range(0, len(d) - 1023, 1024)))" "$WORK/out.gray")"
     count="$(echo "$got" | wc -w | tr -d ' ')"
     local n; n="$(echo "$expected" | wc -w | tr -d ' ')"
     if [ "$(echo "$got" | cut -d' ' -f1-"$n")" = "$expected" ] && [ "$count" -ge "$2" ] && [ "$count" -le $(( $2 + 2 )) ]; then

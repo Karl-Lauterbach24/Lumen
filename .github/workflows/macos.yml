@@ -143,6 +143,7 @@ jobs:
         run: |
           mkdir -p build/logs; exec > >(tee -a build/logs/bd3d.txt) 2>&1
           tools/test_bd3d.sh build build/tests/bd3d
+          tools/test_seq3d.sh build build/tests/seq3d
 
       - name: "Test: Übertragung (Sendestrom, Ton-Bild-Abgleich, DLNA, Chromecast, AirPlay, TV-App)"
         run: |
