@@ -119,10 +119,14 @@ jobs:
           command -v lumen
           # Steuerfenster des installierten Programms rendern (virtueller X-Server, Software-Rendering)
           export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software LUMEN_SNAPSHOT=/tmp/lumen.png
-          xvfb-run -a -s "-screen 0 1600x900x24" lumen > /tmp/lumen.log 2>&1 &
-          for i in $(seq 1 60); do [ -s /tmp/lumen.png ] && break; sleep 1; done
-          pkill -x lumen || true; sleep 1
-          tail -30 /tmp/lumen.log
+          # der virtuelle X-Server startet im Container nicht immer zuverlässig: bis zu 3 Versuche
+          for try in 1 2 3; do
+            xvfb-run -a -s "-screen 0 1600x900x24" lumen > /tmp/lumen.log 2>&1 &
+            for i in $(seq 1 40); do [ -s /tmp/lumen.png ] && break; sleep 1; done
+            pkill -x lumen || true; pkill Xvfb || true; sleep 2
+            echo "--- Versuch $try"; tail -15 /tmp/lumen.log
+            [ -s /tmp/lumen.png ] && break
+          done
           [ -s /tmp/lumen.png ] || { echo "::error::installiertes Lumen startet nicht"; exit 1; }
           echo "installiertes Lumen startet: Steuerfenster gerendert"
 
@@ -135,7 +139,8 @@ jobs:
           for i in $(seq 1 40); do [ -s /tmp/player.png ] && break; sleep 1; done
           pkill -x lumen || true
           grep -iE "vo/|vo:|gpu|opengl|egl|x11|error|fail|Playing|AO:|VO:" /tmp/player.log | head -60
-          if [ -s /tmp/player.png ]; then echo "::notice::Player-Fenster rendert unter Xvfb (${{ matrix.name }})"; else echo "::warning::Player-Fenster lieferte unter Xvfb kein Bild (${{ matrix.name }})"; fi
+          # Ohne GPU lehnt mpv den Software-Renderer ab ("Suspected software renderer") – dann sagt dieser Schritt nichts aus
+          if [ -s /tmp/player.png ]; then echo "::notice::Player-Fenster rendert unter Xvfb (${{ matrix.name }})"; else echo "Player-Fenster: kein Bild ohne GPU (${{ matrix.name }})"; fi
 
       - uses: actions/upload-artifact@v5
         with:
