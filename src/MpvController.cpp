@@ -1480,6 +1480,10 @@ void MpvController::handleEvent(mpv_event *ev)
         m_vo_drops = m_dec_drops = 0;
         m_matchedFps = 0;
         m_hdrState = -1;
+        // VCD-Steuerung: die Pause, die keep-open am Ende des vorigen Elements setzt, kann erst nach
+        // dem Laden des nächsten ankommen – dann stünde es und die Steuerung liefe nie weiter
+        if (m_vcd && m_vcd->active())
+            setOptionRaw(QStringLiteral("pause"), false, false);
         emit fileLoaded();
         break;
     case MPV_EVENT_SHUTDOWN:

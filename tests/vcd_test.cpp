@@ -74,8 +74,11 @@ int main(int argc, char **argv)
         while (mpv_event *ev = mpv_wait_event(mpv, 0.01)) {
             if (ev->event_id == MPV_EVENT_NONE)
                 break;
-            if (ev->event_id == MPV_EVENT_FILE_LOADED)
+            if (ev->event_id == MPV_EVENT_FILE_LOADED) {
                 loaded = true;
+                // wie im Player: eine verspätete keep-open-Pause des vorigen Elements aufheben
+                mpv_set_property_string(mpv, "pause", "no");
+            }
             else if (ev->event_id == MPV_EVENT_LOG_MESSAGE)
                 std::printf("     mpv[%s] %s", static_cast<mpv_event_log_message *>(ev->data)->prefix,
                             static_cast<mpv_event_log_message *>(ev->data)->text);
