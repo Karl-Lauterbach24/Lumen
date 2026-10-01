@@ -1,0 +1,127 @@
+# Linux: Build, Tests und Pakete (DEB auf Debian 13, RPM auf Fedora 44).
+# Wird auch vom Release-Workflow aufgerufen (workflow_call) – die Pakete liegen
+# dann als Artefakte "linux-deb" / "linux-rpm" im selben Lauf.
+name: Linux
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
+        default: ""
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: deb, image: "debian:trixie", generator: DEB }
+          - { name: rpm, image: "fedora:44", generator: RPM }
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Abhängigkeiten
+        run: |
+          if command -v apt-get >/dev/null; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -q
+            apt-get install -y -q --no-install-recommends ca-certificates git cmake ninja-build g++ pkg-config file dpkg-dev python3 \
+              qt6-base-dev qt6-declarative-dev libmpv-dev libbluray-dev libdvdnav-dev libdvdread-dev libcdio-dev libiso9660-dev \
+              libssl-dev libxml2-dev openssl ffmpeg xvfb xauth libgl1-mesa-dri
+          else
+            dnf install -y -q git cmake ninja-build gcc-c++ pkgconf-pkg-config file rpm-build python3 \
+              qt6-qtbase-devel qt6-qtdeclarative-devel qt6-qtsvg mpv-devel libbluray-devel libdvdnav-devel libdvdread-devel \
+              libcdio-devel openssl-devel libxml2-devel openssl ffmpeg-free xorg-x11-server-Xvfb xorg-x11-xauth mesa-dri-drivers
+          fi
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Konfigurieren
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DLUMEN_BUILD_TESTS=ON 2>&1 | tee configure.log
+          grep "Lumen:" configure.log
+          grep -q "OpenSSL (DCP-Entschlüsselung): TRUE" configure.log || { echo "::error::OpenSSL nicht gefunden"; exit 1; }
+          grep -qE "libdvdnav: (1|TRUE)" configure.log || { echo "::error::libdvdnav nicht gefunden"; exit 1; }
+          grep -qE "libcdio: (1|TRUE)" configure.log || { echo "::error::libcdio nicht gefunden"; exit 1; }
+
+      - name: Bauen
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! cmake --build build 2>&1 | tee build.log; then
+            grep -E "^[^ ]+:[0-9]+:[0-9]+: (fatal )?error:" build.log | head -40 | while IFS= read -r l; do echo "::error::$l"; done
+            grep -E "error|Error|undefined reference" build.log | grep -vE "^[^ ]+:[0-9]+:[0-9]+:" | head -15 | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+
+      - name: "Test: DCP (JPEG 2000, KDM, Entschlüsselung, Untertitel)"
+        shell: bash
+        run: |
+          set -e
+          T=build/tests; mkdir -p $T; B=build
+          $B/dcp_test gencert $T/id
+          python3 tools/make_test_dcp.py ffmpeg openssl $T/dcp --encrypt $T/id/leaf.pem
+          $B/dcp_test info $T/dcp
+          $B/dcp_test kdm $T/dcp/kdm.xml $T/id/leaf.key
+          $B/dcp_test subs $T/dcp
+          $B/dcp_test play $T/dcp $T/dcp/kdm.xml $T/id/leaf.key 1.5
+
+      - name: "Test: Plugins, Medienserver, Bildschirmzuordnung"
+        shell: bash
+        run: |
+          set -e
+          build/plugin_test build/plugins build/tests/dcp | tee build/tests/plugins.txt
+          grep -q BESTANDEN build/tests/plugins.txt
+          # ffmpeg-free (Fedora) hat kein H.264/AAC: VP9/Opus, mpv erkennt den Container am Inhalt
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc2=size=640x360:rate=24 -f lavfi -i sine=f=440 -t 2 \
+                 -c:v libvpx-vp9 -c:a libopus -f matroska build/tests/stream.mp4
+          build/media_test python3 tools/mock_media_server.py build/tests/stream.mp4
+          build/display_test
+
+      - name: Paket bauen (${{ matrix.generator }})
+        shell: bash
+        run: |
+          set -e
+          cd build
+          cpack -G ${{ matrix.generator }}
+          ls -la Lumen-*
+          if [ "${{ matrix.generator }}" = DEB ]; then dpkg-deb -I Lumen-*.deb; dpkg-deb -c Lumen-*.deb; else rpm -qpiR Lumen-*.rpm; rpm -qpl Lumen-*.rpm; fi
+
+      - name: Paket installieren und starten
+        shell: bash
+        run: |
+          set -e
+          if [ "${{ matrix.generator }}" = DEB ]; then
+            apt-get install -y -q ./build/Lumen-*.deb
+          else
+            dnf install -y -q ./build/Lumen-*.rpm
+          fi
+          command -v lumen
+          # Steuerfenster des installierten Programms rendern (virtueller X-Server, Software-Rendering)
+          export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software LUMEN_SNAPSHOT=/tmp/lumen.png
+          xvfb-run -a -s "-screen 0 1600x900x24" lumen > /tmp/lumen.log 2>&1 &
+          for i in $(seq 1 60); do [ -s /tmp/lumen.png ] && break; sleep 1; done
+          pkill -x lumen || true
+          tail -30 /tmp/lumen.log
+          [ -s /tmp/lumen.png ] || { echo "::error::installiertes Lumen startet nicht"; exit 1; }
+          echo "installiertes Lumen startet: Steuerfenster gerendert"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: linux-${{ matrix.name }}
+          path: |
+            build/Lumen-*.deb
+            build/Lumen-*.rpm
+          if-no-files-found: error

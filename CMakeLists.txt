@@ -456,3 +456,48 @@ endif()
 
 include(GNUInstallDirs)
 install(TARGETS lumen BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# ---------------------------------------------------------------------------
+# Linux: Desktop-Eintrag, Symbol, Plugin-Vorlagen und Pakete (DEB/RPM)
+#   cmake --install build --prefix /usr
+#   cd build && cpack -G DEB    (bzw. -G RPM)
+# Abhängigkeiten auf Bibliotheken ermitteln dpkg-shlibdeps/rpm selbst; die
+# QML-Module (zur Laufzeit geladen) stehen unten ausdrücklich.
+# ---------------------------------------------------------------------------
+if(UNIX AND NOT APPLE)
+    install(FILES packaging/linux/lumen.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES resources/logo/lumen-icon-256.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME lumen.png)
+    install(FILES LICENSE THIRD_PARTY.md README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/lumen)
+    # Plugin-Vorlagen (nur Daten/Skripte; aktiviert der Nutzer selbst). Suchpfad: <bin>/../lib/lumen/plugins
+    install(DIRECTORY plugins/examples/osd-clock plugins/examples/disc-libraries DESTINATION lib/lumen/plugins)
+
+    set(CPACK_PACKAGE_NAME "lumen-player")
+    set(CPACK_PACKAGE_VENDOR "Lumen")
+    set(CPACK_PACKAGE_CONTACT "Karl-Lauterbach24 <Karl-Lauterbach24@users.noreply.github.com>")
+    set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Karl-Lauterbach24/Lumen")
+    set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Disc and digital cinema player (Blu-ray, DVD, Video CD, DCP, streams)")
+    set(CPACK_PACKAGE_DESCRIPTION "Lumen plays Blu-ray (incl. disc menus), DVD-Video, HD DVD, Video CD, audio CD,
+Digital Cinema Packages (JPEG 2000, KDM) and streams, with a separate player and control window.
+It contains no copy-protection circumvention; such libraries can only be added by the user through plugins.")
+    set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+    set(CPACK_STRIP_FILES ON)
+
+    set(CPACK_DEBIAN_FILE_NAME "Lumen-${PROJECT_VERSION}-linux-amd64.deb")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "video")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtquick-dialogs, qml6-module-qtcore, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qt-labs-folderlistmodel, qt6-svg-plugins")
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "yt-dlp")
+
+    set(CPACK_RPM_FILE_NAME "Lumen-${PROJECT_VERSION}-linux-x86_64.rpm")
+    set(CPACK_RPM_PACKAGE_LICENSE "AGPL-3.0-or-later")
+    set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
+    set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtdeclarative, qt6-qtsvg")
+    set(CPACK_RPM_PACKAGE_SUGGESTS "yt-dlp")
+    # Ordner, die anderen Paketen gehören, nicht in die Dateiliste aufnehmen
+    set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+        /usr/share/applications /usr/share/doc /usr/share/icons /usr/share/icons/hicolor
+        /usr/share/icons/hicolor/256x256 /usr/share/icons/hicolor/256x256/apps)
+    set(CPACK_RPM_SPEC_MORE_DEFINE "%define _build_id_links none")
+    include(CPack)
+endif()

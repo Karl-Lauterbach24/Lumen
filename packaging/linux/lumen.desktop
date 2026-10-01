@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Lumen
+GenericName=Disc and Cinema Player
+GenericName[de]=Disc- und Kino-Player
+Comment=Play Blu-ray, DVD, Video CD, Digital Cinema Packages and streams
+Comment[de]=Blu-ray, DVD, Video-CD, Digital Cinema Packages und Streams abspielen
+Exec=lumen %f
+Icon=lumen
+Terminal=false
+Categories=AudioVideo;Video;Player;
+MimeType=video/mp4;video/x-matroska;video/mpeg;video/quicktime;video/webm;video/mp2t;application/x-cd-image;application/mxf;
+StartupWMClass=lumen
