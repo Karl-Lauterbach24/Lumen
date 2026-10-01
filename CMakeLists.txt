@@ -4,12 +4,12 @@ project(Lumen VERSION 1.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# macOS/Homebrew: OpenSSL und libxml2 sind "keg-only" (nicht im Standardpfad) –
+# macOS/Homebrew: OpenSSL, libxml2 und libarchive sind "keg-only" (nicht im Standardpfad) –
 # ihre Präfixe für find_package/pkg-config ergänzen
 if(APPLE)
     find_program(LUMEN_BREW brew)
     if(LUMEN_BREW)
-        foreach(pkg openssl@3 libxml2)
+        foreach(pkg openssl@3 libxml2 libarchive)
             execute_process(COMMAND "${LUMEN_BREW}" --prefix ${pkg}
                 OUTPUT_VARIABLE _prefix OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE _rc)
             if(_rc EQUAL 0 AND EXISTS "${_prefix}/lib")

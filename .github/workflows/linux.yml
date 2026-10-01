@@ -70,7 +70,7 @@ jobs:
 
       - name: Medienbibliotheken (Cache)
         id: deps
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: 3rdparty/prefix
           key: deps-linux-${{ matrix.name }}-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
@@ -93,6 +93,13 @@ jobs:
             exit 1
           fi
           grep -E "^===|applied|Done" deps.log
+
+      - name: Media libraries -> cache (kept even if a later step fails)
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: 3rdparty/prefix
+          key: deps-linux-${{ matrix.name }}-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
 
       - name: Konfigurieren
         shell: bash
@@ -159,12 +166,17 @@ jobs:
                  -f lavfi -i "aevalsrc='0.5*sin(2*PI*1000*t)*lt(mod(t\,1)\,0.1)':s=48000:c=stereo" \
                  -t 20 -c:v libx264 -g 30 -pix_fmt yuv420p -c:a aac build/tests/sync.mp4
           # OpenGL ohne Grafikkarte: virtueller X-Server mit Mesa (llvmpipe). Das rechnet die CPU,
-          # in voller Größe nicht in Echtzeit – deshalb ein kleines Bild.
-          export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 LUMEN_CAST_SIZE=320x180
+          # in voller Größe nicht in Echtzeit – deshalb ein kleines Bild (so groß wie die Quelle).
+          export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 LUMEN_CAST_SIZE=640x360
+          export LUMEN_MPV_LOGFILE="$PWD/build/tests/cast-mpv.log"
           rc=0
           xvfb-run -a -s "-screen 0 1280x720x24" build/cast_test python3 tools/mock_cast_devices.py openssl build/tests/sync.mp4 > build/tests/cast.txt 2>&1 || rc=$?
           cat build/tests/cast.txt
           grep -E "^FAIL" build/tests/cast.txt | while IFS= read -r l; do echo "::error::$l"; done
+          if grep -q "^FAIL" build/tests/cast.txt && [ -f build/tests/cast-mpv.log ]; then
+            echo "--- mpv (Renderer, Fehler, verworfene Bilder)"
+            grep -iE "libmpv|opengl|GL_|shader|error|fail|drop|late|software|llvmpipe" build/tests/cast-mpv.log | head -80
+          fi
           grep -q BESTANDEN build/tests/cast.txt && [ "$rc" -eq 0 ]
 
       - name: Paket bauen (${{ matrix.generator }})

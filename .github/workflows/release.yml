@@ -58,7 +58,7 @@ jobs:
 
       - name: Media libraries (cache)
         id: deps
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: 3rdparty/prefix
           key: deps-windows-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
@@ -80,6 +80,13 @@ jobs:
           fi
           grep -E "^===|applied|Done" deps.log
           ls 3rdparty/prefix/bin
+
+      - name: Media libraries -> cache (kept even if a later step fails)
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: 3rdparty/prefix
+          key: deps-windows-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
 
       - name: Build
         run: |
@@ -173,7 +180,7 @@ jobs:
                dav1d libass libplacebo luajit little-cms2 libarchive jpeg-turbo uchardet zimg rubberband xz
       - name: Media libraries (cache)
         id: deps
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: 3rdparty/prefix
           key: deps-macos-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
@@ -192,6 +199,12 @@ jobs:
             exit 1
           fi
           grep -E "^===|applied|Done" deps.log
+      - name: Media libraries -> cache (kept even if a later step fails)
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: 3rdparty/prefix
+          key: deps-macos-${{ matrix.arch }}-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
       - name: Build + DMG
         run: |
           set -o pipefail

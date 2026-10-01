@@ -98,6 +98,11 @@ private:
             opts.insert("vo", "null");
             opts.insert("ao", "null");
         }
+        // Entwickler/CI: LUMEN_MPV_LOGFILE=<datei> schreibt das mpv-Protokoll der Übertragung mit
+        if (encoder && qEnvironmentVariableIsSet("LUMEN_MPV_LOGFILE")) {
+            opts.insert("log-file", qEnvironmentVariable("LUMEN_MPV_LOGFILE"));
+            opts.insert("msg-level", "all=v");
+        }
         for (auto it = opts.cbegin(); it != opts.cend(); ++it)
             mpv_set_option_string(m_mpv, it.key().toUtf8().constData(), it.value().toString().toUtf8().constData());
         mpv_request_log_messages(m_mpv, qEnvironmentVariableIsSet("LUMEN_MPV_LOG") ? qgetenv("LUMEN_MPV_LOG").constData() : "no");

@@ -33,7 +33,7 @@ jobs:
 
       - name: Medienbibliotheken (Cache)
         id: deps
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: 3rdparty/prefix
           key: deps-macos-arm64-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
@@ -53,6 +53,13 @@ jobs:
             exit 1
           fi
           grep -E "^===|applied|Done" deps.log
+
+      - name: Media libraries -> cache (kept even if a later step fails)
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: 3rdparty/prefix
+          key: deps-macos-arm64-${{ hashFiles('tools/build_deps.sh', 'tools/patches/**') }}
 
       - name: Konfigurieren
         run: |
