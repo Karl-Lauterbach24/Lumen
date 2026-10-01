@@ -2,7 +2,8 @@
 //
 //   cast_test <python> <tools/mock_cast_devices.py> <openssl> <sync.mp4>
 //
-// sync.mp4: jede Sekunde ein weißes Bild und gleichzeitig ein Ton (siehe CI-Schritt).
+// sync.mp4: jede Sekunde ein weißes Bild und gleichzeitig ein Ton, dazu dauerhaft eine weiße
+// Marke oben links (siehe CI-Schritt).
 // Geprüft wird
 //   - der Sendestrom selbst (über HTTP gelesen und dekodiert): H.264 + AAC, Bildrate,
 //     Ton und Bild gleichzeitig (Blitz gegen Ton)
@@ -132,6 +133,7 @@ struct Analysis
     int frames = 0;
     double seconds = 0;
     std::vector<double> flashes, beeps; // Beginn in Sekunden (Zeitstempel des Stroms)
+    int markTop = 0, markBottom = 0;    // dunkle Bilder mit heller Ecke oben links bzw. unten links
     QString error;
 };
 
@@ -204,6 +206,19 @@ Analysis analyze(const QString &url, double seconds)
                         for (int x = frame->width / 4; x < frame->width * 3 / 4; x += 8, ++n)
                             sum += frame->data[0][y * frame->linesize[0] + x];
                     const bool bright = n && sum / n > 120;
+                    if (!bright) {
+                        // Ausrichtung: die Marke der Quelle sitzt oben links
+                        auto corner = [&](int y0) {
+                            qint64 c = 0;
+                            int m = 0;
+                            for (int y = y0; y < y0 + frame->height / 16; y += 2)
+                                for (int x = frame->width / 64; x < frame->width / 16; x += 2, ++m)
+                                    c += frame->data[0][y * frame->linesize[0] + x];
+                            return m ? int(c / m) : 0;
+                        };
+                        a.markTop += corner(frame->height / 64) > 150;
+                        a.markBottom += corner(frame->height - frame->height / 16 - frame->height / 64) > 150;
+                    }
                     if (bright && !wasBright)
                         a.flashes.push_back(t);
                     wasBright = bright;
@@ -302,11 +317,11 @@ QByteArray mdnsResponse()
     return d;
 }
 
-QVariantMap deviceByType(const QVariantList &devices, const QString &type, const QString &address = {})
+QVariantMap deviceByType(const QVariantList &devices, const QString &type, const QString &name = {})
 {
     for (const QVariant &v : devices) {
         const QVariantMap d = v.toMap();
-        if (d.value("type") == type && (address.isEmpty() || d.value("address") == address))
+        if (d.value("type") == type && (name.isEmpty() || d.value("name") == name))
             return d;
     }
     return {};
@@ -420,6 +435,8 @@ int main(int argc, char **argv)
         check(a.video == "h264" && a.width == 1280 && a.height == 720, QStringLiteral("Bild: %1 %2x%3").arg(a.video).arg(a.width).arg(a.height));
         check(a.audio == "aac" && a.sampleRate == 48000 && a.channels == 2,
               QStringLiteral("Ton: %1 %2 Hz %3 Kanäle").arg(a.audio).arg(a.sampleRate).arg(a.channels));
+        check(a.markTop > a.frames / 2 && a.markBottom == 0,
+              QStringLiteral("Bild steht richtig herum (Marke oben links in %1 Bildern, unten in %2)").arg(a.markTop).arg(a.markBottom));
         const double fps = a.seconds > 0 ? a.frames / a.seconds : 0;
         check(fps > 24 && fps < 33, QStringLiteral("Bildrate %1 fps über %2 s").arg(fps, 0, 'f', 1).arg(a.seconds, 0, 'f', 1));
         // Blitz und Ton gehören zusammen: zu jedem Blitz den nächsten Tonbeginn suchen
@@ -499,9 +516,8 @@ int main(int argc, char **argv)
     check(waitEvent("tv", "hello").value("ok").toBool(), "TV-App: Anmeldung");
     check(waitEvent("tv", "page").value("ok").toBool(), "TV-App: Empfänger-Seite wird ausgeliefert");
     check(waitEvent("tv", "key-before-play").value("ok").toBool(), "TV-App: Tasten werden vor der Auswahl nicht angenommen");
-    check(waitFor([&] { return !deviceByType(cast.devices(), "tv").isEmpty(); }, 10000), "TV-App erscheint als Empfänger");
-    const QVariantMap tv = deviceByType(cast.devices(), "tv");
-    check(tv.value("name") == "Mock TV", "TV-App: Name „" + tv.value("name").toString() + "“");
+    check(waitFor([&] { return !deviceByType(cast.devices(), "tv", "Mock TV").isEmpty(); }, 10000), "TV-App erscheint mit ihrem Namen als Empfänger");
+    const QVariantMap tv = deviceByType(cast.devices(), "tv", "Mock TV");
     check(keys.isEmpty(), "Keine Taste vor der Auswahl weitergereicht");
     cast.start(tv.value("id").toString());
     {

@@ -99,7 +99,7 @@ void CastRenderer::onMpvUpdate()
         when = info.target_time;
     const double pts = m_encoder->streamTime(when);
     mpv_opengl_fbo fbo{int(m_fbo->handle()), m_size.width(), m_size.height(), 0};
-    int flipY = 1; // glReadPixels liest von unten nach oben: so steht die oberste Zeile vorn
+    int flipY = 0; // mpv legt die oberste Bildzeile an y = 0 des Framebuffers: glReadPixels liefert sie zuerst
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_OPENGL_FBO, &fbo},
         {MPV_RENDER_PARAM_FLIP_Y, &flipY},

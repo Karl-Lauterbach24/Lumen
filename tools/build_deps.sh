@@ -38,6 +38,7 @@ JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu)}"
 PARTS=("$@")
 
 OS=linux
+FF_CFLAGS=""
 FF_PLATFORM=()
 MPV_PLATFORM=()
 case "$(uname -s)" in
@@ -67,7 +68,10 @@ MINGW*|MSYS*)
     ;;
 Darwin)
     OS=macos
-    FF_PLATFORM=(--enable-videotoolbox --enable-audiotoolbox)
+    # Homebrew's headers and libraries are not in the compiler's default search path
+    BREW="$(brew --prefix)"
+    FF_PLATFORM=(--enable-videotoolbox --enable-audiotoolbox "--extra-ldflags=-L$BREW/lib")
+    FF_CFLAGS="-I$BREW/include"
     # the embedded player window uses the render API; mpv's own Cocoa window (Swift) is not needed
     MPV_PLATFORM=(-Dswift-build=disabled -Dmacos-cocoa-cb=disabled -Dmacos-media-player=disabled)
     for keg in openssl@3 libxml2 libarchive; do
@@ -85,6 +89,8 @@ PREFIX_POSIX="$PREFIX"
 [ "$OS" = windows ] && PREFIX_POSIX="$(cygpath -u "$PREFIX")"
 export PKG_CONFIG_PATH="$PREFIX_POSIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 export PATH="$PREFIX_POSIX/bin:$PATH"
+# Linux: programs built here (ffmpeg) find the new libraries before the final rpath fix
+[ "$OS" = linux ] && export LD_LIBRARY_PATH="$PREFIX/lib:${LD_LIBRARY_PATH:-}"
 mkdir -p "$PREFIX" "$SRCROOT"
 
 want() {
@@ -136,7 +142,7 @@ if want ffmpeg; then
         --enable-zlib --enable-bzlib --enable-lzma \
         --pkg-config-flags=--static \
         "${FF_PLATFORM[@]}" \
-        --extra-cflags="-O2"
+        --extra-cflags="-O2 $FF_CFLAGS"
     make -j"$JOBS"
     make install
     "$PREFIX/bin/ffmpeg" -hide_banner -version | head -1
