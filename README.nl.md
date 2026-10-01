@@ -27,13 +27,14 @@ Kant-en-klare pakketten staan op de [releasepagina](https://github.com/Karl-Laut
 | Debian 13 (x86-64, ARM64) | `Lumen-<version>-linux-amd64.deb`, `…-linux-arm64.deb` |
 | Fedora 44 (x86-64, ARM64) | `Lumen-<version>-linux-x86_64.rpm`, `…-linux-aarch64.rpm` |
 
-De Linux-pakketten gebruiken Qt 6, libmpv en de schijfbibliotheken van je distributie. Lumen controleert op nieuwe versies en installeert ze onder Windows en macOS met één klik, na controle van de controlesom.
+Alle pakketten bevatten dezelfde mediabibliotheken (FFmpeg met Blu-ray 3D-decoder, libmpv); onder Linux komen Qt 6 en de schijfbibliotheken van je distributie. Lumen controleert op nieuwe versies en installeert ze onder Windows en macOS met één klik, na controle van de controlesom.
 
 ## Mogelijkheden
 
 - **Schijven:** Blu-ray en dvd met schijfmenu's, titels, hoofdstukken, audio- en ondertitelsporen; stations worden automatisch herkend.
 - **Digitale cinema:** DCP met JPEG 2000, SMPTE en Interop, versleutelde pakketten met KDM, weergave van Dolby Atmos/IAB, vertoningsprogramma's.
 - **Streaming:** allerlei links (HLS, DASH, RTSP, …) en de mediaservers Jellyfin, Emby en Plex.
+- **Casten:** stuurt beeld en geluid naar een tv of ontvanger in het netwerk: DLNA, Chromecast, AirPlay (ontvangers zonder koppeling), de [Lumen TV](https://github.com/Karl-Lauterbach24/Lumen-TV)-apps voor Android TV, Samsung en LG, of elke browser. Miracast loopt via de systeeminstelling voor draadloze beeldschermen.
 - **3D:** Blu-ray 3D (MVC) als frame packing, side-by-side, top-and-bottom of anaglyph.
 - **Uitvoerprofielen:** doelscherm, aanpassing van de verversingsfrequentie, HDR-passthrough of tone mapping, kalibratie (ICC, 3D-LUT).
 - **Audio:** bitstream naar een AV-receiver (TrueHD/Atmos, DTS-HD), nachtmodus, vertraging en snelheid.

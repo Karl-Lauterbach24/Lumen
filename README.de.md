@@ -60,13 +60,14 @@ Fertige Builds gibt es auf der [Release-Seite](https://github.com/Karl-Lauterbac
 
 - Das MSI installiert für alle Benutzer mit Startmenü-Eintrag; Deinstallation über *Apps & Features*.
 - Linux: `sudo apt install ./Lumen-….deb` bzw. `sudo dnf install ./Lumen-….rpm`; die Paketverwaltung holt
-  Qt 6, libmpv und die Disc-Bibliotheken dazu.
-- Die Blu-ray-3D-Dekodierung (FFmpeg-mvc) steckt nur im Windows-x64-Paket; sonst spielen 3D-Discs in 2D,
-  solange FFmpeg-mvc nicht selbst gebaut wird (siehe *Bauen*).
+  Qt 6 und die Disc-Bibliotheken dazu.
+- Jedes Paket enthält dieselben Medienbibliotheken, aus denselben festgelegten Quellen gebaut: FFmpeg-mvc
+  (mit dem Blu-ray-3D-Decoder), libmpv und x264. Blu-ray 3D und das Übertragen arbeiten deshalb auf allen
+  Plattformen gleich.
 - Die Oberfläche gibt es in 16 Sprachen (Startseite). Deutsch und Englisch sind von Hand gepflegt, die
   übrigen Übersetzungen entstanden mit maschineller Hilfe – Korrekturen sind willkommen.
-- Neu in 1.0: „Zuletzt gespielt“ mit Fortsetzen, Drag & Drop, Hilfe-Dialog (F1), Nachtmodus, externe
-  Untertiteldateien, gemerkte Lautstärke.
+- Neu in 1.1: Übertragen an Fernseher und Empfänger (DLNA, Chromecast, AirPlay, Lumen-TV-Apps, Browser),
+  Blu-ray 3D in allen Paketen, experimentelle 3D-Bildfolge für Shutterbrillen.
 
 Lumen sucht beim Start nach neuen Versionen, höchstens einmal täglich und nur wenn eingeschaltet. Ein Update
 installiert es mit einem Klick, nachdem es den Download gegen die `SHA256SUMS.txt` des Releases geprüft hat.
@@ -83,6 +84,31 @@ Medienserver:
 |--------|-----------|------------|
 | **Jellyfin**, **Emby** | Benutzer + Passwort; gespeichert wird nur das Zugriffstoken | Bibliotheken, Serien/Staffeln/Folgen, Suche, Weiterschauen, Cover, Direktwiedergabe ab Fortsetzungspunkt, Fortschritt an den Server |
 | **Plex** | *Mit Plex anmelden* per PIN im eigenen Browser oder Server-URL + `X-Plex-Token` | Bibliotheken, Serien/Staffeln/Folgen, Suche, Weiterschauen, Cover, Direktwiedergabe, Fortschritt über die Timeline |
+
+## Übertragen
+
+Der Knopf „Übertragen“ im Steuerfenster sendet Bild und Ton des Players an einen Fernseher oder Empfänger im
+selben Netz. Lumen kodiert genau das, was sonst im Player-Fenster stünde (Disc-Menüs, Untertitel und
+Tonemapping inklusive), als H.264 mit AAC-Stereoton in 1080p oder 720p und liefert den Strom selbst aus;
+gesteuert wird weiter in Lumen.
+
+| Empfänger | Wie | Hinweise |
+|-----------|-----|----------|
+| **DLNA/UPnP**-Renderer (die meisten Smart-TVs) | automatisch gefunden (SSDP) oder über die Adresse der Gerätebeschreibung | fortlaufender MPEG-TS-Strom |
+| **Chromecast / Google Cast** | automatisch gefunden (mDNS) oder über die IP-Adresse | HLS im Standard-Medienempfänger |
+| **AirPlay** | automatisch gefunden (mDNS) oder über die IP-Adresse | nur Empfänger, die Video ohne Kopplung annehmen; die meisten aktuellen Apple TVs und AirPlay-2-Fernseher lehnen ab (Lumen meldet das) |
+| **[Lumen-TV](https://github.com/Karl-Lauterbach24/Lumen-TV)**-Apps: Android TV, Samsung Tizen, LG webOS | die App verbindet sich mit Lumen und erscheint in der Liste | die Fernbedienung des Fernsehers bedient Lumen: Disc-Menüs, Pause, Spulen |
+| jeder **Browser** | die im Dialog gezeigte Adresse öffnen, z. B. `http://192.168.1.20:47800` | dieselbe Empfänger-Seite wie in den TV-Apps |
+| **Miracast**, AirPlay-Bildschirmsynchronisierung | Knopf im Dialog öffnet die Einstellung des Systems | der Empfänger wird ein normaler Bildschirm; nichts wird umkodiert |
+
+- Der Strom ist live und kommt über HLS drei bis vier Sekunden verzögert an. Für Filme ist das unerheblich,
+  Disc-Menüs reagieren mit dieser Verzögerung.
+- HDR wird auf SDR abgebildet, Mehrkanalton auf Stereo gemischt, 3D in 2D übertragen.
+- Lumen lauscht auf Port 47800 nur, solange der Dialog offen ist oder übertragen wird – außer
+  „Für Lumen-TV-Apps erreichbar bleiben“ ist eingeschaltet. Die Adresse des Stroms enthält je Sitzung ein
+  zufälliges Token. Das Protokoll der TV-Apps steht in [docs/tv-protocol.md](docs/tv-protocol.md).
+- Automatisch getestet gegen Nachbildungen aller vier Empfängerarten und durch Abspielen des Stroms in einem
+  Desktop-Browser. **Nicht mit einem echten Fernseher, Chromecast, AirPlay- oder DLNA-Gerät getestet.**
 
 ## Bildschirme
 
@@ -188,8 +214,8 @@ libbluray bd_open_file_dec() ─ abhängige Ansicht (0x1012) ─┘   (je Bild p
 
 - **Decoder:** Standard-FFmpeg dekodiert nur die Basisansicht. Lumen nutzt
   [FFmpeg-mvc](https://github.com/tthayer93/FFmpeg-mvc) (Branch `release/9.0`), das beide Ansichten zu einem
-  Side-by-Side-Bild dekodiert. Dessen DLLs haben dieselben Namen/ABI wie FFmpeg 9.0 und ersetzen libmpvs
-  Bibliotheken eins zu eins. Lumen erkennt den Decoder an der Versionskennung (`…-mvc`).
+  Side-by-Side-Bild dekodiert. `tools/build_deps.sh` baut es und libmpv dagegen, für jede Plattform.
+  Lumen erkennt den Decoder an der Versionskennung (`…-mvc`).
 - **Zweite Ansicht:** libbluray liefert nur die Basisansicht. `MvcMerger` liest den SS-Subpfad der Playlist
   (welcher Clip), die CLPI-EP-Map (Sprungpunkte) und die abhängige `.m2ts` über libbluray, paart Access Units
   per PTS und hängt die MVC-NAL-Units an die der Basisansicht an.
@@ -200,6 +226,14 @@ libbluray bd_open_file_dec() ─ abhängige Ansicht (0x1012) ─┘   (je Bild p
 - **Frame Packing (HDMI 1.4):** 1920×2205 (1080 + 45 + 1080 Zeilen) @ 23.976 Hz. Der Anzeigemodus muss im
   Grafiktreiber als benutzerdefinierte Auflösung angelegt sein; Lumen schaltet dann automatisch darauf um.
 - MVC kann keine GPU dekodieren; erkannte 3D-Discs werden in Software dekodiert.
+
+- **Bildfolge für Shutterbrillen (experimentell):** Das Ausgabeformat „Bildfolge“ zeigt je Bildwechsel ein
+  Auge. Das Muster ist frei: `LR`, `LSRS` (Synchronbild nach jedem Auge – ein Versuch, DLP-Link-Brillen an
+  einem schnellen Fernseher zu takten), `LBRB` (Schwarzbilder) oder eine eigene Folge aus L, R, S und B. Farbe
+  und Helligkeit der Synchronbilder, ein Messfeld in einer Bildschirmecke für Lichtsensoren, Augentausch,
+  eine Verschiebung des Musters und das Umschalten des Bildschirms auf die gewählte Rate (120 bis 360 Hz)
+  stehen im Ausgabeprofil. Die Bildfolgen sind getestet; **ob eine Brille darauf einrastet, ist nicht
+  getestet**, und ein einziges ausgelassenes Bild vertauscht die Augen.
 
 ## DVD-Menüs
 
@@ -229,6 +263,15 @@ src/DriveManager    Laufwerke/Discs/Kino-Festplatten (Worker-Thread), Auswerfen
 src/DiscScanner     Titel und Status für Blu-ray, DVD, HD DVD, VCD, Audio-CD (Worker-Thread)
 src/PlayerWindow    eingebettetes Player-Fenster (mpv-Render-API/OpenGL), vor allem für macOS
 src/ProfileManager  Vorlagen + eigene Profile
+src/Stereo3D        Filterketten der 3D-Ausgabeformate, auch Bildfolge
+src/CastManager     Übertragen: Sitzung, Einstellungen, Geräteliste (QML „Cast“)
+src/CastRenderer    mpv-Render-API in einen Framebuffer, ausgelesen für den Encoder
+src/CastEncoder     H.264 + AAC -> MPEG-TS-Segmente (libavcodec/libavformat), eigener Thread
+src/CastAudio       ordnet den Ton von mpv auf der Zeitachse des Stroms an (Ton-Abgriff in Lumens libmpv)
+src/CastServer      HTTP: HLS, fortlaufender TS-Strom, Empfänger-Seite, Lumen-TV-Protokoll
+src/CastDiscovery   SSDP (DLNA) und mDNS (Chromecast, AirPlay)
+src/CastTargets     DLNA AVTransport, Chromecast CASTV2, AirPlay, Lumen TV
+receiver/           Empfänger-Seite für Browser und die TV-Apps
 qml/                Steuerfenster (CinemaPane.qml = Tab „Kino“)
 tools/              Build-/Deploy-Skripte, Generatoren für Test-Discs/-DCPs/-VCDs
 tests/              mvcmerge_test (MVC-Zusammenführung), dcp_test (DCP-Kette)
@@ -236,71 +279,80 @@ tests/              mvcmerge_test (MVC-Zusammenführung), dcp_test (DCP-Kette)
 
 ## Bauen
 
-Voraussetzungen: CMake ≥ 3.21, Qt ≥ 6.5 (Quick, QuickControls2, OpenGL, Xml), libmpv ≥ 0.38 **gegen gemeinsame
-FFmpeg-Bibliotheken gebaut**, libbluray ≥ 1.2, FFmpeg-mvc passend zur FFmpeg-Hauptversion von libmpv.
-Optional: **OpenSSL ≥ 1.1** (verschlüsselte DCPs), **libdvdnav ≥ 6** (DVD-Menüs), **libcdio + libiso9660** (Video-CD von
-Laufwerk und Abbild) – jeweils automatisch aktiv, wenn gefunden (`-DLUMEN_WITH_OPENSSL/DVDNAV/CDIO=OFF` schaltet ab).
+Lumen braucht Qt ≥ 6.5 (Quick, QuickControls2, OpenGL, Xml), libbluray ≥ 1.2, CMake ≥ 3.21 und seine
+Medienbibliotheken. Optional und automatisch aktiv, wenn gefunden: **OpenSSL ≥ 1.1** (verschlüsselte DCPs),
+**libdvdnav ≥ 6** (DVD-Menüs), **libcdio + libiso9660** (Video-CD von Laufwerk und Abbild).
 
-### Windows (MSYS2 UCRT64 – getestet: GCC 16, Qt 6.11, mpv 0.41, libbluray 1.5, libdvdnav 7, libcdio 2.4, OpenSSL 3.6, FFmpeg-mvc 9.0.2)
+**Medienbibliotheken.** `tools/build_deps.sh` baut x264, FFmpeg-mvc und mpv (und libdvdnav 7, wo das System
+eine ältere hat) aus festgelegten Quellen nach `3rdparty/prefix`; CMake findet dieses Präfix von selbst. Die
+Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt eine kleine Änderung
+([`tools/patches`](tools/patches)): seine zeitgesteuerte Null-Tonausgabe kann die Samples zusätzlich in eine
+Pipe schreiben, mit dem Zeitpunkt, zu dem jeder Block gespielt wird. Das braucht die Übertragung; ein
+unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt.
 
-Alle Teile müssen dieselbe C-Laufzeit (UCRT) nutzen – daher kommen Qt, libmpv und libbluray aus MSYS2.
-Die Werkzeuge liegen bewusst in einem **kurzen Pfad** (`C:\lumen-build`), weil GCC und der FFmpeg-Build
-sonst an der 260-Zeichen-Grenze von Windows scheitern.
+Alles Übrige (Qt, libass, libplacebo, libbluray …) kommt aus der Paketverwaltung der Plattform. Die genauen
+Paketlisten stehen in den Workflows: [`release.yml`](.github/workflows/release.yml) (Windows, macOS) und
+[`linux.yml`](.github/workflows/linux.yml).
+
+### Windows (MSYS2 UCRT64 bzw. CLANGARM64 auf ARM)
 
 ```bash
-# 1. Pakete (keine MSYS2-Installation nötig, nur Entpacken)
-python tools/msys2_fetch.py --repo ucrt64 --dest C:/lumen-build/msys2 mpv qt6-base qt6-declarative qt6-svg qt6-tools gcc nasm pkgconf dav1d libva cmake ninja openssl libdvdnav libcdio --skip mingw-w64-ucrt-x86_64-ffmpeg
-python tools/msys2_fetch.py --repo msys --dest C:/lumen-build/msys2-tools make diffutils --skip msys2-runtime bash
-# 2. FFmpeg-mvc (Git Bash, ~20 min) -> 3rdparty/ffmpeg-mvc
-tools/build_ffmpeg_mvc.sh
-# 3. Lumen (Deployment läuft als Post-Build-Schritt: windeployqt + DLLs, FFmpeg-mvc vor allem anderen)
-U=C:/lumen-build/msys2/ucrt64; PATH=$U/bin:$PATH
-cmake -S . -B build-ucrt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$U -DMPV_ROOT=$U -DBLURAY_ROOT=$U -DLUMEN_DEPLOY_SEARCH=$U/bin
-cmake --build build-ucrt
+pacman -S --needed git make diffutils perl
+pacboy -S --needed toolchain:p cmake:p ninja:p pkgconf:p python:p nasm:p meson:p dav1d:p \
+    qt6-base:p qt6-declarative:p qt6-svg:p qt6-imageformats:p qt6-tools:p libbluray:p libdvdnav:p libcdio:p \
+    openssl:p libxml2:p libass:p libplacebo:p lua51:p lcms2:p libarchive:p libjpeg-turbo:p uchardet:p zimg:p \
+    rubberband:p vulkan-headers:p vulkan-loader:p shaderc:p spirv-cross:p
+SRCROOT=/c/lumen-deps tools/build_deps.sh          # kurzer Pfad: 260-Zeichen-Grenze von Windows
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$MINGW_PREFIX \
+      -DBLURAY_ROOT=$MINGW_PREFIX -DLUMEN_DEPLOY_SEARCH=$MINGW_PREFIX/bin
+cmake --build build      # der Post-Build-Schritt legt Qt und alle DLLs neben lumen.exe
 ```
 
 ### Linux
 
 ```bash
-sudo apt install qt6-declarative-dev qml6-module-qtquick-dialogs qml6-module-qtcore libbluray-dev libdvdnav-dev libcdio-dev libiso9660-dev libssl-dev nasm libdav1d-dev
-tools/build_ffmpeg_mvc.sh            # FFMPEG_MVC_BRANCH=release/8.1 für FFmpeg 8.x
+# Debian/Ubuntu: Paketliste in .github/workflows/linux.yml (Fedora: die dnf-Liste dort)
+tools/build_deps.sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+cmake --build build
+(cd build && cpack -G DEB)     # oder RPM; die Medienbibliotheken liegen privat in /usr/lib/lumen
 ```
-libmpv muss gegen **dieselbe FFmpeg-Hauptversion** gebaut sein (`ldd $(which mpv) | grep avcodec`).
-Passt die Distribution nicht, mpv gegen `3rdparty/ffmpeg-mvc` bauen (`meson setup -Dlibmpv=true`,
-`PKG_CONFIG_PATH=3rdparty/ffmpeg-mvc/lib/pkgconfig`). Zur Laufzeit `LD_LIBRARY_PATH=3rdparty/ffmpeg-mvc/lib`.
 
 ### macOS
 
 ```bash
-brew install qt mpv libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja
+brew install qt libbluray libdvdnav libdvdread libcdio openssl@3 libxml2 pkgconf ninja meson nasm \
+     dav1d libass libplacebo luajit little-cms2 libarchive jpeg-turbo uchardet zimg rubberband xz
+tools/build_deps.sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(brew --prefix qt)
 cmake --build build                      # build/Lumen.app
 cmake --build build --target lumen_dmg   # eigenständiges Lumen.app + Lumen.dmg (macdeployqt)
 ```
-OpenSSL und libxml2 (bei Homebrew „keg-only“) werden automatisch gefunden. libmpv kann unter macOS kein eigenes
-Fenster öffnen, deshalb ist das Player-Fenster dort immer das eingebettete (mpv-Render-API, OpenGL 3.2 Core, SDR);
-die Bildraten-Umschaltung läuft über CoreGraphics, HDR steuert macOS selbst. Der GitHub-Actions-Workflow
-[`macos.yml`](.github/workflows/macos.yml) baut unter macOS 15 (Apple Silicon), führt die DCP- und DVD-Tests sowie
-eine Bildprüfung des Player-Fensters aus und stellt `Lumen.dmg` bereit.
-Blu-ray 3D: FFmpeg-mvc wie unter Linux bauen (`brew install nasm dav1d`, Branch passend zu Homebrews FFmpeg) und
-Lumen mit `DYLD_LIBRARY_PATH=3rdparty/ffmpeg-mvc/lib` starten.
+libmpv kann unter macOS kein eigenes Fenster öffnen, deshalb ist das Player-Fenster dort immer das eingebettete
+(mpv-Render-API, OpenGL 3.2 Core, SDR); die Bildraten-Umschaltung läuft über CoreGraphics, HDR steuert macOS.
 
-### Ohne 3D
+### Einen Build prüfen
 
-Jedes libmpv funktioniert (z. B. das shinchiro-SDK mit `-DMPV_ROOT=…`); Blu-ray 3D läuft dann in 2D und die
-Oberfläche zeigt einen Hinweis („Kein MVC-Decoder“). 3D-DCPs brauchen kein FFmpeg-mvc.
+`lumen --selftest out.json` schreibt, was die geladenen Bibliotheken können (FFmpeg- und mpv-Version,
+MVC-Decoder, H.264-Encoder, Ton-Abgriff, Lua, libbluray, libdvdnav), und endet. Die Paket-Builds führen das
+auf jeder Plattform aus.
 
 ## Tests
 
 ```bash
 cmake -DLUMEN_BUILD_TESTS=ON …        # baut mvcmerge_test und dcp_test
 
-# Blu-ray 3D: synthetische 3D-Disc aus einem MVC-Teststrom (FFmpeg-mvc-Fixture: linkes Auge Luma 165, rechtes 36)
-perl <ffmpeg-mvc>/tests/fate/h264-mvc/mvc-mkfix.pl --out=mvc8.h264 --base=100 --dep=-100 --base-frames=8 --dep-frames=8
-python tools/make_test_bd3d.py mvc8.h264 bd3d
-mvcmerge_test bd3d 0 merged.m2ts
-ffmpeg -view_ids -1 -i merged.m2ts -fps_mode passthrough -f rawvideo -pix_fmt gray - | od -An -tu1 -w512 -v | awk '{print $1","$17}' | sort | uniq -c
-#   -> 8 165,36  (jedes Bild: Basisansicht links, abhängige Ansicht rechts)
+# Blu-ray 3D: synthetische 3D-Disc aus dem MVC-Teststrom tests/data/mvc8.h264 -> beide Ansichten zusammenführen ->
+# mit dem FFmpeg im PATH dekodieren -> jedes Bild muss links Luma 165 und rechts 36 haben
+tools/test_bd3d.sh build build/tests/bd3d
+
+# 3D-Bildfolge: die Filterketten der Muster (L R, L S R S, Messfeld …) mit FFmpeg angewandt
+tools/test_seq3d.sh build build/tests/seq3d
+
+# Übertragen: echter Strom, über HTTP zurückgelesen (H.264/AAC, Ausrichtung, Bildrate, Ton-Bild-Abgleich mit
+# einem Clip, der jede Sekunde blitzt und piept), Geräteerkennung, DLNA, Chromecast, AirPlay und eine TV-App
+# gegen tools/mock_cast_devices.py. Braucht OpenGL (Linux-CI: Xvfb + Mesa mit LUMEN_CAST_SIZE=320x180)
+cast_test python3 tools/mock_cast_devices.py openssl sync.mp4
 
 # DCP: Zertifikat -> verschlüsseltes Test-DCP + KDM -> auspacken -> entschlüsseln -> abspielen (libmpv, vo=null)
 dcp_test gencert id                                   # id/leaf.pem, id/leaf.key
@@ -359,7 +411,9 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
 
 | Thema | Stand |
 |---|---|
-| Blu-ray 3D | Implementiert und mit einer synthetischen 3D-Disc durchgehend getestet (Zusammenführung, Spulen, SBS, Frame Packing). **Noch nicht mit einer echten 3D-Disc getestet**. FFmpeg-mvc ist ein experimenteller Fork. |
+| Blu-ray 3D | Implementiert und mit einer synthetischen 3D-Disc durchgehend getestet (Zusammenführung, Spulen, SBS, Frame Packing); der Test des MVC-Decoders läuft für jedes Paket. **Noch nicht mit einer echten 3D-Disc getestet**. FFmpeg-mvc ist ein experimenteller Fork. |
+| 3D-Bildfolge | Experimentell. Die Bildfolgen sind mit FFmpeg getestet. **Nicht getestet mit Shutterbrillen, DLP-Link-Brillen, einem Sensor-Emitter oder einem 120-Hz-Bildschirm.** |
+| Übertragen | Strom, Geräteerkennung und alle vier Protokolle sind gegen Nachbildungen getestet, die Wiedergabe in einem Desktop-Browser. **Nicht mit echten Empfängern getestet.** AirPlay nur ohne Kopplung. SDR, Stereo, 2D; über HLS drei bis vier Sekunden Verzögerung. |
 | DCP | Mit synthetischen SMPTE-DCPs unter Windows und macOS (CI) durchgehend getestet. Die Test-DCPs haben 2 Rollen mit Einstiegspunkten, Marker, Interop-Text- und Bilduntertitel, Closed Captions, eine signierte KDM, 3D und eine Atmos/IAB-Spur. Die gesamte Essenz ist verschlüsselt, entschlüsselte Bilder sind bitgleich zur Quelle. Die Objekt- und Bettpositionen der IAB-Spur werden je Lautsprecher und Layout geprüft. **Noch nicht mit echten Kino-DCPs/KDMs oder echten Atmos-Mischungen getestet.** Nicht unterstützt: forensische Markierung. Atmos-Spuren aus der Zeit vor dem SMPTE-Standard können Elemente enthalten, die der IAB-Renderer ablehnt (ungetestet). |
 | JPEG 2000 | Software-Dekodierung (FFmpeg, Frame- und Slice-Threads). 2K mit 24 fps braucht eine starke Mehrkern-CPU (≈ 24 fps auf 12 Threads bei 130 Mbit/s); automatischer Wechsel der Auflösungsstufe bei verworfenen Bildern. |
 | DVD | Menüführung, SPU-Dekodierung und Hervorhebung sind implementiert, aber **noch nicht mit echten DVDs getestet** (in der Build-Umgebung gab es kein DVD-Authoring-Werkzeug). Ohne libdvdnav laufen DVDs über mpv `dvd://` (ohne Menüs). |

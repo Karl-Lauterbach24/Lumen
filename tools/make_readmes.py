@@ -60,6 +60,7 @@ TEMPLATE = """<p align="center"><img src="resources/logo/lumen-logo.png" width="
 - {f_discs}
 - {f_cinema}
 - {f_streaming}
+- {f_cast}
 - {f_3d}
 - {f_output}
 - {f_audio}

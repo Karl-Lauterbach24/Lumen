@@ -66,9 +66,9 @@ x86-64 (Intel/AMD) and ARM64 (Apple Silicon, Windows on ARM, Linux aarch64):
 
 - The MSI installs for all users with a Start menu entry and is removed through *Apps & features*.
 - Linux: `sudo apt install ./Lumen-….deb` or `sudo dnf install ./Lumen-….rpm`; the package manager pulls in
-  Qt 6, libmpv and the disc libraries.
-- Blu-ray 3D decoding (FFmpeg-mvc) is included in the Windows x64 package only; elsewhere 3D discs play in 2D
-  unless you build FFmpeg-mvc yourself (see *Building*).
+  Qt 6 and the disc libraries.
+- Every package contains the same media libraries, built from the same pinned sources: FFmpeg-mvc (with the
+  Blu-ray 3D decoder), libmpv and x264. Blu-ray 3D and casting therefore work the same on all platforms.
 
 Lumen checks for new releases at start, at most once a day and only if enabled. On Windows and macOS it
 installs an update with one click, after verifying the download against the release's `SHA256SUMS.txt`;
@@ -87,6 +87,31 @@ Media servers:
 |--------|---------|----------|
 | **Jellyfin**, **Emby** | Username + password; only the access token is stored | Libraries, series/seasons/episodes, search, continue watching, posters, direct play from the resume position, progress reported to the server |
 | **Plex** | *Sign in with Plex*, via a PIN in your own browser, or server URL + `X-Plex-Token` | Libraries, series/seasons/episodes, search, on deck, posters, direct play, progress reported through the timeline |
+
+## Casting
+
+The cast button in the control window sends the player's picture and sound to a TV or receiver on the same
+network. Lumen encodes exactly what the player window would show (disc menus, subtitles and tone mapping
+included) as H.264 with AAC stereo sound, 1080p or 720p, and serves it itself; you keep controlling playback
+in Lumen.
+
+| Receiver | How | Notes |
+|----------|-----|-------|
+| **DLNA / UPnP** renderers (most smart TVs) | found automatically (SSDP), or by the address of the device description | continuous MPEG-TS stream |
+| **Chromecast / Google Cast** | found automatically (mDNS), or by IP address | HLS in the default media receiver |
+| **AirPlay** | found automatically (mDNS), or by IP address | only receivers that accept video without pairing; most current Apple TVs and AirPlay 2 televisions refuse (Lumen says so) |
+| **[Lumen TV](https://github.com/Karl-Lauterbach24/Lumen-TV)** apps: Android TV, Samsung Tizen, LG webOS | the app connects to Lumen and appears in the list | the TV remote operates Lumen: disc menus, pause, seeking |
+| any **browser** | open the address the Cast dialog shows, e.g. `http://192.168.1.20:47800` | same receiver page as the TV apps |
+| **Miracast**, AirPlay screen mirroring | button in the Cast dialog opens the system setting | the receiver becomes a normal screen; nothing is transcoded |
+
+- The stream is live and arrives three to four seconds late over HLS. That is fine for films; disc menus react
+  with that delay.
+- HDR is tone-mapped to SDR, surround sound is mixed down to stereo, 3D is cast in 2D.
+- Lumen listens on port 47800 only while the Cast dialog is open or a cast is running, unless you switch on
+  *Stay reachable for Lumen TV apps*. The stream address contains a random token per session.
+  The protocol of the TV apps is described in [docs/tv-protocol.md](docs/tv-protocol.md).
+- Tested automatically against stand-ins for all four receiver types and by playing the stream in a desktop
+  browser. **Not tested with a real TV, Chromecast, AirPlay or DLNA device.**
 
 ## Screens
 
@@ -199,8 +224,8 @@ libbluray bd_open_file_dec() ─ dependent view (0x1012) ─┘   (paired per fr
 
 - **Decoder:** stock FFmpeg only decodes the base view. Lumen uses
   [FFmpeg-mvc](https://github.com/tthayer93/FFmpeg-mvc) (branch `release/9.0`), which decodes both views
-  into one side-by-side frame. Its DLLs have the same names/ABI as FFmpeg 9.0 and replace libmpv's
-  libraries one-to-one. Lumen detects the decoder by its version string (`…-mvc`).
+  into one side-by-side frame. `tools/build_deps.sh` builds it, and libmpv against it, for every platform.
+  Lumen detects the decoder by its version string (`…-mvc`).
 - **Second view:** libbluray only delivers the base view. `MvcMerger` reads the playlist's SS sub-path
   (which clip), the CLPI EP map (seek points) and the dependent `.m2ts` via libbluray, pairs access
   units by PTS and appends the MVC NAL units to the base-view NAL units.
@@ -211,6 +236,13 @@ libbluray bd_open_file_dec() ─ dependent view (0x1012) ─┘   (paired per fr
 - **Frame Packing (HDMI 1.4):** 1920×2205 (1080 + 45 + 1080 lines) @ 23.976 Hz. The display mode must
   be created as a custom resolution in the graphics driver; Lumen then switches to it automatically.
 - There is no hardware decoding for MVC; detected 3D discs are decoded in software.
+- **Frame sequential for shutter glasses (experimental):** the output format *Frame sequential* shows one eye
+  per display refresh. The pattern is free: `LR`, `LSRS` (a sync picture after each eye, an attempt to drive
+  DLP-Link glasses from a fast TV), `LBRB` (black pictures), or your own string of L, R, S and B. Colour and
+  brightness of the sync pictures, a trigger box in a screen corner for light-sensor emitters, eye swap, a
+  phase shift and switching the display to the chosen rate (120 to 360 Hz) are set in the output profile.
+  The picture sequences are tested; **whether any glasses lock onto them has not been tested**, and a single
+  dropped frame swaps the eyes.
 
 ## DVD menus
 
@@ -240,78 +272,95 @@ src/DriveManager    drives/discs/cinema drives (worker thread), eject
 src/DiscScanner     titles and status for Blu-ray, DVD, HD DVD, VCD, Audio-CD (worker thread)
 src/PlayerWindow    embedded player window (mpv render API/OpenGL), mainly for macOS
 src/ProfileManager  presets + user profiles
+src/Stereo3D        filter chains for the 3D output formats, incl. frame sequential
+src/CastManager     casting: session, settings, device list (QML "Cast")
+src/CastRenderer    mpv render API into a framebuffer, read back for the encoder
+src/CastEncoder     H.264 + AAC -> MPEG-TS segments (libavcodec/libavformat), own thread
+src/CastAudio       places mpv's audio on the stream timeline (audio tap of Lumen's libmpv)
+src/CastServer      HTTP: HLS, continuous TS, receiver page, Lumen TV protocol
+src/CastDiscovery   SSDP (DLNA) and mDNS (Chromecast, AirPlay)
+src/CastTargets     DLNA AVTransport, Chromecast CASTV2, AirPlay, Lumen TV
+receiver/           receiver page for browsers and the TV apps
 qml/                control window (CinemaPane.qml = "Kino" tab)
 tools/              build/deploy scripts, test-disc/DCP/VCD generators
-tests/              mvcmerge_test (MVC merging), dcp_test (DCP chain)
+tests/              mvcmerge_test (MVC merging), dcp_test (DCP chain), cast_test (stream, receivers), ...
 ```
 
 ## Building
 
-Requirements: CMake ≥ 3.21, Qt ≥ 6.5 (Quick, QuickControls2, OpenGL, Xml), libmpv ≥ 0.38 **linked against
-shared FFmpeg libraries**, libbluray ≥ 1.2, FFmpeg-mvc matching libmpv's FFmpeg major version.
-Optional: **OpenSSL ≥ 1.1** (encrypted DCPs), **libdvdnav ≥ 6** (DVD menus), **libcdio + libiso9660** (Video-CD from
-drives and images) – each enabled automatically when found (`-DLUMEN_WITH_OPENSSL/DVDNAV/CDIO=OFF` to disable).
+Lumen needs Qt ≥ 6.5 (Quick, QuickControls2, OpenGL, Xml), libbluray ≥ 1.2, CMake ≥ 3.21 and its media
+libraries. Optional, enabled automatically when found: **OpenSSL ≥ 1.1** (encrypted DCPs), **libdvdnav ≥ 6**
+(DVD menus), **libcdio + libiso9660** (Video-CD from drives and images).
 
-### Windows (MSYS2 UCRT64 – tested: GCC 16, Qt 6.11, mpv 0.41, libbluray 1.5, libdvdnav 7, libcdio 2.4, OpenSSL 3.6, FFmpeg-mvc 9.0.2)
+**Media libraries.** `tools/build_deps.sh` builds x264, FFmpeg-mvc and mpv (and libdvdnav 7 where the system
+has an older one) from pinned sources into `3rdparty/prefix`; CMake picks that prefix up by itself. The
+versions are set at the top of the script, once for all platforms. mpv gets one small change
+([`tools/patches`](tools/patches)): its timed null audio output can also write the samples to a pipe, with the
+time each block is played. Casting needs that; a stock libmpv plays everything else, but the cast button is
+disabled.
 
-All parts must use the same C runtime (UCRT) – therefore Qt, libmpv and libbluray come from MSYS2.
-The tools deliberately live in a **short path** (`C:\lumen-build`), because GCC and the FFmpeg build
-otherwise fail at Windows' 260-character path limit.
+Everything else (Qt, libass, libplacebo, libbluray ...) comes from the platform's package manager. The exact
+package lists are in the workflows: [`release.yml`](.github/workflows/release.yml) (Windows, macOS) and
+[`linux.yml`](.github/workflows/linux.yml).
+
+### Windows (MSYS2 UCRT64, or CLANGARM64 on ARM)
 
 ```bash
-# 1. Packages (no MSYS2 installation needed, just extraction)
-python tools/msys2_fetch.py --repo ucrt64 --dest C:/lumen-build/msys2 mpv qt6-base qt6-declarative qt6-svg qt6-tools gcc nasm pkgconf dav1d libva cmake ninja openssl libdvdnav libcdio --skip mingw-w64-ucrt-x86_64-ffmpeg
-python tools/msys2_fetch.py --repo msys --dest C:/lumen-build/msys2-tools make diffutils --skip msys2-runtime bash
-# 2. FFmpeg-mvc (Git Bash, ~20 min) -> 3rdparty/ffmpeg-mvc
-tools/build_ffmpeg_mvc.sh
-# 3. Lumen (deployment runs as a post-build step: windeployqt + DLLs, FFmpeg-mvc before everything else)
-U=C:/lumen-build/msys2/ucrt64; PATH=$U/bin:$PATH
-cmake -S . -B build-ucrt -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$U -DMPV_ROOT=$U -DBLURAY_ROOT=$U -DLUMEN_DEPLOY_SEARCH=$U/bin
-cmake --build build-ucrt
+pacman -S --needed git make diffutils perl
+pacboy -S --needed toolchain:p cmake:p ninja:p pkgconf:p python:p nasm:p meson:p dav1d:p \
+    qt6-base:p qt6-declarative:p qt6-svg:p qt6-imageformats:p qt6-tools:p libbluray:p libdvdnav:p libcdio:p \
+    openssl:p libxml2:p libass:p libplacebo:p lua51:p lcms2:p libarchive:p libjpeg-turbo:p uchardet:p zimg:p \
+    rubberband:p vulkan-headers:p vulkan-loader:p shaderc:p spirv-cross:p
+SRCROOT=/c/lumen-deps tools/build_deps.sh          # short path: Windows' 260 character limit
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$MINGW_PREFIX \
+      -DBLURAY_ROOT=$MINGW_PREFIX -DLUMEN_DEPLOY_SEARCH=$MINGW_PREFIX/bin
+cmake --build build      # the post-build step collects Qt and all DLLs next to lumen.exe
 ```
 
 ### Linux
 
 ```bash
-sudo apt install qt6-declarative-dev qml6-module-qtquick-dialogs qml6-module-qtcore libbluray-dev libdvdnav-dev libcdio-dev libiso9660-dev libssl-dev nasm libdav1d-dev
-tools/build_ffmpeg_mvc.sh            # FFMPEG_MVC_BRANCH=release/8.1 for FFmpeg 8.x
+# Debian/Ubuntu: see the package list in .github/workflows/linux.yml (Fedora: the dnf list there)
+tools/build_deps.sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+cmake --build build
+(cd build && cpack -G DEB)     # or RPM; the media libraries are installed privately in /usr/lib/lumen
 ```
-libmpv must be built against **the same FFmpeg major version** (`ldd $(which mpv) | grep avcodec`).
-If your distribution doesn't match, build mpv against `3rdparty/ffmpeg-mvc` (`meson setup -Dlibmpv=true`,
-`PKG_CONFIG_PATH=3rdparty/ffmpeg-mvc/lib/pkgconfig`). At runtime use `LD_LIBRARY_PATH=3rdparty/ffmpeg-mvc/lib`.
 
 ### macOS
 
 ```bash
-brew install qt mpv libbluray libdvdnav libcdio openssl@3 libxml2 pkgconf ninja
+brew install qt libbluray libdvdnav libdvdread libcdio openssl@3 libxml2 pkgconf ninja meson nasm \
+     dav1d libass libplacebo luajit little-cms2 libarchive jpeg-turbo uchardet zimg rubberband xz
+tools/build_deps.sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$(brew --prefix qt)
 cmake --build build                      # build/Lumen.app
 cmake --build build --target lumen_dmg   # self-contained Lumen.app + Lumen.dmg (macdeployqt)
 ```
-Homebrew's keg-only OpenSSL and libxml2 are found automatically. libmpv can't open its own window on macOS,
-so the player window is always the embedded one (mpv render API, OpenGL 3.2 Core, SDR); refresh-rate switching
-uses CoreGraphics, HDR is left to macOS. The GitHub Actions workflow [`macos.yml`](.github/workflows/macos.yml)
-builds on macOS 15 (Apple Silicon), runs the DCP and DVD tests plus a render check of the player window, and
-uploads `Lumen.dmg`.
-Blu-ray 3D: build FFmpeg-mvc as on Linux (`brew install nasm dav1d`, branch matching Homebrew's FFmpeg) and
-start Lumen with `DYLD_LIBRARY_PATH=3rdparty/ffmpeg-mvc/lib`.
+libmpv can't open its own window on macOS, so the player window is always the embedded one (mpv render API,
+OpenGL 3.2 Core, SDR); refresh-rate switching uses CoreGraphics, HDR is left to macOS.
 
-### Without 3D
+### Checking a build
 
-Any libmpv works (e.g. the shinchiro SDK with `-DMPV_ROOT=…`); Blu-ray 3D then plays in 2D and the
-UI shows a notice ("Kein MVC-Decoder"). 3D DCPs don't need FFmpeg-mvc.
+`lumen --selftest out.json` writes what the loaded libraries can do (FFmpeg and mpv version, MVC decoder,
+H.264 encoder, audio tap, Lua, libbluray, libdvdnav) and exits. The package builds run it on every platform.
 
 ## Tests
 
 ```bash
 cmake -DLUMEN_BUILD_TESTS=ON …        # builds mvcmerge_test and dcp_test
 
-# Blu-ray 3D: synthetic 3D disc from an MVC test stream (FFmpeg-mvc fixture: left eye luma 165, right eye 36)
-perl <ffmpeg-mvc>/tests/fate/h264-mvc/mvc-mkfix.pl --out=mvc8.h264 --base=100 --dep=-100 --base-frames=8 --dep-frames=8
-python tools/make_test_bd3d.py mvc8.h264 bd3d
-mvcmerge_test bd3d 0 merged.m2ts
-ffmpeg -view_ids -1 -i merged.m2ts -fps_mode passthrough -f rawvideo -pix_fmt gray - | od -An -tu1 -w512 -v | awk '{print $1","$17}' | sort | uniq -c
-#   -> 8 165,36  (every frame: base view left, dependent view right)
+# Blu-ray 3D: synthetic 3D disc from the MVC test stream tests/data/mvc8.h264 -> merge both views ->
+# decode with the FFmpeg in PATH -> every frame must have left eye luma 165, right eye 36
+tools/test_bd3d.sh build build/tests/bd3d
+
+# Frame-sequential 3D: the filter chains for the patterns (L R, L S R S, trigger box ...) applied with FFmpeg
+tools/test_seq3d.sh build build/tests/seq3d
+
+# Casting: real stream read back over HTTP (H.264/AAC, orientation, frame rate, audio/video sync from a clip
+# with a flash and a beep every second), device discovery, DLNA, Chromecast, AirPlay and a TV app against
+# tools/mock_cast_devices.py. Needs OpenGL (under Linux CI: Xvfb + Mesa, with LUMEN_CAST_SIZE=320x180)
+cast_test python3 tools/mock_cast_devices.py openssl sync.mp4
 
 # DCP: certificate -> encrypted test DCP + KDM -> unwrap -> decrypt -> play (libmpv, vo=null)
 dcp_test gencert id                                   # id/leaf.pem, id/leaf.key
@@ -382,7 +431,9 @@ lumen movie.mkv                # any file mpv can play
 
 | Topic | Status |
 |---|---|
-| Blu-ray 3D | Implemented and tested end-to-end with a synthetic 3D disc (merge, seek, SBS, frame packing). **Not yet tested with a real 3D disc**. FFmpeg-mvc is an experimental fork. |
+| Blu-ray 3D | Implemented and tested end-to-end with a synthetic 3D disc (merge, seek, SBS, frame packing); the MVC decoder test runs for every package. **Not yet tested with a real 3D disc**. FFmpeg-mvc is an experimental fork. |
+| Frame-sequential 3D | Experimental. The picture sequences are tested with FFmpeg. **Not tested with shutter glasses, DLP-Link glasses, a sensor emitter or a 120 Hz display.** |
+| Casting | Stream, discovery and all four protocols are tested against stand-ins, playback in a desktop browser. **Not tested with real receivers.** AirPlay only without pairing. SDR, stereo, 2D; three to four seconds of delay over HLS. |
 | DCP | Tested end-to-end with synthetic SMPTE DCPs on Windows and macOS (CI). The test DCPs have 2 reels with entry points, markers, Interop text and image subtitles, closed captions, a signed KDM, 3D, and an Atmos/IAB track. All essence is encrypted, and decrypted frames are bit-identical to the source. The IAB object and bed positions are checked per speaker for every layout. **Not yet tested with real cinema DCPs/KDMs or real Atmos mixes.** Not supported: forensic marking. Atmos tracks from before the SMPTE standard may contain elements the IAB renderer rejects (untested). |
 | JPEG 2000 | Software decoding (FFmpeg, frame + slice threads). 2K at 24 fps needs a strong multi-core CPU (≈ 24 fps on 12 threads at 130 Mbit/s); automatic resolution-level fallback when frames drop. |
 | DVD | Menu navigation, SPU decoding and highlights are implemented but **not yet tested with real DVDs** (no DVD authoring tools available in the build environment). Without libdvdnav, DVDs play via mpv `dvd://` (no menus). |

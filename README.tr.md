@@ -27,13 +27,14 @@ Derlenmiş paketler [sürümler sayfasındadır](https://github.com/Karl-Lauterb
 | Debian 13 (x86-64, ARM64) | `Lumen-<version>-linux-amd64.deb`, `…-linux-arm64.deb` |
 | Fedora 44 (x86-64, ARM64) | `Lumen-<version>-linux-x86_64.rpm`, `…-linux-aarch64.rpm` |
 
-Linux paketleri Qt 6, libmpv ve disk kitaplıklarını dağıtımınızdan alır. Lumen yeni sürümleri denetler; Windows ve macOS'ta sağlama toplamını doğruladıktan sonra tek tıkla kurar.
+Tüm paketler aynı medya kitaplıklarını içerir (Blu-ray 3D kod çözücülü FFmpeg, libmpv); Linux'ta Qt 6 ve disk kitaplıkları dağıtımınızdan gelir. Lumen yeni sürümleri denetler; Windows ve macOS'ta sağlama toplamını doğruladıktan sonra tek tıkla kurar.
 
 ## Özellikler
 
 - **Diskler:** disk menüleri, başlıklar, bölümler, ses ve altyazı parçalarıyla Blu-ray ve DVD; sürücüler otomatik algılanır.
 - **Dijital sinema:** JPEG 2000, SMPTE ve Interop DCP, KDM ile şifreli paketler, Dolby Atmos/IAB işleme, gösterim programları.
 - **Yayın:** her türden bağlantı (HLS, DASH, RTSP, …) ve Jellyfin, Emby, Plex medya sunucuları.
+- **Yayın:** görüntüyü ve sesi ağdaki bir televizyona veya alıcıya gönderir: DLNA, Chromecast, AirPlay (eşleştirme istemeyen alıcılar), Android TV, Samsung ve LG için [Lumen TV](https://github.com/Karl-Lauterbach24/Lumen-TV) uygulamaları veya herhangi bir tarayıcı. Miracast, sistemin kablosuz ekran ayarı üzerinden çalışır.
 - **3D:** Blu-ray 3D (MVC); frame packing, yan yana, üst-alt veya anaglif olarak.
 - **Çıkış profilleri:** hedef ekran, yenileme hızı eşleme, HDR geçişi veya ton eşleme, kalibrasyon (ICC, 3D LUT).
 - **Ses:** AV alıcısına bitstream (TrueHD/Atmos, DTS-HD), gece kipi, gecikme ve hız.

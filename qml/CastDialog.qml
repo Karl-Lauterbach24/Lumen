@@ -242,7 +242,7 @@ Popup {
                 onActivated: Cast.height = currentValue
             }
             Select {
-                Layout.preferredWidth: 110
+                Layout.preferredWidth: 140
                 enabled: !Cast.active
                 model: [{ value: 30, text: qsTr("bis 30 fps") }, { value: 60, text: qsTr("bis 60 fps") }]
                 textRole: "text"; valueRole: "value"

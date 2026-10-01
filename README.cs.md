@@ -27,13 +27,14 @@ Hotové balíčky najdete na [stránce vydání](https://github.com/Karl-Lauterb
 | Debian 13 (x86-64, ARM64) | `Lumen-<version>-linux-amd64.deb`, `…-linux-arm64.deb` |
 | Fedora 44 (x86-64, ARM64) | `Lumen-<version>-linux-x86_64.rpm`, `…-linux-aarch64.rpm` |
 
-Linuxové balíčky používají Qt 6, libmpv a knihovny pro disky z vaší distribuce. Lumen hledá nové verze a ve Windows a macOS je po ověření kontrolního součtu nainstaluje jedním kliknutím.
+Všechny balíčky obsahují stejné multimediální knihovny (FFmpeg s dekodérem Blu-ray 3D, libmpv); v Linuxu pocházejí Qt 6 a knihovny pro disky z vaší distribuce. Lumen hledá nové verze a ve Windows a macOS je po ověření kontrolního součtu nainstaluje jedním kliknutím.
 
 ## Funkce
 
 - **Disky:** Blu-ray a DVD s nabídkami, tituly, kapitolami, zvukovými stopami a titulky; jednotky se rozpoznají automaticky.
 - **Digitální kino:** DCP s JPEG 2000, SMPTE a Interop, šifrované balíčky s KDM, renderování Dolby Atmos/IAB, programy promítání.
 - **Streamování:** odkazy všeho druhu (HLS, DASH, RTSP, …) a mediální servery Jellyfin, Emby a Plex.
+- **Přenos:** odešle obraz a zvuk do televizoru nebo přijímače v síti: DLNA, Chromecast, AirPlay (přijímače bez párování), aplikace [Lumen TV](https://github.com/Karl-Lauterbach24/Lumen-TV) pro Android TV, Samsung a LG nebo libovolný prohlížeč. Miracast funguje přes systémové nastavení bezdrátové obrazovky.
 - **3D:** Blu-ray 3D (MVC) jako frame packing, vedle sebe, nad sebou nebo anaglyf.
 - **Výstupní profily:** cílová obrazovka, přizpůsobení obnovovací frekvence, průchod HDR nebo mapování tónů, kalibrace (ICC, 3D LUT).
 - **Zvuk:** bitstream do AV receiveru (TrueHD/Atmos, DTS-HD), noční režim, zpoždění a rychlost.

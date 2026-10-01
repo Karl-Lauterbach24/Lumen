@@ -385,6 +385,9 @@ int main(int argc, char *argv[])
         // LUMEN_SNAPSHOT_HELP=1: mit geöffnetem Hilfe-Dialog (für README-Bilder)
         if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_HELP"))
             QMetaObject::invokeMethod(window, "showHelp");
+        // LUMEN_SNAPSHOT_CAST=1: mit geöffnetem Dialog „Übertragen“
+        if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_CAST"))
+            QMetaObject::invokeMethod(window, "showCast");
         // LUMEN_SNAPSHOT_RECENT=<n>: n-ten Eintrag aus „Zuletzt gespielt“ öffnen (Test des Fortsetzens)
         if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_RECENT"))
             QMetaObject::invokeMethod(window, "openRecentIndex", Q_ARG(QVariant, qEnvironmentVariableIntValue("LUMEN_SNAPSHOT_RECENT")));

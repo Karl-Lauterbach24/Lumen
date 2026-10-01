@@ -27,13 +27,14 @@ I pacchetti precompilati si trovano nella [pagina delle versioni](https://github
 | Debian 13 (x86-64, ARM64) | `Lumen-<version>-linux-amd64.deb`, `…-linux-arm64.deb` |
 | Fedora 44 (x86-64, ARM64) | `Lumen-<version>-linux-x86_64.rpm`, `…-linux-aarch64.rpm` |
 
-I pacchetti Linux usano Qt 6, libmpv e le librerie per i dischi della tua distribuzione. Lumen controlla la presenza di nuove versioni e, su Windows e macOS, le installa con un clic dopo aver verificato il checksum.
+Tutti i pacchetti contengono le stesse librerie multimediali (FFmpeg con decodificatore Blu-ray 3D, libmpv); su Linux, Qt 6 e le librerie per i dischi provengono dalla tua distribuzione. Lumen controlla la presenza di nuove versioni e, su Windows e macOS, le installa con un clic dopo aver verificato il checksum.
 
 ## Funzioni
 
 - **Dischi:** Blu-ray e DVD con menu, titoli, capitoli, tracce audio e sottotitoli; le unità vengono rilevate automaticamente.
 - **Cinema digitale:** DCP in JPEG 2000, SMPTE e Interop, pacchetti cifrati con KDM, rendering Dolby Atmos/IAB, programmi di proiezione.
 - **Streaming:** collegamenti di ogni tipo (HLS, DASH, RTSP, …) e i server multimediali Jellyfin, Emby e Plex.
+- **Trasmissione:** invia immagine e audio a un televisore o ricevitore in rete: DLNA, Chromecast, AirPlay (ricevitori senza abbinamento), le app [Lumen TV](https://github.com/Karl-Lauterbach24/Lumen-TV) per Android TV, Samsung e LG, oppure qualsiasi browser. Miracast passa dall'impostazione di schermo wireless del sistema.
 - **3D:** Blu-ray 3D (MVC) in frame packing, affiancato, sopra-sotto o anaglifo.
 - **Profili di uscita:** schermo di destinazione, adattamento della frequenza, HDR passthrough o tone mapping, calibrazione (ICC, LUT 3D).
 - **Audio:** bitstream verso un ricevitore AV (TrueHD/Atmos, DTS-HD), modalità notte, ritardo e velocità.

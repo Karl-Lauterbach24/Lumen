@@ -98,6 +98,7 @@ ApplicationWindow {
     }
 
     function showHelp() { helpDialog.open() }
+    function showCast() { castDialog.open() }
     function openRecentIndex(i) { if (Recent.items[i]) openRecent(Recent.items[i]) }
     function openRecent(item) {
         pendingResume = item.kind === "file" && item.position > 5 ? item.position : 0

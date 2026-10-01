@@ -27,13 +27,14 @@ Lumen は **Blu-ray / UHD / Blu-ray 3D、メニュー付き DVD-Video、HD DVD�
 | Debian 13 (x86-64, ARM64) | `Lumen-<version>-linux-amd64.deb`, `…-linux-arm64.deb` |
 | Fedora 44 (x86-64, ARM64) | `Lumen-<version>-linux-x86_64.rpm`, `…-linux-aarch64.rpm` |
 
-Linux パッケージは、ディストリビューションの Qt 6、libmpv、ディスク用ライブラリを使います。 Lumen は新しいバージョンを確認し、Windows と macOS ではチェックサムを検証したうえでワンクリックでインストールします。
+すべてのパッケージに同じメディアライブラリ（Blu-ray 3D デコーダー付き FFmpeg、libmpv）が含まれます。Linux では Qt 6 とディスク用ライブラリはディストリビューションのものを使います。 Lumen は新しいバージョンを確認し、Windows と macOS ではチェックサムを検証したうえでワンクリックでインストールします。
 
 ## 機能
 
 - **ディスク:** メニュー付きの Blu-ray と DVD、タイトル、チャプター、音声・字幕トラック。ドライブは自動で検出されます。
 - **デジタルシネマ:** JPEG 2000 の DCP（SMPTE / Interop）、KDM による暗号化パッケージ、Dolby Atmos/IAB のレンダリング、上映プログラム。
 - **ストリーミング:** さまざまなリンク（HLS、DASH、RTSP など）と、メディアサーバー Jellyfin、Emby、Plex。
+- **キャスト:** 映像と音声をネットワーク上のテレビや受信機に送ります。DLNA、Chromecast、AirPlay（ペアリング不要の受信機）、Android TV・Samsung・LG 用の [Lumen TV](https://github.com/Karl-Lauterbach24/Lumen-TV) アプリ、または任意のブラウザーに対応します。Miracast はシステムのワイヤレスディスプレイ設定を使います。
 - **3D:** Blu-ray 3D (MVC) をフレームパッキング、サイドバイサイド、トップアンドボトム、アナグリフで出力。
 - **出力プロファイル:** 出力先の画面、リフレッシュレート合わせ、HDR パススルーまたはトーンマッピング、キャリブレーション（ICC、3D LUT）。
 - **音声:** AV レシーバーへのビットストリーム（TrueHD/Atmos、DTS-HD）、ナイトモード、遅延と速度の調整。

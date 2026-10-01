@@ -27,13 +27,14 @@ Lumen은 **Blu-ray / UHD / Blu-ray 3D, 메뉴가 있는 DVD-Video, HD DVD, 비�
 | Debian 13 (x86-64, ARM64) | `Lumen-<version>-linux-amd64.deb`, `…-linux-arm64.deb` |
 | Fedora 44 (x86-64, ARM64) | `Lumen-<version>-linux-x86_64.rpm`, `…-linux-aarch64.rpm` |
 
-Linux 패키지는 배포판의 Qt 6, libmpv, 디스크 라이브러리를 사용합니다. Lumen은 새 버전을 확인하며, Windows와 macOS에서는 체크섬을 검증한 뒤 한 번의 클릭으로 설치합니다.
+모든 패키지에는 동일한 미디어 라이브러리(Blu-ray 3D 디코더가 포함된 FFmpeg, libmpv)가 들어 있습니다. Linux에서는 Qt 6와 디스크 라이브러리를 배포판에서 가져옵니다. Lumen은 새 버전을 확인하며, Windows와 macOS에서는 체크섬을 검증한 뒤 한 번의 클릭으로 설치합니다.
 
 ## 기능
 
 - **디스크:** 메뉴가 있는 Blu-ray와 DVD, 타이틀, 챕터, 오디오·자막 트랙. 드라이브는 자동으로 인식됩니다.
 - **디지털 시네마:** JPEG 2000 DCP(SMPTE 및 Interop), KDM을 사용하는 암호화 패키지, Dolby Atmos/IAB 렌더링, 상영 목록.
 - **스트리밍:** 여러 종류의 링크(HLS, DASH, RTSP 등)와 미디어 서버 Jellyfin, Emby, Plex.
+- **전송:** 화면과 소리를 네트워크의 TV나 수신기로 보냅니다. DLNA, Chromecast, AirPlay(페어링이 필요 없는 수신기), Android TV·삼성·LG용 [Lumen TV](https://github.com/Karl-Lauterbach24/Lumen-TV) 앱 또는 아무 브라우저나 사용할 수 있습니다. Miracast는 시스템의 무선 디스플레이 설정을 통해 동작합니다.
 - **3D:** Blu-ray 3D(MVC)를 프레임 패킹, 사이드 바이 사이드, 톱 앤 보텀, 애너글리프로 출력.
 - **출력 프로필:** 대상 화면, 주사율 맞춤, HDR 패스스루 또는 톤 매핑, 캘리브레이션(ICC, 3D LUT).
 - **오디오:** AV 리시버로 비트스트림 출력(TrueHD/Atmos, DTS-HD), 야간 모드, 지연과 속도 조절.
