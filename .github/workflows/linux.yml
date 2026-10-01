@@ -1,6 +1,6 @@
-# Linux: Build, Tests und Pakete (DEB auf Debian 13, RPM auf Fedora 44).
+# Linux: Build, Tests und Pakete (DEB auf Debian 13, RPM auf Fedora 44), jeweils x86-64 und ARM64.
 # Wird auch vom Release-Workflow aufgerufen (workflow_call) – die Pakete liegen
-# dann als Artefakte "linux-deb" / "linux-rpm" im selben Lauf.
+# dann als Artefakte "linux-<paket>-<architektur>" im selben Lauf.
 name: Linux
 
 on:
@@ -21,10 +21,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: deb, image: "debian:trixie", generator: DEB }
-          - { name: rpm, image: "fedora:44", generator: RPM }
-    name: ${{ matrix.name }}
-    runs-on: ubuntu-latest
+          - { name: deb, arch: amd64, image: "debian:trixie", generator: DEB, runner: ubuntu-latest }
+          - { name: rpm, arch: x86_64, image: "fedora:44", generator: RPM, runner: ubuntu-latest }
+          - { name: deb, arch: arm64, image: "debian:trixie", generator: DEB, runner: ubuntu-24.04-arm }
+          - { name: rpm, arch: aarch64, image: "fedora:44", generator: RPM, runner: ubuntu-24.04-arm }
+    name: ${{ matrix.name }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     container: ${{ matrix.image }}
     timeout-minutes: 45
     env:
@@ -144,7 +146,7 @@ jobs:
 
       - uses: actions/upload-artifact@v5
         with:
-          name: linux-${{ matrix.name }}
+          name: linux-${{ matrix.name }}-${{ matrix.arch }}
           path: |
             build/Lumen-*.deb
             build/Lumen-*.rpm

@@ -11,7 +11,8 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Product Id="*" Name="Lumen" Language="1033" Version="$(var.Version)" Manufacturer="Lumen"
            UpgradeCode="6B0C1A7E-5D0F-4C56-9B5C-2F2E1E0A7C31">
-    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"
+    <!-- Plattform (x64/arm64) kommt von "candle -arch" -->
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine"
              Description="Lumen – Disc and Digital Cinema Player $(var.Version)" Comments="https://github.com/Karl-Lauterbach24/Lumen" />
 
     <MajorUpgrade Schedule="afterInstallInitialize" AllowSameVersionUpgrades="yes"
@@ -36,7 +37,7 @@
     </Directory>
 
     <DirectoryRef Id="ProgramMenuFolder">
-      <Component Id="StartMenuShortcut" Guid="C2E0B7B4-0C0A-4F0E-8B55-7B7C2F6D7A10" Win64="yes">
+      <Component Id="StartMenuShortcut" Guid="C2E0B7B4-0C0A-4F0E-8B55-7B7C2F6D7A10">
         <Shortcut Id="LumenStartMenu" Name="Lumen" Description="Disc and Digital Cinema Player"
                   Target="[INSTALLFOLDER]lumen.exe" WorkingDirectory="INSTALLFOLDER" Icon="LumenIcon" />
         <RegistryValue Root="HKCU" Key="Software\Lumen\Installer" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />

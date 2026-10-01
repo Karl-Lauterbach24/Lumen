@@ -46,13 +46,14 @@ Updater::Updater(QObject *parent)
 
 QString Updater::assetName(const QString &version, bool msi)
 {
+    // Architektur dieses Builds (ein x64-Build bleibt auch unter Emulation/Rosetta bei x64)
+    const QString arch = QSysInfo::buildCpuArchitecture() == QLatin1String("arm64") ? QStringLiteral("arm64") : QStringLiteral("x64");
 #if defined(Q_OS_WIN)
-    return QStringLiteral("Lumen-%1-windows-x64.%2").arg(version, msi ? QStringLiteral("msi") : QStringLiteral("zip"));
+    return QStringLiteral("Lumen-%1-windows-%2.%3").arg(version, arch, msi ? QStringLiteral("msi") : QStringLiteral("zip"));
 #elif defined(Q_OS_MACOS)
-    if (QSysInfo::currentCpuArchitecture() != QLatin1String("arm64"))
-        return {}; // bisher nur Apple-Silicon-Builds
-    return QStringLiteral("Lumen-%1-macos-arm64.dmg").arg(version);
+    return QStringLiteral("Lumen-%1-macos-%2.dmg").arg(version, arch);
 #else
+    Q_UNUSED(arch)
     Q_UNUSED(version)
     Q_UNUSED(msi)
     return {};

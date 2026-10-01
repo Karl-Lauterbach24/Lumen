@@ -1,4 +1,5 @@
-# Precompiled release: Windows (portable ZIP + MSI installer), macOS (DMG), Linux (DEB + RPM), SHA256SUMS.txt, GitHub release.
+# Precompiled release for x64 and ARM64: Windows (portable ZIP + MSI installer), macOS (DMG),
+# Linux (DEB + RPM), SHA256SUMS.txt, GitHub release.
 # Triggered by a tag "v<version>" (e.g. v0.2.0).
 name: Release
 
@@ -20,7 +21,14 @@ env:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x64, runner: windows-latest, msystem: UCRT64 }
+          - { arch: arm64, runner: windows-11-arm, msystem: CLANGARM64 }
+    name: windows (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     defaults:
       run:
@@ -31,7 +39,7 @@ jobs:
           ref: ${{ env.REF }}
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: UCRT64
+          msystem: ${{ matrix.msystem }}
           update: true
           install: git make zip
           pacboy: >-
@@ -41,6 +49,7 @@ jobs:
 
       - name: FFmpeg-mvc (Blu-ray 3D decoder, matched to MSYS2's FFmpeg)
         id: mvc
+        if: matrix.arch == 'x64'
         continue-on-error: true
         run: |
           ver=$(ffmpeg -hide_banner -version | head -1 | sed -E 's/^ffmpeg version n?([0-9]+\.[0-9]+).*/\1/')
@@ -67,8 +76,8 @@ jobs:
           python tools/deploy_windows.py $S/lumen.exe --search $SEARCH --own libdvdcss-2.dll
           cp LICENSE THIRD_PARTY.md README.md $S/
           # libdvdcss must be Lumen's stand-in, never the real library
-          strings $S/libdvdcss-2.dll | grep -q LUMEN_DVDCSS_LIBRARY
-          (cd dist && zip -qr "../Lumen-$VER-windows-x64.zip" Lumen)
+          grep -qa LUMEN_DVDCSS_LIBRARY $S/libdvdcss-2.dll
+          (cd dist && zip -qr "../Lumen-$VER-windows-${{ matrix.arch }}.zip" Lumen)
           ls -la Lumen-*.zip
 
       - name: Start test without MSYS2 (all DLLs in the package)
@@ -86,26 +95,33 @@ jobs:
         run: |
           if (-not $env:WIX) { choco install wixtoolset --no-progress -y }
           $ver = (Select-String -Path CMakeLists.txt -Pattern 'project\(Lumen VERSION ([0-9.]+)').Matches[0].Groups[1].Value
-          ./tools/make_msi.ps1 -Stage dist\Lumen -Version $ver -Out "Lumen-$ver-windows-x64.msi"
+          ./tools/make_msi.ps1 -Stage dist\Lumen -Version $ver -Arch ${{ matrix.arch }} -Out "Lumen-$ver-windows-${{ matrix.arch }}.msi"
           # second MSI with a higher version, only for the upgrade test
-          ./tools/make_msi.ps1 -Stage dist\Lumen -Version 99.0.0 -Out "$env:RUNNER_TEMP\Lumen-99.0.0-windows-x64.msi"
+          ./tools/make_msi.ps1 -Stage dist\Lumen -Version 99.0.0 -Arch ${{ matrix.arch }} -Out "$env:RUNNER_TEMP\Lumen-99.0.0.msi"
 
       - name: "MSI test: install, start, upgrade, uninstall"
         shell: pwsh
         run: |
           $ver = (Select-String -Path CMakeLists.txt -Pattern 'project\(Lumen VERSION ([0-9.]+)').Matches[0].Groups[1].Value
-          ./tools/test_msi.ps1 -Msi "Lumen-$ver-windows-x64.msi" -Upgrade "$env:RUNNER_TEMP\Lumen-99.0.0-windows-x64.msi"
+          ./tools/test_msi.ps1 -Msi "Lumen-$ver-windows-${{ matrix.arch }}.msi" -Upgrade "$env:RUNNER_TEMP\Lumen-99.0.0.msi"
 
       - uses: actions/upload-artifact@v5
         with:
-          name: windows
+          name: windows-${{ matrix.arch }}
           path: |
             Lumen-*.zip
             Lumen-*.msi
 
   macos:
-    runs-on: macos-15
-    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: arm64, runner: macos-15 }
+          - { arch: x64, runner: macos-15-intel }
+    name: macos (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
@@ -118,11 +134,24 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$(brew --prefix qt)"
           cmake --build build
           cmake --build build --target lumen_dmg
-          mv build/Lumen.dmg "Lumen-$VER-macos-arm64.dmg"
+          mv build/Lumen.dmg "Lumen-$VER-macos-${{ matrix.arch }}.dmg"
           ls -la Lumen-*.dmg
+          file build/Lumen.app/Contents/MacOS/Lumen
+      - name: Bundle check (no Homebrew paths, the app starts)
+        run: |
+          if find build/Lumen.app/Contents -type f -print0 | xargs -0 file | grep Mach-O | cut -d: -f1 \
+               | while read -r f; do otool -L "$f" | tail -n +2; done | grep -E "/opt/homebrew|/usr/local/(opt|Cellar|lib)"; then
+            echo "::error::Lumen.app still refers to Homebrew libraries"; exit 1
+          fi
+          rm -f /tmp/lumen-bundle.png
+          LUMEN_SNAPSHOT=/tmp/lumen-bundle.png build/Lumen.app/Contents/MacOS/Lumen &
+          PID=$!
+          for i in $(seq 1 60); do [ -s /tmp/lumen-bundle.png ] && break; sleep 1; done
+          kill $PID 2>/dev/null || true
+          [ -s /tmp/lumen-bundle.png ] || { echo "::error::Lumen.app from the bundle does not start"; exit 1; }
       - uses: actions/upload-artifact@v5
         with:
-          name: macos
+          name: macos-${{ matrix.arch }}
           path: Lumen-*.dmg
 
   linux:

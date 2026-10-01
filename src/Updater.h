@@ -5,11 +5,12 @@
 #include <QUrl>
 
 // Update-Prüfung gegen die GitHub-Releases von Lumen und Ein-Klick-Aktualisierung:
-//   Windows  Lumen-<ver>-windows-x64.zip  -> entpacken, nach dem Beenden ersetzen, neu starten
-//            Lumen-<ver>-windows-x64.msi  -> wenn Lumen per MSI installiert wurde (Datei
+// (<arch> = x64 oder arm64, je nach Build)
+//   Windows  Lumen-<ver>-windows-<arch>.zip  -> entpacken, nach dem Beenden ersetzen, neu starten
+//            Lumen-<ver>-windows-<arch>.msi  -> wenn Lumen per MSI installiert wurde (Datei
 //                                            "install-type.txt" mit "msi" im Programmordner):
 //                                            Installer nach dem Beenden ausführen, neu starten
-//   macOS    Lumen-<ver>-macos-arm64.dmg  -> einhängen, Lumen.app ersetzen, neu starten
+//   macOS    Lumen-<ver>-macos-<arch>.dmg    -> einhängen, Lumen.app ersetzen, neu starten
 //   sonst    Release-Seite im Browser
 // Jede Datei wird gegen SHA256SUMS.txt des Releases geprüft.
 class Updater : public QObject

@@ -154,7 +154,7 @@ int main(int argc, char **argv)
     ready = false;
     up.install();
     waitFor([&] { return ready || (!up.busy() && up.status().contains(QLatin1String("stimmt"))); }, 20000);
-    check(ready && up.preparedDir().endsWith(QLatin1String("Lumen-9.9.2-windows-x64.msi")) && read(up.preparedDir()) == "MSI-Paket 9.9.2",
+    check(ready && up.preparedDir().endsWith(Updater::assetName(QStringLiteral("9.9.2"), true)) && read(up.preparedDir()) == "MSI-Paket 9.9.2",
           QStringLiteral("MSI heruntergeladen und geprüft (%1)").arg(QFileInfo(up.preparedDir()).fileName()));
 
     server.kill();

@@ -1,6 +1,6 @@
 # Lumen-MSI aus dem fertigen Programmordner bauen (WiX Toolset 3.x: heat, candle, light).
 #
-#   pwsh tools/make_msi.ps1 -Stage dist\Lumen -Version 0.2.2 -Out Lumen-0.2.2-windows-x64.msi
+#   pwsh tools/make_msi.ps1 -Stage dist\Lumen -Version 0.2.2 -Out Lumen-0.2.2-windows-x64.msi [-Arch arm64]
 #
 # -Stage ist der Ordner, der auch als portables ZIP verteilt wird (lumen.exe + DLLs + Qt).
 # Der Installer bekommt zusätzlich die Datei "install-type.txt" (Inhalt "msi"): daran erkennt
@@ -8,7 +8,8 @@
 param(
     [Parameter(Mandatory = $true)][string]$Stage,
     [Parameter(Mandatory = $true)][string]$Version,
-    [Parameter(Mandatory = $true)][string]$Out
+    [Parameter(Mandatory = $true)][string]$Out,
+    [ValidateSet("x64", "arm64")][string]$Arch = "x64"
 )
 $ErrorActionPreference = "Stop"
 $repo = Split-Path -Parent $PSScriptRoot
@@ -47,7 +48,7 @@ $filesWxs = Join-Path $work "files.wxs"
 Invoke-Tool "heat.exe" @("dir", $files, "-nologo", "-cg", "LumenFiles", "-dr", "INSTALLFOLDER", "-ag", "-sfrag", "-srd", "-sreg", "-scom",
                          "-var", "var.Stage", "-out", $filesWxs)
 $defines = @("-dVersion=$Version", "-dStage=$files", "-dIcon=$(Join-Path $repo 'resources\logo\lumen.ico')", "-dLicense=$rtf")
-Invoke-Tool "candle.exe" (@("-nologo", "-arch", "x64", "-ext", "WixUIExtension", "-out", "$work\") + $defines +
+Invoke-Tool "candle.exe" (@("-nologo", "-arch", $Arch, "-ext", "WixUIExtension", "-out", "$work\") + $defines +
                           @((Join-Path $repo "packaging\windows\lumen.wxs"), $filesWxs))
 Invoke-Tool "light.exe" @("-nologo", "-sw1076", "-ext", "WixUIExtension", "-cultures:en-us", "-out", $Out,
                           (Join-Path $work "lumen.wixobj"), (Join-Path $work "files.wixobj"))
