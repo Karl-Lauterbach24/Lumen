@@ -326,6 +326,9 @@ int main(int argc, char **argv)
             mpv_set_option_string(mpv, "vo-image-outdir", QFileInfo(png).absolutePath().toUtf8().constData());
             mpv_set_option_string(mpv, "frames", "1");
         }
+        // am Dateiende anhalten statt schließen: auf langsamen Rechnern ist das Ende sonst erreicht,
+        // bevor die Eigenschaften unten gelesen sind
+        mpv_set_option_string(mpv, "keep-open", "yes");
         if (mpv_initialize(mpv) < 0)
             return 1;
         Dcp::attachProtocol(mpv);
@@ -361,6 +364,9 @@ int main(int argc, char **argv)
                 if (pos >= seconds)
                     break;
             }
+            int eof = 0;
+            if (loaded && mpv_get_property(mpv, "eof-reached", MPV_FORMAT_FLAG, &eof) >= 0 && eof)
+                break;
         }
         double pos = -1;
         int64_t drops = 0, frames = 0;
