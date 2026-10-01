@@ -1436,7 +1436,10 @@ void MpvController::handleEvent(mpv_event *ev)
         QStringList args;
         for (int i = 0; i < m->num_args; ++i)
             args << QString::fromUtf8(m->args[i]);
-        handleClientMessage(args);
+        if (args.value(0) == QLatin1String("lumen-plugin"))
+            emit pluginMessage(args);
+        else
+            handleClientMessage(args);
         break;
     }
     case MPV_EVENT_FILE_LOADED:

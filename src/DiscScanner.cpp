@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QPointer>
 #include <QThreadPool>
+#include <QUrl>
 
 #ifdef LUMEN_HAVE_BLURAY
 #include <libbluray/bluray.h>
@@ -83,6 +84,55 @@ void DiscScanner::clear()
     emit infoChanged();
 }
 
+void DiscScanner::applyMetadata(const QVariantMap &meta)
+{
+    if (m_busy || m_info.value("device").toString().isEmpty())
+        return;
+    const QString device = meta.value("device").toString();
+    if (!device.isEmpty() && device != m_info.value("device").toString())
+        return; // gehört zu einer anderen (früheren) Disc
+
+    QVariantMap clean;
+    for (const char *key : {"title", "artist", "year", "source", "overview"}) {
+        const QString v = meta.value(QLatin1String(key)).toString().simplified().left(400);
+        if (!v.isEmpty())
+            clean.insert(QLatin1String(key), v);
+    }
+    const QUrl cover(meta.value("cover").toString());
+    if (cover.isValid() && (cover.scheme() == QLatin1String("https") || cover.scheme() == QLatin1String("http")))
+        clean.insert(QStringLiteral("cover"), cover.toString());
+    const QVariantList tracks = meta.value("tracks").toList();
+    if (clean.isEmpty() && tracks.isEmpty())
+        return;
+
+    const QString title = clean.value("title").toString(), artist = clean.value("artist").toString();
+    if (!title.isEmpty()) {
+        if (!m_info.contains("discLabel"))
+            m_info["discLabel"] = m_info.value("discName");
+        m_info["discName"] = artist.isEmpty() ? title : artist + QStringLiteral(" – ") + title;
+    }
+    // Audio-CD: Tracknamen in die Titelliste
+    if (m_info.value("kind") == QLatin1String("cdda") && !tracks.isEmpty()) {
+        QVariantList titles = m_info.value("titles").toList();
+        for (int i = 0; i < titles.size() && i < tracks.size(); ++i) {
+            const QVariantMap track = tracks[i].toMap();
+            const QString name = track.value("title").toString().simplified().left(300);
+            if (name.isEmpty())
+                continue;
+            QVariantMap t = titles[i].toMap();
+            t["label"] = QStringLiteral("%1. %2").arg(t.value("title", i + 1).toInt()).arg(name);
+            t["name"] = name;
+            const QString trackArtist = track.value("artist").toString().simplified().left(300);
+            if (!trackArtist.isEmpty() && trackArtist != artist)
+                t["artist"] = trackArtist;
+            titles[i] = t;
+        }
+        m_info["titles"] = titles;
+    }
+    m_info["meta"] = clean;
+    emit infoChanged();
+}
+
 void DiscScanner::scan(const QString &device)
 {
     if (!available() || device.isEmpty())
@@ -100,6 +150,7 @@ void DiscScanner::scan(const QString &device)
             self->m_busy = false;
             emit self->busyChanged();
             emit self->infoChanged();
+            emit self->scanned();
         }, Qt::QueuedConnection);
     });
 }

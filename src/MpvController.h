@@ -241,6 +241,8 @@ signals:
     void lastErrorChanged();
     void profileApplied();
     void fileLoaded();
+    // script-message "lumen-plugin" … von einem mpv-Skript (Plugin-System)
+    void pluginMessage(const QStringList &args);
     void shutdownRequested();
 
 private slots:

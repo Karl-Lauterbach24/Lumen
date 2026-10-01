@@ -105,6 +105,10 @@ static void demo_event(void *ctx, const char *event, const char *json)
     char msg[1024];
     snprintf(msg, sizeof msg, "event %s %s", event, json);
     d->host->log(d->host->ctx, LUMEN_LOG_DEBUG, msg);
+    /* Disc metadata (host function added in Lumen 0.2.1): only for the demo label, so the
+       example never renames real discs */
+    if (strcmp(event, "disc") == 0 && strstr(json, "\"LUMEN_DEMO_DISC\"") && LUMEN_HOST_HAS(d->host, set_disc_info))
+        d->host->set_disc_info(d->host->ctx, "{\"title\":\"Demo disc\",\"year\":\"2026\",\"source\":\"Demo plugin\"}");
 }
 
 static void demo_action(void *ctx, const char *id)

@@ -90,6 +90,14 @@ jobs:
           build/media_test python3 tools/mock_media_server.py build/tests/stream.mp4
           build/display_test
 
+      - name: "Test: Disc-Erkennung (Audio-CD-Abbild, CD-Text, Plugin disc-identify aus dem Store)"
+        shell: bash
+        run: |
+          set -e
+          git clone -q --depth 1 https://github.com/Karl-Lauterbach24/Lumen-Plugins build/Lumen-Plugins
+          [ -d build/Lumen-Plugins/plugins/disc-identify ] || { echo "::warning::Plugin disc-identify fehlt im Store – Test übersprungen"; exit 0; }
+          build/discinfo_test build/Lumen-Plugins/plugins python3 tools/mock_disc_server.py
+
       - name: Paket bauen (${{ matrix.generator }})
         shell: bash
         run: |
@@ -117,6 +125,17 @@ jobs:
           tail -30 /tmp/lumen.log
           [ -s /tmp/lumen.png ] || { echo "::error::installiertes Lumen startet nicht"; exit 1; }
           echo "installiertes Lumen startet: Steuerfenster gerendert"
+
+      - name: Player-Fenster (informativ, Software-GL unter Xvfb)
+        shell: bash
+        continue-on-error: true
+        run: |
+          export QT_QPA_PLATFORM=xcb QT_QUICK_BACKEND=software LUMEN_PLAYER_SNAPSHOT="/tmp/player.png@1.0"
+          xvfb-run -a -s "-screen 0 1600x900x24" lumen "av://lavfi:testsrc2=size=1280x720:rate=24" > /tmp/player.log 2>&1 &
+          for i in $(seq 1 40); do [ -s /tmp/player.png ] && break; sleep 1; done
+          pkill -x lumen || true
+          tail -20 /tmp/player.log
+          if [ -s /tmp/player.png ]; then echo "::notice::Player-Fenster rendert unter Xvfb (${{ matrix.name }})"; else echo "::warning::Player-Fenster lieferte unter Xvfb kein Bild (${{ matrix.name }})"; fi
 
       - uses: actions/upload-artifact@v5
         with:

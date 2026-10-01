@@ -24,10 +24,15 @@ public:
 
     Q_INVOKABLE void scan(const QString &device);
     Q_INVOKABLE void clear();
+    // Metadaten eines Plugins (Titel, Interpret, Jahr, Cover, Tracknamen) übernehmen:
+    // {"device", "title", "artist", "year", "cover", "source", "tracks": [{"title", "artist"}]}
+    void applyMetadata(const QVariantMap &meta);
 
 signals:
     void busyChanged();
     void infoChanged();
+    // Ein Scan ist abgeschlossen (infoChanged meldet auch nachträgliche Metadaten)
+    void scanned();
 
 private:
     static QVariantMap scanBlocking(const QString &device);

@@ -95,7 +95,7 @@ LUMEN_PLUGIN_EXPORT const lumen_plugin *lumen_plugin_entry(void)
 | Hook | Purpose |
 |------|---------|
 | `init` / `shutdown` | Set up and tear down. `init` returns the plugin's context, or NULL to refuse loading. |
-| `on_event` | `file-loaded`, `end-file`, `disc`, `shutdown`, each with a JSON payload |
+| `on_event` | `file-loaded`, `end-file`, `disc`, `shutdown`, each with a JSON payload. `disc` describes the scanned disc: `device`, `kind`, `label`, `discName`, `volumeId`, `titles`; for audio CDs also `mbDiscId` (MusicBrainz disc ID), `toc` and `cdText` |
 | `on_action` | Buttons registered with `host->add_action` |
 | `schemes` + `stream_open` | Own URL schemes (`myscheme://…`) as byte streams for mpv: network sources, container formats, or files the plugin decrypts itself |
 | `dcp_content_key` | DCP content keys by key ID, e.g. from an HSM or a key server; used when no KDM delivered the key |
@@ -105,12 +105,43 @@ The host (`lumen_host`) offers these functions:
 - mpv: `command`, `get_property` and `set_property` for the full [mpv API](https://mpv.io/manual/master/#properties);
 - in the window: `show_text`, `add_action` and `set_status`;
 - playback: `open`;
+- disc metadata: `set_disc_info` (title, artist, year, cover URL, track names; since Lumen 0.2.1,
+  check with `LUMEN_HOST_HAS(host, set_disc_info)`);
 - folders: `plugin_dir` and `config_dir`;
 - `log`.
 
 Stream callbacks and `dcp_content_key` run on worker threads.
 The API is versioned (`LUMEN_PLUGIN_API_VERSION`), and every struct starts with its size, so new
 fields can be added without breaking existing plugins.
+
+## Script plugins and Lumen
+
+mpv scripts of a plugin (Lua or JavaScript) talk to Lumen through script messages (since Lumen 0.2.1):
+
+```lua
+-- events, same names and JSON payloads as on_event of native plugins
+mp.register_script_message("lumen-event", function(event, json) ... end)
+
+-- tell Lumen the script is up; Lumen repeats the last "disc" event for scripts that started later
+mp.commandv("script-message", "lumen-plugin", "ready")
+
+-- HTTP GET through Lumen (no curl needed); the answer arrives as script-message <reply-name> <status> <body>,
+-- status 0 means a network error and <body> is the error text. Optional 5th argument: headers as JSON.
+mp.commandv("script-message", "lumen-plugin", "http", "my-reply-1", "https://example.org/data.json")
+
+-- metadata for the scanned disc: shown as disc name, cover and track names
+mp.commandv("script-message", "lumen-plugin", "disc-info",
+            '{"device":"D:/","title":"Album","artist":"Artist","year":"1999","source":"My database",' ..
+            '"cover":"https://example.org/cover.jpg","tracks":[{"title":"Track one"},{"title":"Track two"}]}')
+
+-- status line under the plugin's name in the Plugins tab
+mp.commandv("script-message", "lumen-plugin", "status", "my-plugin-id", "Ready")
+```
+
+Pass the `device` of the `disc` event back in `disc-info`; Lumen ignores metadata for a disc that is no
+longer the current one. The store plugin
+[disc-identify](https://github.com/Karl-Lauterbach24/Lumen-Plugins/tree/main/plugins/disc-identify) is a
+complete example.
 
 ## Examples
 

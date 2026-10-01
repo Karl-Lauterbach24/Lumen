@@ -81,12 +81,26 @@ int main(int argc, char *argv[])
         if (player.idle())
             plugins.sendEvent(QStringLiteral("end-file"), {{"path", player.path()}});
     });
-    QObject::connect(&scanner, &DiscScanner::infoChanged, &plugins, [&] {
+    QObject::connect(&scanner, &DiscScanner::scanned, &plugins, [&] {
         const QVariantMap i = scanner.info();
-        if (!i.value("device").toString().isEmpty())
-            plugins.sendEvent(QStringLiteral("disc"), {{"device", i.value("device")}, {"kind", i.value("kind")},
-                                                       {"label", i.value("label", i.value("title"))}});
+        if (i.value("device").toString().isEmpty())
+            return;
+        QVariantMap payload{{"device", i.value("device")}, {"kind", i.value("kind")},
+                            {"label", i.value("label", i.value("title"))}};
+        // Angaben, mit denen ein Plugin die Disc erkennen kann
+        for (const char *key : {"discName", "volumeId", "mbDiscId", "toc", "cdText"})
+            if (i.contains(QLatin1String(key)))
+                payload.insert(QLatin1String(key), i.value(QLatin1String(key)));
+        QVariantList titles;
+        for (const QVariant &v : i.value("titles").toList()) {
+            const QVariantMap t = v.toMap();
+            titles << QVariantMap{{"index", t.value("index")}, {"duration", t.value("duration")}, {"chapters", t.value("chapters")}};
+        }
+        payload.insert(QStringLiteral("titles"), titles);
+        plugins.sendEvent(QStringLiteral("disc"), payload);
     });
+    QObject::connect(&player, &MpvController::pluginMessage, &plugins, &PluginManager::handleScriptMessage);
+    QObject::connect(&plugins, &PluginManager::discInfoProvided, &scanner, &DiscScanner::applyMetadata);
     QObject::connect(&plugins, &PluginManager::openRequested, &player, [&](const QString &url) {
         const QFileInfo fi(url);
         if (fi.exists())

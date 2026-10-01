@@ -157,6 +157,14 @@ int main(int argc, char **argv)
     pm.sendEvent(QStringLiteral("file-loaded"), {{"path", QString::fromUtf8(url)}, {"kind", "file"}});
     check(true, "Aktion und Ereignis zugestellt");
 
+    // Disc-Metadaten vom nativen Plugin (set_disc_info)
+    QVariantMap discInfo;
+    QObject::connect(&pm, &PluginManager::discInfoProvided, [&](const QVariantMap &i) { discInfo = i; });
+    pm.sendEvent(QStringLiteral("disc"), {{"device", "D:/"}, {"kind", "dvd"}, {"label", "LUMEN_DEMO_DISC"}});
+    check(waitFor([&] { return !discInfo.isEmpty(); }, 10000) && discInfo.value("title") == QLatin1String("Demo disc")
+              && discInfo.value("source") == QLatin1String("Demo plugin"),
+          "Plugin liefert Disc-Metadaten");
+
     // DCP-Schlüssel aus dem Plugin
     if (!dcp.isEmpty()) {
         QFile keys(QDir(dcp).filePath(QStringLiteral("keys.txt")));

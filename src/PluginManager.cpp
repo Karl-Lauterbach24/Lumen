@@ -8,6 +8,9 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
@@ -143,6 +146,14 @@ struct PluginHostImpl
         const QString u = QString::fromUtf8(url);
         QMetaObject::invokeMethod(m, [m, u] { emit m->openRequested(u); }, Qt::QueuedConnection);
         return 0;
+    }
+
+    static void setDiscInfo(void *ctx, const char *json)
+    {
+        PluginManager *m = p(ctx)->owner;
+        const QVariantMap info = QJsonDocument::fromJson(QByteArray(json ? json : "")).object().toVariantMap();
+        if (!info.isEmpty())
+            QMetaObject::invokeMethod(m, [m, info] { emit m->discInfoProvided(info); }, Qt::QueuedConnection);
     }
 
     // mpv-Stream über das URL-Schema eines Plugins
@@ -466,6 +477,7 @@ void PluginManager::setupHost(Plugin &p)
     h.plugin_dir = PluginHostImpl::pluginDir;
     h.config_dir = PluginHostImpl::configDir;
     h.open = PluginHostImpl::open;
+    h.set_disc_info = PluginHostImpl::setDiscInfo;
 }
 
 void PluginManager::unloadAll()
@@ -520,6 +532,74 @@ void PluginManager::sendEvent(const QString &event, const QVariantMap &payload)
     for (auto &p : m_plugins) {
         if (p->api && p->api->on_event)
             p->api->on_event(p->ctx, name.constData(), json.constData());
+    }
+    if (event == QLatin1String("disc"))
+        m_lastDisc = json;
+    // mpv-Skripte der Plugins
+    if (m_mpv) {
+        const char *args[] = {"script-message", "lumen-event", name.constData(), json.constData(), nullptr};
+        mpv_command(m_mpv, args);
+    }
+}
+
+void PluginManager::handleScriptMessage(const QStringList &args)
+{
+    if (args.value(0) != QLatin1String("lumen-plugin"))
+        return;
+    const QString cmd = args.value(1);
+    if (cmd == QLatin1String("disc-info")) {
+        const QVariantMap info = QJsonDocument::fromJson(args.value(2).toUtf8()).object().toVariantMap();
+        if (!info.isEmpty())
+            emit discInfoProvided(info);
+    } else if (cmd == QLatin1String("ready")) {
+        // Ein Skript, das erst nach dem Disc-Scan startet, hat das Ereignis verpasst
+        if (m_mpv && !m_lastDisc.isEmpty()) {
+            const char *a[] = {"script-message", "lumen-event", "disc", m_lastDisc.constData(), nullptr};
+            mpv_command(m_mpv, a);
+        }
+    } else if (cmd == QLatin1String("status")) {
+        for (auto &p : m_plugins) {
+            if (p->id == args.value(2) && p->loaded) {
+                p->status = args.value(3).left(300);
+                emit pluginsChanged();
+            }
+        }
+    } else if (cmd == QLatin1String("http")) {
+        const QByteArray replyName = args.value(2).toUtf8();
+        const QUrl url(args.value(3));
+        auto answer = [this, replyName](int status, const QByteArray &body) {
+            if (!m_mpv)
+                return;
+            const QByteArray code = QByteArray::number(status);
+            const char *a[] = {"script-message", replyName.constData(), code.constData(), body.constData(), nullptr};
+            mpv_command(m_mpv, a);
+        };
+        if (replyName.isEmpty())
+            return;
+        if (!url.isValid() || (url.scheme() != QLatin1String("https") && url.scheme() != QLatin1String("http"))) {
+            answer(0, "unsupported URL");
+            return;
+        }
+        if (!m_net)
+            m_net = new QNetworkAccessManager(this);
+        QNetworkRequest req(url);
+        req.setTransferTimeout(15000);
+        // Web-Dienste wie MusicBrainz verlangen eine aussagekräftige Kennung
+        req.setHeader(QNetworkRequest::UserAgentHeader,
+                      QStringLiteral("Lumen/%1 ( https://github.com/Karl-Lauterbach24/Lumen )").arg(QCoreApplication::applicationVersion()));
+        const QJsonObject headers = QJsonDocument::fromJson(args.value(4).toUtf8()).object();
+        for (auto it = headers.begin(); it != headers.end(); ++it)
+            req.setRawHeader(it.key().toUtf8(), it.value().toString().toUtf8());
+        QNetworkReply *reply = m_net->get(req);
+        connect(reply, &QNetworkReply::finished, this, [reply, answer] {
+            reply->deleteLater();
+            const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            QByteArray body = reply->read(4 * 1024 * 1024); // genug für JSON-Antworten
+            if (status == 0)
+                body = reply->errorString().toUtf8();
+            body.replace('\0', ' ');
+            answer(status, body);
+        });
     }
 }
 

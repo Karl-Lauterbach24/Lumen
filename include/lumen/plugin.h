@@ -32,6 +32,11 @@ extern "C" {
 
 #define LUMEN_PLUGIN_API_VERSION 1
 
+/* True if the host is new enough to offer a function added after API version 1
+   was first released, e.g. LUMEN_HOST_HAS(host, set_disc_info). */
+#define LUMEN_HOST_HAS(host, field) \
+    ((host)->struct_size >= offsetof(lumen_host, field) + sizeof((host)->field))
+
 #if defined(_WIN32)
 #define LUMEN_PLUGIN_EXPORT __declspec(dllexport)
 #else
@@ -69,6 +74,14 @@ typedef struct lumen_host {
     const char *(*config_dir)(void *ctx);
     /* Open a file/URL in the player (like the "Open" button) */
     int (*open)(void *ctx, const char *url);
+
+    /* ---- since Lumen 0.2.1: check with LUMEN_HOST_HAS() before calling ---- */
+
+    /* Metadata for the disc announced by the last "disc" event, JSON object:
+       {"device", "title", "artist", "year", "cover" (http/https URL), "source",
+        "tracks": [{"title", "artist"}]}
+       Lumen shows it in the control window (disc name, track names, cover). */
+    void (*set_disc_info)(void *ctx, const char *json);
 } lumen_host;
 
 /* A readable stream behind one of the plugin's URL schemes (mirrors mpv's stream_cb). */
@@ -96,8 +109,14 @@ typedef struct lumen_plugin {
     /* Player events, payload is a JSON object:
        "file-loaded"  {"path", "kind", "title"}
        "end-file"     {"path"}
-       "disc"         {"device", "kind", "label"}  (disc inserted / scanned)
-       "shutdown"     {} */
+       "disc"         {"device", "kind", "label", "discName", "volumeId",
+                       "titles": [{"index", "duration", "chapters"}],
+                       audio CD: "mbDiscId" (MusicBrainz disc ID), "toc": {"first",
+                       "last", "leadout", "offsets": [...]}, "cdText": bool}
+                      (disc inserted / scanned)
+       "shutdown"     {}
+       mpv scripts receive the same events as
+       script-message "lumen-event" <event> <json>, see plugins/README.md. */
     void (*on_event)(void *ctx, const char *event, const char *json);
     void (*on_action)(void *ctx, const char *action_id);
 

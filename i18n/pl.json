@@ -575,6 +575,7 @@
  "Keine abspielbaren EVO-Dateien gefunden": "Nie znaleziono odtwarzalnych plików EVO",
  "libcdio konnte die Disc/das Abbild nicht öffnen": "libcdio nie może otworzyć płyty/obrazu",
  "Track %1": "Ścieżka %1",
+ "Keine Audio-Tracks auf der CD": "Brak ścieżek audio na płycie CD",
  "HD DVD: keine abspielbaren EVO-Dateien": "HD DVD: brak odtwarzalnych plików EVO",
  "HD DVD mit AACS-Verzeichnis – Lumen entschlüsselt nicht; nur ungeschützte bzw. bereits entschlüsselte Inhalte sind abspielbar": "HD DVD z katalogiem AACS – Lumen nie odszyfrowuje; odtwarzalne są tylko treści niechronione lub już odszyfrowane",
  "libcdio konnte die Video-CD nicht öffnen": "libcdio nie może otworzyć płyty Video CD",

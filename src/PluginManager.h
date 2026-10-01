@@ -12,6 +12,7 @@
 #include "lumen/plugin.h"
 
 struct mpv_handle;
+class QNetworkAccessManager;
 
 // Plugins: Ordner mit "plugin.json" (siehe plugins/README.md). Ein Plugin kann
 //  - eine native Bibliothek (C-ABI, include/lumen/plugin.h) mitbringen: Ereignisse,
@@ -51,7 +52,16 @@ public:
     void attach(mpv_handle *mpv);
     void detach();
 
+    // Ereignis an native Plugins (on_event) und an mpv-Skripte
+    // (script-message "lumen-event" <event> <json>)
     void sendEvent(const QString &event, const QVariantMap &payload = {});
+    // Nachrichten von mpv-Skripten: script-message "lumen-plugin" <befehl> …
+    //   disc-info <json>                      Metadaten zur Disc (wie set_disc_info)
+    //   status <plugin-id> <text>             Statuszeile des Plugins
+    //   ready                                 Skript ist bereit: letztes "disc"-Ereignis erneut senden
+    //   http <antwort-name> <url> [<header-json>]
+    //        HTTP-GET über Lumen; Antwort: script-message <antwort-name> <status> <text>
+    void handleScriptMessage(const QStringList &args);
 
     QVariantList plugins() const;
     bool restartNeeded() const { return m_restartNeeded; }
@@ -66,6 +76,8 @@ public:
 signals:
     void pluginsChanged();
     void openRequested(const QString &url);
+    // Ein Plugin liefert Metadaten zur eingelegten Disc
+    void discInfoProvided(const QVariantMap &info);
 
 private:
     struct Action { QString id, label; };
@@ -96,6 +108,8 @@ private:
     QStringList m_enabledAtStart;
     QStringList m_discLibs;
     mpv_handle *m_mpv = nullptr;
+    QNetworkAccessManager *m_net = nullptr;
+    QByteArray m_lastDisc; // JSON des letzten "disc"-Ereignisses (für später startende Skripte)
     bool m_restartNeeded = false;
 
     friend struct PluginHostImpl;

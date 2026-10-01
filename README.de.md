@@ -50,7 +50,10 @@ URL-Schemata anmelden oder DCP-Schlüssel liefern. Lumen liefert nichts davon mi
 
 Fertige Builds gibt es auf der [Release-Seite](https://github.com/Karl-Lauterbach24/Lumen/releases):
 - Windows: portables ZIP;
-- macOS: DMG für Apple Silicon.
+- macOS: DMG für Apple Silicon;
+- Linux: ein DEB (gebaut auf Debian 13) und ein RPM (gebaut auf Fedora 44), beide x86-64. Installation mit
+  `sudo apt install ./Lumen-<version>-linux-amd64.deb` bzw. `sudo dnf install ./Lumen-<version>-linux-x86_64.rpm`;
+  die Paketverwaltung holt Qt 6, libmpv und die Disc-Bibliotheken dazu.
 
 Lumen sucht beim Start nach neuen Versionen, höchstens einmal täglich und nur wenn eingeschaltet. Ein Update
 installiert es mit einem Klick, nachdem es den Download gegen die `SHA256SUMS.txt` des Releases geprüft hat.

@@ -89,6 +89,14 @@ jobs:
           build/media_test python3 tools/mock_media_server.py build/tests/stream.mp4
           build/display_test
 
+      - name: "Test: Disc-Erkennung (Audio-CD-Abbild, CD-Text, Plugin disc-identify aus dem Store)"
+        run: |
+          mkdir -p build/logs; exec > >(tee -a build/logs/discinfo.txt) 2>&1
+          set -e
+          git clone -q --depth 1 https://github.com/Karl-Lauterbach24/Lumen-Plugins build/Lumen-Plugins
+          [ -d build/Lumen-Plugins/plugins/disc-identify ] || { echo "::warning::Plugin disc-identify fehlt im Store – Test übersprungen"; exit 0; }
+          build/discinfo_test build/Lumen-Plugins/plugins python3 tools/mock_disc_server.py
+
       - name: "Test: Video-CD-Menüs (PBC, mit vcdxbuild erstellt)"
         run: |
           mkdir -p build/logs; exec > >(tee -a build/logs/vcd.txt) 2>&1

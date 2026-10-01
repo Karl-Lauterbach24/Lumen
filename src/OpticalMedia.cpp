@@ -2,6 +2,7 @@
 #include "Tr.h"
 
 #include <QCollator>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QDomDocument>
@@ -16,6 +17,7 @@
 
 #ifdef LUMEN_HAVE_CDIO
 #include <cdio/cdio.h>
+#include <cdio/cdtext.h>
 #include <cdio/iso9660.h>
 #include <cdio/logging.h>
 #endif
@@ -255,6 +257,97 @@ int openTrack(void *, char *uri, mpv_stream_cb_info *info)
     return 0;
 }
 
+// Audio-CD: Sektorbereich (je 2352 Byte, 44,1 kHz/16 Bit/Stereo) als WAV-Datei
+constexpr int kAudioSector = 2352;
+constexpr int kWavHeader = 44;
+
+class AudioReader
+{
+public:
+    explicit AudioReader(const TrackSpec &t) : m_cdio(t.source), m_spec(t)
+    {
+        const qint64 data = qint64(t.last - t.first + 1) * kAudioSector;
+        m_size = kWavHeader + data;
+        auto u32 = [this](quint32 v) { for (int i = 0; i < 4; ++i) m_header.append(char(v >> (8 * i))); };
+        auto u16 = [this](quint16 v) { for (int i = 0; i < 2; ++i) m_header.append(char(v >> (8 * i))); };
+        m_header += "RIFF"; u32(quint32(36 + data)); m_header += "WAVEfmt "; u32(16);
+        u16(1); u16(2); u32(44100); u32(44100 * 4); u16(4); u16(16);
+        m_header += "data"; u32(quint32(data));
+    }
+    bool ok() const { return bool(m_cdio) && m_size > kWavHeader; }
+    qint64 size() const { return m_size; }
+    bool seek(qint64 p)
+    {
+        if (p < 0 || p > m_size)
+            return false;
+        m_pos = p;
+        return true;
+    }
+    qint64 read(char *buf, qint64 n)
+    {
+        if (m_pos >= m_size)
+            return 0;
+        if (m_pos < kWavHeader) {
+            const qint64 avail = std::min<qint64>(n, kWavHeader - m_pos);
+            std::memcpy(buf, m_header.constData() + m_pos, size_t(avail));
+            m_pos += avail;
+            return avail;
+        }
+        const qint64 p = m_pos - kWavHeader;
+        const qint64 sector = p / kAudioSector;
+        const int off = int(p % kAudioSector);
+        if (sector < m_cacheFirst || sector >= m_cacheFirst + m_cacheCount) {
+            const int count = int(std::min<qint64>(20, m_spec.last - m_spec.first + 1 - sector));
+            m_raw.resize(count * kAudioSector);
+            if (cdio_read_audio_sectors(m_cdio.p, m_raw.data(), lsn_t(m_spec.first + sector), uint32_t(count)) != DRIVER_OP_SUCCESS) {
+                // Einzeln versuchen, unlesbare Sektoren als Stille
+                for (int i = 0; i < count; ++i)
+                    if (cdio_read_audio_sector(m_cdio.p, m_raw.data() + i * kAudioSector, lsn_t(m_spec.first + sector + i)) != DRIVER_OP_SUCCESS)
+                        std::memset(m_raw.data() + i * kAudioSector, 0, kAudioSector);
+            }
+            m_cacheFirst = sector;
+            m_cacheCount = count;
+        }
+        const qint64 avail = std::min<qint64>(n, qint64(m_cacheFirst + m_cacheCount - sector) * kAudioSector - off);
+        std::memcpy(buf, m_raw.constData() + (sector - m_cacheFirst) * kAudioSector + off, size_t(avail));
+        m_pos += avail;
+        return avail;
+    }
+
+private:
+    Cdio m_cdio;
+    TrackSpec m_spec;
+    QByteArray m_header;
+    qint64 m_size = 0;
+    qint64 m_pos = 0;
+    QByteArray m_raw;
+    qint64 m_cacheFirst = -1;
+    int m_cacheCount = 0;
+};
+
+int openAudio(void *, char *uri, mpv_stream_cb_info *info)
+{
+    const int id = QString::fromUtf8(uri).section(QStringLiteral("://"), 1).toInt();
+    TrackSpec spec;
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (!g_tracks.contains(id))
+            return MPV_ERROR_LOADING_FAILED;
+        spec = g_tracks.value(id);
+    }
+    auto *r = new AudioReader(spec);
+    if (!r->ok()) {
+        delete r;
+        return MPV_ERROR_LOADING_FAILED;
+    }
+    info->cookie = r;
+    info->read_fn = [](void *c, char *buf, uint64_t n) -> int64_t { return static_cast<AudioReader *>(c)->read(buf, qint64(n)); };
+    info->seek_fn = [](void *c, int64_t off) -> int64_t { return static_cast<AudioReader *>(c)->seek(off) ? off : int64_t(MPV_ERROR_GENERIC); };
+    info->size_fn = [](void *c) -> int64_t { return static_cast<AudioReader *>(c)->size(); };
+    info->close_fn = [](void *c) { delete static_cast<AudioReader *>(c); };
+    return 0;
+}
+
 #endif // LUMEN_HAVE_CDIO
 
 // --------------------------------------------------------------------------
@@ -400,6 +493,19 @@ bool cdioAvailable()
 #endif
 }
 
+QString musicBrainzDiscId(int firstTrack, int lastTrack, int leadout, const QList<int> &offsets)
+{
+    // SHA-1 über Hex-Text: erster/letzter Track (2 Stellen), Lead-out und 99 Trackanfänge (je 8 Stellen)
+    QByteArray text = QByteArray::number(firstTrack, 16).rightJustified(2, '0')
+                      + QByteArray::number(lastTrack, 16).rightJustified(2, '0')
+                      + QByteArray::number(leadout, 16).rightJustified(8, '0');
+    for (int i = 0; i < 99; ++i)
+        text += QByteArray::number(i < offsets.size() ? offsets[i] : 0, 16).rightJustified(8, '0');
+    QByteArray id = QCryptographicHash::hash(text.toUpper(), QCryptographicHash::Sha1).toBase64();
+    // MusicBrainz-Variante von Base64 (URL-tauglich)
+    return QString::fromLatin1(id.replace('+', '.').replace('/', '_').replace('=', '-'));
+}
+
 bool isImage(const QString &path)
 {
     const QString s = QFileInfo(path).suffix().toLower();
@@ -454,6 +560,7 @@ void attachProtocol(mpv_handle *mpv)
 {
 #ifdef LUMEN_HAVE_CDIO
     mpv_stream_cb_add_ro(mpv, "lumenvcd", nullptr, [](void *ud, char *uri, mpv_stream_cb_info *info) { return openTrack(ud, uri, info); });
+    mpv_stream_cb_add_ro(mpv, "lumencdda", nullptr, [](void *ud, char *uri, mpv_stream_cb_info *info) { return openAudio(ud, uri, info); });
 #else
     Q_UNUSED(mpv)
 #endif
@@ -557,6 +664,60 @@ QVariantMap scan(const QString &path, const QString &kind)
             titles.append(QVariantMap{{"index", int(titles.size())}, {"title", int(t)}, {"label", LTR("Track %1").arg(t)},
                                       {"duration", secs}, {"chapters", std::max(1, chapters)}});
         }
+        if (kind == QLatin1String("cdda")) {
+            // Inhaltsverzeichnis + MusicBrainz-Disc-ID (für Plugins, die die CD nachschlagen).
+            // Ein Datenteil hinter den Audio-Tracks (CD-Extra) zählt nicht mit: das Lead-out
+            // der Audio-Sitzung liegt 11400 Sektoren vor dem Datentrack.
+            track_t last = first + count - 1;
+            int leadout = int(cdio_get_track_lsn(c.p, CDIO_CDROM_LEADOUT_TRACK)) + 150;
+            while (last > first && cdio_get_track_format(c.p, last) != TRACK_FORMAT_AUDIO) {
+                leadout = int(cdio_get_track_lsn(c.p, last)) + 150 - 11400;
+                --last;
+            }
+            QList<int> offsets;
+            QVariantList offsetList;
+            for (track_t t = first; t <= last; ++t) {
+                offsets << int(cdio_get_track_lsn(c.p, t)) + 150;
+                offsetList << offsets.last();
+            }
+            if (!offsets.isEmpty() && leadout > offsets.last()) {
+                m["toc"] = QVariantMap{{"first", int(first)}, {"last", int(last)}, {"leadout", leadout}, {"offsets", offsetList}};
+                m["mbDiscId"] = musicBrainzDiscId(first, last, leadout, offsets);
+            }
+            // CD-Text (falls auf der Disc bzw. im CUE-Sheet vorhanden): Album, Interpret, Tracknamen
+            if (cdtext_t *text = cdio_get_cdtext(c.p)) {
+                auto field = [text](cdtext_field_t f, track_t t) {
+                    const char *v = cdtext_get_const(text, f, t);
+                    return v ? QString::fromUtf8(v).simplified() : QString();
+                };
+                const QString album = field(CDTEXT_FIELD_TITLE, 0), artist = field(CDTEXT_FIELD_PERFORMER, 0);
+                bool any = !album.isEmpty();
+                for (int i = 0; i < titles.size(); ++i) {
+                    QVariantMap t = titles[i].toMap();
+                    const track_t n = track_t(t.value("title").toInt());
+                    const QString name = field(CDTEXT_FIELD_TITLE, n), performer = field(CDTEXT_FIELD_PERFORMER, n);
+                    if (name.isEmpty())
+                        continue;
+                    any = true;
+                    t["label"] = QStringLiteral("%1. %2").arg(n).arg(name);
+                    t["name"] = name;
+                    if (!performer.isEmpty() && performer != artist)
+                        t["artist"] = performer;
+                    titles[i] = t;
+                }
+                if (!album.isEmpty())
+                    m["discName"] = artist.isEmpty() ? album : artist + QStringLiteral(" – ") + album;
+                if (any) {
+                    m["cdText"] = true;
+                    QVariantMap meta{{"source", QStringLiteral("CD-Text")}};
+                    if (!album.isEmpty())
+                        meta["title"] = album;
+                    if (!artist.isEmpty())
+                        meta["artist"] = artist;
+                    m["meta"] = meta;
+                }
+            }
+        }
         if (main >= 0 && kind != QLatin1String("cdda")) {
             QVariantMap t = titles[main].toMap();
             t["main"] = true;
@@ -590,12 +751,55 @@ Prepared prepare(const QString &path, const QString &kind, int title)
     Prepared p;
     const QString label = QFileInfo(QDir::cleanPath(path)).fileName();
 
+#ifdef LUMEN_HAVE_CDIO
+    if (kind == QLatin1String("cdda") && (isImage(path) || isDriveRoot(path))) {
+        // Audio-Tracks sektorgenau über libcdio (Laufwerk oder Abbild), ein Kapitel je Track
+        Cdio c(path);
+        if (!c) {
+            p.error = LTR("libcdio konnte die Disc/das Abbild nicht öffnen");
+            return p;
+        }
+        const track_t first = cdio_get_first_track_num(c.p);
+        const track_t count = cdio_get_num_tracks(c.p);
+        cdtext_t *text = cdio_get_cdtext(c.p);
+        auto field = [text](cdtext_field_t f, track_t t) {
+            const char *v = text ? cdtext_get_const(text, f, t) : nullptr;
+            return v ? QString::fromUtf8(v).simplified() : QString();
+        };
+        lsn_t a = CDIO_INVALID_LSN, b = CDIO_INVALID_LSN;
+        QList<QPair<double, QString>> chapters;
+        for (track_t t = first; count != CDIO_INVALID_TRACK && t < first + count; ++t) {
+            if (cdio_get_track_format(c.p, t) != TRACK_FORMAT_AUDIO)
+                continue;
+            const lsn_t start = cdio_get_track_lsn(c.p, t);
+            if (a == CDIO_INVALID_LSN)
+                a = start;
+            b = cdio_get_track_last_lsn(c.p, t);
+            const QString name = field(CDTEXT_FIELD_TITLE, t);
+            chapters.append({(start - a) / kSectorsPerSecond,
+                             name.isEmpty() ? LTR("Track %1").arg(t) : QStringLiteral("%1. %2").arg(t).arg(name)});
+        }
+        if (chapters.isEmpty() || b <= a) {
+            p.error = LTR("Keine Audio-Tracks auf der CD");
+            return p;
+        }
+        p.url = QStringLiteral("lumencdda://%1").arg(registerTrack({QString::fromLocal8Bit(cdioSource(path)), a, b}));
+        const QString cf = chapterFile(tempDir(QStringLiteral("cdda")), chapters, (b - a + 1) / kSectorsPerSecond);
+        if (!cf.isEmpty())
+            p.options["chapters-file"] = cf;
+        if (title >= 0)
+            p.options["start"] = QStringLiteral("#%1").arg(title + 1);
+        const QString album = field(CDTEXT_FIELD_TITLE, 0);
+        p.options["force-media-title"] = album.isEmpty() ? QStringLiteral("Audio-CD") : album;
+        return p;
+    }
+#endif
     if (kind == QLatin1String("cdda")) {
         p.url = QStringLiteral("cdda://");
         QString dev = path;
         if (isDriveRoot(path))
             dev = path.left(2);
-        p.options["cdrom-device"] = QDir::toNativeSeparators(dev);
+        p.options["cdda-device"] = QDir::toNativeSeparators(dev);
         if (title >= 0)
             p.options["start"] = QStringLiteral("#%1").arg(title + 1);
         p.options["force-media-title"] = QStringLiteral("Audio-CD");

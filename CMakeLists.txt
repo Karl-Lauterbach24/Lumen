@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 0.2.0 LANGUAGES CXX)
+project(Lumen VERSION 0.2.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -430,7 +430,13 @@ endif()
 if(LUMEN_BUILD_TESTS)
     add_executable(plugin_test tests/plugin_test.cpp src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
     target_include_directories(plugin_test PRIVATE src include)
-    target_link_libraries(plugin_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
+    target_link_libraries(plugin_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Xml lumen_mpv)
+    # Disc-Erkennung: Disc-ID/CD-Text einer Audio-CD, Skript-Schnittstelle mit dem Plugin "disc-identify"
+    add_executable(discinfo_test tests/discinfo_test.cpp src/OpticalMedia.cpp src/OpticalMedia.h
+                   src/PluginManager.cpp src/PluginManager.h ${LUMEN_DCP_SOURCES})
+    target_include_directories(discinfo_test PRIVATE src include)
+    target_link_libraries(discinfo_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Xml lumen_mpv)
+    lumen_optional_libs(discinfo_test)
     # Update-Prüfung/-Installation gegen einen lokalen Release-Server (Windows: ZIP)
     if(WIN32)
         add_executable(updater_test tests/updater_test.cpp src/Updater.cpp src/Updater.h)
@@ -481,13 +487,13 @@ if(UNIX AND NOT APPLE)
     set(CPACK_PACKAGE_CONTACT "Karl-Lauterbach24 <Karl-Lauterbach24@users.noreply.github.com>")
     set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Karl-Lauterbach24/Lumen")
     set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Disc and digital cinema player (Blu-ray, DVD, Video CD, DCP, streams)")
-    set(CPACK_PACKAGE_DESCRIPTION "Lumen plays Blu-ray (incl. disc menus), DVD-Video, HD DVD, Video CD, audio CD,
-Digital Cinema Packages (JPEG 2000, KDM) and streams, with a separate player and control window.
-It contains no copy-protection circumvention; such libraries can only be added by the user through plugins.")
+    set(CPACK_PACKAGE_DESCRIPTION "Lumen plays Blu-ray (incl. disc menus), DVD-Video, HD DVD, Video CD, audio CD, Digital Cinema Packages (JPEG 2000, KDM) and streams, with a separate player and control window. It contains no copy-protection circumvention; such libraries can only be added by the user through plugins.")
     set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
     set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
     set(CPACK_STRIP_FILES ON)
 
+    set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
+    set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
     set(CPACK_DEBIAN_FILE_NAME "Lumen-${PROJECT_VERSION}-linux-amd64.deb")
     set(CPACK_DEBIAN_PACKAGE_SECTION "video")
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)

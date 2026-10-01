@@ -52,10 +52,14 @@ supply DCP keys. Lumen ships and downloads none of these.
 
 Precompiled releases are on the [Releases page](https://github.com/Karl-Lauterbach24/Lumen/releases):
 - Windows: a portable ZIP;
-- macOS: a DMG for Apple Silicon.
+- macOS: a DMG for Apple Silicon;
+- Linux: a DEB (built on Debian 13) and an RPM (built on Fedora 44), both x86-64. Install with
+  `sudo apt install ./Lumen-<version>-linux-amd64.deb` or `sudo dnf install ./Lumen-<version>-linux-x86_64.rpm`;
+  the package manager pulls in Qt 6, libmpv and the disc libraries.
 
-Lumen checks for new releases at start, at most once a day and only if enabled. It installs an update with
-one click, after verifying the download against the release's `SHA256SUMS.txt`.
+Lumen checks for new releases at start, at most once a day and only if enabled. On Windows and macOS it
+installs an update with one click, after verifying the download against the release's `SHA256SUMS.txt`;
+on Linux it tells you that a new version exists and you install the new package.
 
 ## Streaming and media servers
 
@@ -85,13 +89,18 @@ The *Plugins* tab installs plugins from the official store
 `owner/repo`, a GitHub URL, or a URL or folder with an `index.json`. Every file is checked against its SHA-256 sum,
 and newly installed plugins start disabled.
 
+One plugin from the store is **Disc identification**: it names the disc you insert. Audio CDs get album,
+artist, year, cover and track names from MusicBrainz; DVDs, Blu-rays and Video CDs get a film title and year
+from the disc label via Wikidata. Without the plugin Lumen still shows CD-Text if the disc has it.
+
 ## Plugins
 
 Folders with a `plugin.json`, managed in the **Plugins** tab (enable, disable, buttons, status). A plugin
 can include any of these:
 - a native C-ABI library ([`include/lumen/plugin.h`](include/lumen/plugin.h)): events, buttons, its own
-  URL schemes as sources, DCP content keys, mpv commands/properties;
-- mpv Lua/JavaScript scripts;
+  URL schemes as sources, DCP content keys, disc metadata, mpv commands/properties;
+- mpv Lua/JavaScript scripts, which receive Lumen's events, can fetch URLs through Lumen and can set disc
+  metadata and their status line;
 - mpv options;
 - environment variables;
 - user-provided disc libraries.
@@ -109,7 +118,7 @@ Documentation and examples: [plugins/README.md](plugins/README.md).
 | **DCP** | SMPTE and Interop, OV/VF (supplemental packages in neighbouring folders), multi-reel CPLs with entry points, **JPEG 2000 (XYZ → display colour space)**, 24-bit PCM up to 16 channels, **encrypted DCPs (KDM, AES-128)**, subtitles (Interop XML and SMPTE Timed Text incl. encrypted MXF and embedded fonts → positioned ASS), **CPL markers as chapters** (FFOC, LFOC, FFEC, FFMC …), **3D DCPs**, hash verification against the PKL |
 | HD DVD | Titles and chapters from the Advanced Content playlists (ADV_OBJ/*.XPL), EVO playback (VC-1/AVC/MPEG-2, DD+, DTS-HD, TrueHD) |
 | Video-CD / SVCD | Sector-exact reading of Mode 2 Form 2 tracks via libcdio (drive or CUE/BIN/NRG), entry points (ENTRIES.VCD/SVD) as chapters, **PBC menus** (VCD 2.0 playback control: selection lists with number keys, play lists, Next/Previous/Return/Default, wait times, loops, segment stills), fallback via the file system |
-| Audio-CD | Tracks as chapters (mpv cdda) |
+| Audio-CD | Drives and images (CUE/BIN …) read through libcdio; tracks as chapters, names from CD-Text or a plugin |
 | Transport | Play/pause, stop, ±10 s/±60 s, chapters, frame step back/forward, A-B loop, speed, scrubbing with chapter marks, screenshot, **show playlist** (ads, trailers, feature back to back) |
 | Audio | Track selection, bitstream (TrueHD/Atmos, DTS-HD MA/DTS:X, DD+, DD), WASAPI exclusive, channel layout, audio delay; **cinema fader** (Dolby scale, 7.0 = reference) and **DCP channel routing** (5.1, 7.1 DS, HI, VI-N) |
 | Subtitles | Track selection (PGS/SRT/ASS/VobSub/DCP), forced only, delay, size, position (cinemascope screens) |

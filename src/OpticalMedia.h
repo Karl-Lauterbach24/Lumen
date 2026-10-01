@@ -15,7 +15,8 @@ struct mpv_handle;
 //                                Einsprungpunkte (ENTRIES.VCD/SVD) werden zu Kapiteln.
 //                                Ohne libcdio: MPEGAV/*.DAT bzw. MPEG2/*.MPG über das
 //                                Dateisystem.
-//   Audio-CD (CD-DA)           – mpv "cdda://", Titel = Tracks
+//   Audio-CD (CD-DA)           – Laufwerke und Abbilder über libcdio (Protokoll "lumencdda",
+//                                Kapitel = Tracks, Namen aus CD-Text); ohne libcdio mpv "cdda://"
 //   HD DVD                     – HVDVD_TS/*.EVO; Titel/Kapitel aus den Advanced-Content-
 //                                Playlists (ADV_OBJ/*.XPL), sonst aus den EVO-Dateien.
 //                                AACS-geschützte HD DVDs werden nicht entschlüsselt.
@@ -32,7 +33,14 @@ bool isImage(const QString &path); // .cue/.bin/.nrg/.toc
 // Titel/Tracks für die Anzeige: {kind, discName, titles:[{index, label, duration, chapters, main}], error}
 QVariantMap scan(const QString &path, const QString &kind);
 
-// mpv-Protokoll "lumenvcd" (Mode-2-Form-2-Nutzdaten eines Tracks)
+// MusicBrainz-Disc-ID einer Audio-CD aus dem Inhaltsverzeichnis: Nummer des ersten und
+// letzten Tracks, Lead-out und Trackanfänge als Sektoren inkl. 150 Sektoren Vorlauf
+// (https://musicbrainz.org/doc/Disc_ID_Calculation). Nur eine Kennung – der Abruf von
+// Titeln ist Sache eines Plugins.
+QString musicBrainzDiscId(int firstTrack, int lastTrack, int leadout, const QList<int> &offsets);
+
+// mpv-Protokolle "lumenvcd" (Mode-2-Form-2-Nutzdaten eines Tracks) und "lumencdda"
+// (Audio-Sektoren als WAV)
 void attachProtocol(mpv_handle *mpv);
 
 struct Prepared

@@ -56,7 +56,12 @@ ApplicationWindow {
     readonly property bool navMode: Nav.active || DvdNav.active
     readonly property real curPos: navMode ? nav.position : Player.position
     readonly property real curDur: navMode ? nav.duration : Player.duration
-    readonly property var curChapters: navMode ? nav.chapters : Player.chapters
+    // Audio-CD: Kapitel = Tracks, Namen aus CD-Text bzw. von einem Plugin (Disc.info.titles)
+    readonly property var curChapters: navMode ? nav.chapters
+        : (Player.sourceKind === "cdda" && Disc.info.titles)
+            ? Player.chapters.map((c, i) => (Disc.info.titles[i] && Disc.info.titles[i].name)
+                                            ? Object.assign({}, c, { title: Disc.info.titles[i].label }) : c)
+            : Player.chapters
     readonly property int curChapter: navMode ? nav.chapter : Player.currentChapter
     function outputName(id) {
         const o = Displays.outputs.find(x => x.id === id)
@@ -294,6 +299,10 @@ ApplicationWindow {
                                 parts.push(qsTr("Titel ") + (Player.currentTitle + 1))
                             }
                             if (win.curChapters.length) parts.push(qsTr("Kapitel ") + (win.curChapter + 1) + " / " + win.curChapters.length)
+                            if (Player.sourceKind === "cdda") {
+                                const track = (Disc.info.titles || [])[win.curChapter]
+                                if (track && track.name) parts.push(track.name + (track.artist ? " – " + track.artist : ""))
+                            }
                             if (Player.sourceKind === "file") parts.push(Player.path)
                             else if (Dcp.active) parts.push(Dcp.current.standard + " · " + Dcp.current.reels + qsTr(" Rolle(n)"))
                             return parts.join("   ·   ")
@@ -716,6 +725,37 @@ ApplicationWindow {
                                     anchors.margins: 10
                                     spacing: 4
                                     readonly property var i: Disc.info
+                                    // Von CD-Text oder einem Plugin erkannte Disc: Cover, Name, Jahr, Quelle
+                                    RowLayout {
+                                        visible: !Disc.busy && !!discStatus.i.meta && !!discStatus.i.discName
+                                        Layout.fillWidth: true
+                                        Layout.bottomMargin: 4
+                                        spacing: 10
+                                        Image {
+                                            visible: status === Image.Ready
+                                            source: (discStatus.i.meta && discStatus.i.meta.cover) || ""
+                                            Layout.preferredWidth: 56; Layout.preferredHeight: 56
+                                            sourceSize.width: 112; sourceSize.height: 112
+                                            fillMode: Image.PreserveAspectCrop
+                                            asynchronous: true
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 2
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: discStatus.i.discName || ""
+                                                color: Theme.text; font.pixelSize: 14; font.weight: Font.DemiBold
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: discStatus.i.meta ? [discStatus.i.meta.year, discStatus.i.meta.source].filter(s => s).join("  ·  ") : ""
+                                                color: Theme.textDim; font.pixelSize: 12
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
                                     Text {
                                         visible: Disc.busy
                                         text: qsTr("Lese Disc-Struktur …")
@@ -804,7 +844,7 @@ ApplicationWindow {
                                     if (t && t.length && kind !== "bluray")
                                         return t.map(x => ({
                                             label: (x.label || (qsTr("Titel ") + (x.title || x.index + 1))) + (x.main ? qsTr("   ★ Hauptfilm") : ""),
-                                            detail: [x.chapters ? x.chapters + qsTr(" Kap.") : ""].filter(s => s).join("  ·  "),
+                                            detail: [x.artist || "", x.chapters && kind !== "cdda" ? x.chapters + qsTr(" Kap.") : ""].filter(s => s).join("  ·  "),
                                             trailing: x.duration > 0 ? Theme.time(x.duration) : "",
                                             selected: win.isDvd ? DvdNav.title === x.title : false,
                                             titleIndex: x.index,
