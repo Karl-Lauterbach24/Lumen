@@ -48,7 +48,7 @@ const char kNightFilter[] = "@lumen-night:lavfi=[dynaudnorm=f=250:g=13:p=0.75]";
 enum PropId : quint64 {
     P_PAUSE = 1, P_TIMEPOS, P_DURATION, P_VOLUME, P_VOLMAX, P_MUTE, P_SPEED,
     P_MEDIATITLE, P_PATH, P_IDLE, P_DISCTITLES, P_DISCTITLE, P_CHAPTERLIST,
-    P_CHAPTER, P_TRACKLIST, P_AID, P_SID, P_VIDEOPARAMS, P_VIDEOFORMAT, P_FPS,
+    P_CHAPTER, P_TRACKLIST, P_AID, P_SID, P_VIDEOPARAMS, P_VIDEOFORMAT, P_FPS, P_DECPARAMS, P_DELAYED, P_MISTIMED,
     P_HWDEC, P_DISPLAYFPS, P_AUDIOOUTPARAMS, P_AUDIOCODEC, P_AUDIODEVICES,
     P_ABA, P_ABB, P_FULLSCREEN, P_AUDIODELAY, P_SUBDELAY, P_CACHEPAUSE, P_CACHEDUR,
     P_OSDDIMS, P_MOUSEPOS, P_VODROPS, P_DECDROPS, P_EOF, P_WINDOWID,
@@ -80,6 +80,11 @@ const Observed kObserved[] = {
     {"aid", MPV_FORMAT_NODE, P_AID},
     {"sid", MPV_FORMAT_NODE, P_SID},
     {"video-params", MPV_FORMAT_NODE, P_VIDEOPARAMS},
+    // für die Laufzeit-Anpassung: beobachtet statt abgefragt – eine Abfrage aus dem GUI-Thread
+    // hält im eingebetteten Fenster den Renderer auf (er läuft in demselben Thread)
+    {"video-dec-params", MPV_FORMAT_NODE, P_DECPARAMS},
+    {"vo-delayed-frame-count", MPV_FORMAT_INT64, P_DELAYED},
+    {"mistimed-frame-count", MPV_FORMAT_INT64, P_MISTIMED},
     {"video-format", MPV_FORMAT_STRING, P_VIDEOFORMAT},
     {"container-fps", MPV_FORMAT_DOUBLE, P_FPS},
     {"hwdec-current", MPV_FORMAT_STRING, P_HWDEC},
@@ -634,6 +639,9 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
     cancelStereoDetection();
     m_fileMvc = false;
     m_mvcStream = false;
+    m_decParams.clear();
+    m_rawTracks.clear();
+    m_detectWanted = false;
     m_learnedLoaded = false;
     m_governor.reset();
     m_governor.setLimits(Tuning::maxRenderLevel(m_profile, Tuning::hardware()), Tuning::kMaxDecodeLevel);
@@ -1648,6 +1656,23 @@ void MpvController::cancelStereoDetection()
     m_detectCancel.reset();
 }
 
+// Nach "Datei geladen": warten, bis die Spurliste der neuen Datei eine gewählte Videospur nennt.
+// (Die Liste wird nicht abgefragt, sondern beobachtet: eine Abfrage aus dem GUI-Thread hält im
+// eingebetteten Fenster den Renderer auf und kostet beim Start Bilder.)
+void MpvController::tryStereoDetection()
+{
+    if (!m_detectWanted)
+        return;
+    for (const auto &v : std::as_const(m_rawTracks)) {
+        const QVariantMap t = v.toMap();
+        if (t.value("type").toString() == QLatin1String("video") && t.value("selected").toBool()) {
+            m_detectWanted = false;
+            startStereoDetection();
+            return;
+        }
+    }
+}
+
 void MpvController::startStereoDetection()
 {
     cancelStereoDetection();
@@ -1658,8 +1683,8 @@ void MpvController::startStereoDetection()
         return;
     const bool wasMvc = m_fileMvc;
     m_fileMvc = false;
-    // direkt gefragt: die Änderungsmeldung für "path" kann nach "Datei geladen" eintreffen
-    m_detectPath = getProperty(QStringLiteral("path")).toString();
+    // die Datei, die Lumen geladen hat (die Änderungsmeldung für "path" kann später eintreffen)
+    m_detectPath = m_lastUrl;
     if (m_sourceKind != QLatin1String("file") || m_detectPath.isEmpty()) {
         if (wasMvc)
             syncOptions();
@@ -1669,7 +1694,7 @@ void MpvController::startStereoDetection()
 
     // 1. Zwei Ansichten in einem Strom (H.264/MVC, z. B. MKV von einer Blu-ray 3D): FFmpeg-mvc
     //    nennt das Profil; die zweite Ansicht wird nur dekodiert, wenn das Profil 3D ausgibt
-    for (const auto &v : getProperty(QStringLiteral("track-list")).toList()) {
+    for (const auto &v : std::as_const(m_rawTracks)) {
         const QVariantMap t = v.toMap();
         if (t.value("type").toString() != QLatin1String("video") || !t.value("selected").toBool())
             continue;
@@ -1707,7 +1732,7 @@ void MpvController::continueStereoDetection()
     if (!m_detectPending)
         return;
     // Was der Decoder liefert – vor der 3D-Filterkette
-    const QVariantMap dec = getProperty(QStringLiteral("video-dec-params")).toMap();
+    const QVariantMap dec = m_decParams;
     // Größe, wie sie gezeigt wird: danach richtet sich, ob eine Bildhälfte gestaucht ist
     const int w = dec.value("dw", dec.value("w")).toInt(), h = dec.value("dh", dec.value("h")).toInt();
     if (w <= 0 || h <= 0)
@@ -1847,7 +1872,7 @@ void MpvController::tuneTick()
     const bool advancing = m_position != m_tickPosition;
     m_tickPosition = m_position;
 
-    const QVariantMap dec = adaptive ? getProperty(QStringLiteral("video-dec-params")).toMap() : QVariantMap();
+    const QVariantMap dec = m_decParams;
     const QString learnKey = QStringLiteral("tuning/%1/%2").arg(m_profile.value("id").toString(),
                                                                  Tuning::loadClass(dec.value("w").toInt(), dec.value("h").toInt(), m_containerFps));
     // Was diese Maschine bei solchem Material schon einmal nicht geschafft hat, gleich so beginnen
@@ -1866,17 +1891,37 @@ void MpvController::tuneTick()
     s.time = m_clock.elapsed() / 1000.0;
     s.voDrops = m_vo_drops;
     s.decoderDrops = m_dec_drops;
-    s.delayed = getProperty(QStringLiteral("vo-delayed-frame-count")).toLongLong();
+    s.delayed = m_delayedFrames;
     s.fps = m_containerFps;
     s.software = m_hwdec.isEmpty() || m_hwdec == QLatin1String("no");
     s.pixelRate = dec.value("w").toDouble() * dec.value("h").toDouble() * m_containerFps;
     s.steady = adaptive && advancing && !m_paused && !m_buffering && std::abs(m_speed - 1.0) < 0.01 && !m_castEncoder && !sequential;
-    // Der Renderer misst seine Durchgänge selbst (nicht im eingebetteten Fenster)
-    double ns = 0;
-    for (const auto &pass : getProperty(QStringLiteral("vo-passes")).toMap().value("fresh").toList())
-        ns += pass.toMap().value("avg").toDouble();
-    if (ns > 0)
-        s.renderMs = ns / 1e6;
+    // Der Renderer misst seine Durchgänge selbst. Nur im eigenen Fenster von mpv fragen: im
+    // eingebetteten rendert dieser Thread, und die Frage bliebe hängen, bis mpv das Bild verwirft.
+    if (s.steady && !m_window && !m_castRenderer) {
+        double ns = 0;
+        for (const auto &pass : getProperty(QStringLiteral("vo-passes")).toMap().value("fresh").toList())
+            ns += pass.toMap().value("avg").toDouble();
+        if (ns > 0)
+            s.renderMs = ns / 1e6;
+    }
+
+    // Entwickler-Hilfe: LUMEN_PERF_LOG=1 schreibt je Sekunde den Stand der Wiedergabe
+    if (qEnvironmentVariableIsSet("LUMEN_PERF_LOG")) {
+        qWarning().noquote() << QStringLiteral("Lumen: perf pos=%1 fps=%2 verworfen=%3 decoder=%4 verspaetet=%5 falscher-takt=%6 hwdec=%7 render=%8ms stufen=%9/%10 %11x%12")
+                                    .arg(m_position, 0, 'f', 1)
+                                    .arg(m_containerFps, 0, 'f', 2)
+                                    .arg(m_vo_drops)
+                                    .arg(m_dec_drops)
+                                    .arg(s.delayed)
+                                    .arg(m_mistimedFrames)
+                                    .arg(m_hwdec.isEmpty() ? QStringLiteral("-") : m_hwdec)
+                                    .arg(s.renderMs, 0, 'f', 1)
+                                    .arg(m_governor.renderLevel())
+                                    .arg(m_governor.decodeLevel())
+                                    .arg(dec.value("w").toInt())
+                                    .arg(dec.value("h").toInt());
+    }
 
     const Tuning::Governor::Action action = m_governor.feed(s);
     if (action == Tuning::Governor::None)
@@ -1963,7 +2008,9 @@ void MpvController::handleEvent(mpv_event *ev)
         if (m_vcd && m_vcd->active())
             setOptionRaw(QStringLiteral("pause"), false, false);
         holdGovernor(5);
-        startStereoDetection();
+        // 3D-Erkennung, sobald die Spurliste der neuen Datei da ist (rebuildTracks)
+        m_detectWanted = true;
+        tryStereoDetection();
         emit fileLoaded();
         break;
     case MPV_EVENT_SHUTDOWN:
@@ -2064,7 +2111,10 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         break;
     }
     case P_CHAPTER: m_currentChapter = int(i64()); emit currentChapterChanged(); break;
-    case P_TRACKLIST: rebuildTracks(node().toList()); break;
+    case P_TRACKLIST:
+        rebuildTracks(node().toList());
+        tryStereoDetection();
+        break;
     case P_AID: {
         const QVariant v = node();
         m_aid = v.typeId() == QMetaType::LongLong ? v.toInt() : 0;
@@ -2083,8 +2133,13 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         m_videoParams = node().toMap();
         updateVideoInfo();
         onContentFormatKnown();
+        break;
+    case P_DECPARAMS:
+        m_decParams = node().toMap();
         continueStereoDetection();
         break;
+    case P_DELAYED: m_delayedFrames = std::max<qint64>(0, i64(0)); break;
+    case P_MISTIMED: m_mistimedFrames = std::max<qint64>(0, i64(0)); break;
     case P_VIDEOFORMAT: m_videoCodec = str(); updateVideoInfo(); break;
     case P_FPS:
         m_containerFps = dbl();

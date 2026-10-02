@@ -316,6 +316,7 @@ private:
     void syncOptions();
     Tuning::Context tuningContext() const;
     // automatische 3D-Erkennung
+    void tryStereoDetection();
     void startStereoDetection();
     void runStereoAnalysis(const QString &path, const QString &url, const QVariantMap &fileOptions);
     void continueStereoDetection();
@@ -388,6 +389,9 @@ private:
     int m_aid = 0;
     int m_sid = 0;
     QVariantMap m_videoParams;
+    QVariantMap m_decParams;     // video-dec-params: was der Decoder liefert, vor den Filtern
+    qint64 m_delayedFrames = 0;
+    qint64 m_mistimedFrames = 0;
     QString m_videoCodec;
     QString m_hwdec;
     double m_containerFps = 0;
@@ -411,6 +415,7 @@ private:
     bool m_fileMvc = false;      // Datei mit zwei Ansichten wird mit beiden dekodiert
     bool m_mvcStream = false;    // der Videostrom der Datei ist H.264/MVC (auch wenn nur eine Ansicht läuft)
     bool m_mvcDemuxer = false;   // die laufende Datei wurde dafür mit FFmpegs Demuxer geladen
+    bool m_detectWanted = false; // Datei geladen, wartet auf die Spurliste
     bool m_detectPending = false; // wartet auf die Bildgröße
     int m_detectGeneration = 0;
     QString m_detectPath;        // Datei, für die die Erkennung läuft
