@@ -297,7 +297,8 @@ außer der Name sagt `RL`), Anaglyph, Schachbrett. `LUMEN_STEREO_DEBUG=1` gibt j
   etwa 22), 4K mit 293 Mbit/s 26 (vorher 21). 4K mit 24 Bildern je Sekunde läuft dort jetzt in voller Auflösung
   ohne verworfene Bilder; vorher nicht. Eine langsamere Maschine weicht weiterhin von selbst auf die halbe
   Auflösung aus.
-- `LUMEN_PERF_LOG=1` schreibt je Sekunde: Position, verworfene und verspätete Bilder, Decoder-Weg, zurückgenommene Stufen.
+- `LUMEN_PERF_LOG=1` schreibt je Sekunde: Position, verworfene und verspätete Bilder, Decoder-Weg, zurückgenommene Stufen
+  und wie oft das eingebettete Fenster gezeichnet wurde. `LUMEN_QUIT_AFTER=<Sekunden>` beendet das Programm von selbst (Testläufe).
 
 ## DVD-Menüs
 
@@ -325,7 +326,7 @@ src/DcpManager      DCP-Ablauf für die Oberfläche: Pakete, Schlüssel, EDL/Kap
 src/DisplayManager  Ausgabegeräte, Bildrate / HDR / Frame-Packing-Modus (Windows, xrandr, kscreen-doctor, CoreGraphics)
 src/DriveManager    Laufwerke/Discs/Kino-Festplatten (Worker-Thread), Auswerfen
 src/DiscScanner     Titel und Status für Blu-ray, DVD, HD DVD, VCD, Audio-CD (Worker-Thread)
-src/PlayerWindow    eingebettetes Player-Fenster (mpv-Render-API/OpenGL), vor allem für macOS
+src/PlayerWindow    eingebettetes Player-Fenster (mpv-Render-API/OpenGL, eigener Zeichen-Thread), vor allem für macOS
 src/ProfileManager  Vorlagen + eigene Profile
 src/Stereo3D        Filterketten der 3D-Ausgabeformate, auch Bildfolge
 src/StereoDetect    automatische 3D-Erkennung: Dateiname, Container, Bildvergleich, MVC
@@ -351,11 +352,13 @@ Medienbibliotheken. Optional und automatisch aktiv, wenn gefunden: **OpenSSL ≥
 
 **Medienbibliotheken.** `tools/build_deps.sh` baut x264, FFmpeg-mvc und mpv (und libdvdnav 7, wo das System
 eine ältere hat) aus festgelegten Quellen nach `3rdparty/prefix`; CMake findet dieses Präfix von selbst. Die
-Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt zwei kleine Änderungen
+Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt drei kleine Änderungen
 ([`tools/patches`](tools/patches)): eine Korrektur an der Gewichtstabelle der Skalierer (uninitialisierte
 Füllwerte, mit OpenGL auf der CPU ein schwarzes Bild), und seine zeitgesteuerte Null-Tonausgabe kann die Samples zusätzlich in eine
 Pipe schreiben, mit dem Zeitpunkt, zu dem jeder Block gespielt wird. Das braucht die Übertragung; ein
-unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt. FFmpeg bekommt eine
+unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt. Die dritte lässt den Ton
+anlaufen, wenn ein Tongerät den Bitstream ablehnt: mpv weicht dann auf das Dekodieren aus, nur fragte niemand
+mehr den Decoder nach Daten, und die Wiedergabe blieb bei 0:00 stehen. FFmpeg bekommt eine
 Änderung: Der JPEG-2000-Decoder (DCP) rechnet die Wavelet-Rücktransformation über benachbarten Speicher statt
 Spalte für Spalte, und der arithmetische Decoder ist in die Kodierdurchgänge eingebettet. Die dekodierten
 Bilder sind Bit für Bit dieselben.

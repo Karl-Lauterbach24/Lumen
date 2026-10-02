@@ -300,7 +300,8 @@ Not detected: which eye comes first (left is assumed unless the name says `RL`),
   Pro (12 threads): 2K at 183 Mbit/s 50 pictures per second (before: 42), 4K at 271 Mbit/s 27 (before: about 22),
   4K at 293 Mbit/s 26 (before: 21). 4K at 24 pictures per second now plays at full resolution without dropped
   frames on that machine; before it did not. A slower machine still falls back to half the resolution by itself.
-- `LUMEN_PERF_LOG=1` prints once a second: position, dropped and delayed frames, decoder path, levels taken back.
+- `LUMEN_PERF_LOG=1` prints once a second: position, dropped and delayed frames, decoder path, levels taken back,
+  and how often the embedded window was drawn. `LUMEN_QUIT_AFTER=<seconds>` ends the program by itself (test runs).
 
 ## DVD menus
 
@@ -328,7 +329,7 @@ src/DcpManager      DCP workflow for the UI: packages, keys, EDL/chapters, fader
 src/DisplayManager  output devices, refresh / HDR / frame-packing mode (Windows, xrandr, kscreen-doctor, CoreGraphics)
 src/DriveManager    drives/discs/cinema drives (worker thread), eject
 src/DiscScanner     titles and status for Blu-ray, DVD, HD DVD, VCD, Audio-CD (worker thread)
-src/PlayerWindow    embedded player window (mpv render API/OpenGL), mainly for macOS
+src/PlayerWindow    embedded player window (mpv render API/OpenGL, drawn by its own thread), mainly for macOS
 src/ProfileManager  presets + user profiles
 src/Stereo3D        filter chains for the 3D output formats, incl. frame sequential
 src/StereoDetect    automatic 3D detection: file name, container, picture comparison, MVC
@@ -354,11 +355,12 @@ libraries. Optional, enabled automatically when found: **OpenSSL ≥ 1.1** (encr
 
 **Media libraries.** `tools/build_deps.sh` builds x264, FFmpeg-mvc and mpv (and libdvdnav 7 where the system
 has an older one) from pinned sources into `3rdparty/prefix`; CMake picks that prefix up by itself. The
-versions are set at the top of the script, once for all platforms. mpv gets two small changes
+versions are set at the top of the script, once for all platforms. mpv gets three small changes
 ([`tools/patches`](tools/patches)): a fix for the scalers' weight table (uninitialized padding, which gave
 a black picture with software OpenGL), and its timed null audio output can also write the samples to a pipe, with the
 time each block is played. Casting needs that; a stock libmpv plays everything else, but the cast button is
-disabled. FFmpeg gets one change: the JPEG 2000 decoder (DCP) runs its inverse wavelet transform over
+disabled. The third makes the sound start when an audio device refuses bitstream output: mpv falls back to
+decoding, but nobody asked the decoder for data any more and playback stayed at 0:00. FFmpeg gets one change: the JPEG 2000 decoder (DCP) runs its inverse wavelet transform over
 neighbouring memory instead of down single columns, and the arithmetic decoder is inlined into the coding
 passes. The decoded pictures are the same bit for bit.
 

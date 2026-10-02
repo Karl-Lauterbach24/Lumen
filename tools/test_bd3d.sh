@@ -31,3 +31,9 @@ if [ "$result" != " 8 165,36" ]; then
     exit 1
 fi
 echo "Blu-ray 3D: both views decoded"
+
+# Rides along because every CI platform (Windows too) calls this script: how fast the software
+# decoder runs there. Report only. LUMEN_SKIP_BENCH=1 leaves it out.
+if [ -z "${LUMEN_SKIP_BENCH:-}" ]; then
+    bash "$HERE/tools/bench_decode.sh" "$WORK/bench" || true
+fi
