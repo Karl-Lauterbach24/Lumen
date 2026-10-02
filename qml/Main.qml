@@ -1109,7 +1109,7 @@ ApplicationWindow {
                             }
                             ValueSlider {
                                 Layout.fillWidth: true
-                                visible: Nav.mvcActive
+                                visible: Nav.mvcActive || Player.stereoSubtitles
                                 label: qsTr("3D-Tiefe (Untertitel & Menü)")
                                 from: -40; to: 40; stepSize: 1; unit: qsTr(" px")
                                 value: Nav.subtitleDepth

@@ -272,7 +272,7 @@ außer der Name sagt `RL`), Anaglyph, Schachbrett. `LUMEN_STEREO_DEBUG=1` gibt j
 **Untertitel einer 3D-Datei.** mpv zeichnet Untertitel einmal über das ganze Ausgabebild. Bei Side-by-Side,
 Top-and-Bottom oder Frame Packing landet der Text damit zur Hälfte in jedem Auge. Text-Untertitel (SRT, ASS,
 WebVTT …) zeichnet Lumen deshalb selbst, einmal je Auge, gestaucht wie das Bild, und holt sie um die
-Untertitel-Tiefe des Profils vor die Leinwand. Stile und Positionen der Untertiteldatei bleiben dabei nicht
+Untertitel-Tiefe des Profils vor die Leinwand (der Regler im Reiter *Untertitel* ändert sie während der Wiedergabe). Stile und Positionen der Untertiteldatei bleiben dabei nicht
 erhalten (schlichter Text, unten in der Mitte). Bild-Untertitel (PGS, VobSub) enthalten keinen Text; dort
 bleibt es bei mpvs Darstellung.
 

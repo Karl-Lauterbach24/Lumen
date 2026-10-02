@@ -99,7 +99,7 @@ Popup {
                     selectByMouse: true
                 }
             }
-            IconButton { iconName: "stop"; iconSize: 14; tip: qsTr("Schließen"); onClicked: editor.close() }
+            IconButton { iconName: "close"; tip: qsTr("Schließen"); onClicked: editor.close() }
         }
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.line }
 
@@ -630,7 +630,7 @@ Popup {
                 }
             }
             Button {
-                text: qsTr("Speichern & anwenden")
+                text: qsTr("Speichern & anwenden").replace("&", "&&") // sonst gilt das & als Tastenkürzel
                 highlighted: true
                 palette.highlight: Theme.accent
                 palette.highlightedText: Theme.bg

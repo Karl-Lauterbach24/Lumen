@@ -279,7 +279,7 @@ Not detected: which eye comes first (left is assumed unless the name says `RL`),
 **Subtitles of a 3D file.** mpv draws subtitles once over the whole output picture. With side-by-side,
 top-and-bottom or frame packing output that puts half of the text into each eye. For text subtitles (SRT, ASS,
 WebVTT …) Lumen therefore draws the text itself, once per eye, squeezed like the picture, and moves it in front
-of the screen by the profile's subtitle depth. Styles and positions of the subtitle file are not kept (plain
+of the screen by the profile's subtitle depth (the slider in the *Subtitles* tab changes it while playing). Styles and positions of the subtitle file are not kept (plain
 text, bottom centre). Picture subtitles (PGS, VobSub) carry no text and stay with mpv's rendering.
 
 ## Hardware and performance

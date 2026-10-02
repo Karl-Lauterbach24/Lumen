@@ -220,6 +220,8 @@ MpvController::MpvController(DisplayManager *displays, BlurayNav *nav, QObject *
     for (auto signal : {&MpvController::stereoInputChanged, &MpvController::profileApplied, &MpvController::tracksChanged,
                         &MpvController::osdDimensionsChanged, &MpvController::idleChanged})
         connect(this, signal, this, &MpvController::updateStereoSubs);
+    if (m_nav)
+        connect(m_nav, &BlurayNav::subtitleDepthChanged, this, &MpvController::updateStereoSubs);
     const QString snap = qEnvironmentVariable("LUMEN_PLAYER_SNAPSHOT");
     if (snap.contains(QLatin1Char('@'))) {
         m_snapshotFile = snap.section(QLatin1Char('@'), 0, -2);
@@ -454,7 +456,10 @@ bool MpvController::create(const QVariantMap &options)
         return false;
     }
     observeAll();
-    m_stereoSubs = false; // ein neuer mpv-Kern zeigt Untertitel wieder selbst
+    if (m_stereoSubs) { // ein neuer mpv-Kern zeigt Untertitel wieder selbst
+        m_stereoSubs = false;
+        emit stereoSubtitlesChanged();
+    }
     m_subText.clear();
     // FFmpeg-mvc meldet sich mit "-mvc" in der Versionskennung (z. B. n9.0.2-mvc8)
     // (nicht mpv fragen: die Antwort käme erst, wenn der Kern fertig eingerichtet ist)
@@ -1956,6 +1961,7 @@ void MpvController::updateStereoSubs()
     if (want != m_stereoSubs) {
         m_stereoSubs = want;
         setOptionRaw(QStringLiteral("sub-visibility"), want ? "no" : "yes", false);
+        emit stereoSubtitlesChanged();
     }
     const QList<StereoSubs::Eye> eyes = want ? StereoSubs::eyes(out, m_osdDims) : QList<StereoSubs::Eye>();
     const QImage img = eyes.isEmpty() || m_subText.trimmed().isEmpty() ? QImage() : StereoSubs::render(m_subText, eyes.first().logical);
@@ -1964,7 +1970,8 @@ void MpvController::updateStereoSubs()
         removeOverlay(61);
         return;
     }
-    const double depth = m_profile.value("subtitleDepth").toDouble();
+    // die Tiefe aus dem Profil; der Regler im Reiter „Untertitel" stellt sie während der Wiedergabe
+    const double depth = m_nav ? m_nav->subtitleDepth() : m_profile.value("subtitleDepth").toDouble();
     for (int i = 0; i < eyes.size() && i < 2; ++i) {
         const StereoSubs::Eye &e = eyes.at(i);
         const double sx = e.rect.width() / e.logical.width(), sy = e.rect.height() / e.logical.height();

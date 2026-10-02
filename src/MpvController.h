@@ -90,6 +90,8 @@ class MpvController : public QObject, public CastOutput
     // Art der Quelle: file, bluray, dvd, hddvd, vcd, svcd, cdda, dcp
     Q_PROPERTY(QString sourceKind READ sourceKind NOTIFY mediaChanged)
     Q_PROPERTY(int droppedFrames READ droppedFrames NOTIFY droppedFramesChanged)
+    // Text-Untertitel einer 3D-Datei werden gerade je Auge gezeichnet (Tiefe einstellbar)
+    Q_PROPERTY(bool stereoSubtitles READ stereoSubtitles NOTIFY stereoSubtitlesChanged)
     // Vorführprogramm (Show): Quellen nacheinander abspielen
     Q_PROPERTY(QVariantList queue READ queue NOTIFY queueChanged)
     Q_PROPERTY(int queueIndex READ queueIndex NOTIFY queueChanged)
@@ -208,6 +210,7 @@ public:
     bool isDisc() const;
     QString sourceKind() const { return m_sourceKind; }
     int droppedFrames() const { return m_droppedFrames; }
+    bool stereoSubtitles() const { return m_stereoSubs; }
     QVariantList queue() const { return m_queue; }
     int queueIndex() const { return m_queueIndex; }
     bool queueActive() const { return m_queueActive; }
@@ -252,6 +255,7 @@ signals:
     void mpvDestroying();
     void osdDimensionsChanged();
     void droppedFramesChanged();
+    void stereoSubtitlesChanged();
     void queueChanged();
     // DCP-Paket öffnen (DcpManager), cpl < 0 = erste/Spielfilm-CPL
     void dcpRequested(const QString &path, int cpl);
