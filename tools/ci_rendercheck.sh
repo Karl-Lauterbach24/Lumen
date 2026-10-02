@@ -15,14 +15,15 @@ variant() {  # <name> <runden> <LUMEN_CAST_EXP> [argumente...]
 }
 WRAP=("$@")
 variant basis 12 ""
-variant dumb 12 "" gpu-dumb-mode=yes
-variant rgba8 12 "" fbo-format=rgba8
-variant fast 12 "" profile=fast
-variant nodither 12 "" dither-depth=no
-variant cbilinear 12 "" cscale=bilinear
-variant clean 12 clean
-variant f444 12 "" vf=format=yuv444p
-variant f420 12 "" vf=format=yuv420p
-variant nv12 12 "" vf=format=nv12
-variant gray 12 "" vf=format=gray
+variant spline16 12 "" cscale=spline16
+variant spline36 12 "" cscale=spline36
+variant spline64 12 "" cscale=spline64
+variant mitchell 12 "" cscale=mitchell
+variant bicubic 12 "" cscale=bicubic
+variant ewa 12 "" cscale=ewa_lanczos
+variant lanczos2 12 "" cscale=lanczos cscale-radius=2
+variant lanczos4 12 "" cscale=lanczos cscale-radius=4
+variant hermite 12 "" cscale=hermite
+variant nocorrect 12 "" correct-downscaling=no linear-downscaling=no sigmoid-upscaling=no
+variant antiring 12 "" cscale-antiring=0.6
 exit 0
