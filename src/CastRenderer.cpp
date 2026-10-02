@@ -114,6 +114,23 @@ void CastRenderer::onMpvUpdate()
     QOpenGLFunctions *f = m_gl.functions();
     if (m_exp.contains("bind"))
         f->glBindFramebuffer(GL_FRAMEBUFFER, m_fbo->handle());
+    if (m_exp.contains("clean")) {
+        f->glDisable(GL_BLEND);
+        f->glDisable(GL_SCISSOR_TEST);
+        f->glDisable(GL_DEPTH_TEST);
+        f->glDisable(GL_STENCIL_TEST);
+        f->glDisable(GL_CULL_FACE);
+        f->glColorMask(true, true, true, true);
+        f->glActiveTexture(GL_TEXTURE0);
+        f->glBindTexture(GL_TEXTURE_2D, 0);
+        f->glBindBuffer(GL_ARRAY_BUFFER, 0);
+        f->glBindBuffer(0x88EC /* GL_PIXEL_UNPACK_BUFFER */, 0);
+        f->glBindBuffer(0x88EB /* GL_PIXEL_PACK_BUFFER */, 0);
+        f->glUseProgram(0);
+        f->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+        f->glPixelStorei(0x0CF2 /* GL_UNPACK_ROW_LENGTH */, 0);
+        while (f->glGetError() != GL_NO_ERROR) { }
+    }
     QElapsedTimer renderTimer;
     renderTimer.start();
     const int renderResult = mpv_render_context_render(m_ctx, params);

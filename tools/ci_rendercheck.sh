@@ -14,12 +14,15 @@ variant() {  # <name> <runden> <LUMEN_CAST_EXP> [argumente...]
     echo "::notice title=rc-$name::$body"
 }
 WRAP=("$@")
-variant basis 14 ""
-variant threads1 12 "" vd-lavc-threads=1
-variant swscale 12 "" vf=format=rgb24
-# unter Last: alle Kerne beschäftigt
-pids=""
-for i in 1 2 3 4 5 6; do ( while :; do :; done ) & pids="$pids $!"; done
-variant last 8 ""
-kill $pids 2>/dev/null
+variant basis 12 ""
+variant dumb 12 "" gpu-dumb-mode=yes
+variant rgba8 12 "" fbo-format=rgba8
+variant fast 12 "" profile=fast
+variant nodither 12 "" dither-depth=no
+variant cbilinear 12 "" cscale=bilinear
+variant clean 12 clean
+variant f444 12 "" vf=format=yuv444p
+variant f420 12 "" vf=format=yuv420p
+variant nv12 12 "" vf=format=nv12
+variant gray 12 "" vf=format=gray
 exit 0
