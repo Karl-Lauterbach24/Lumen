@@ -22,7 +22,7 @@ index 5220058..cc7caff 100644
  
      if (HAVE_THREADS && !avci->frame_thread_encoder) {
 diff --git a/libavcodec/h264_slice.c b/libavcodec/h264_slice.c
-index 01953c7..2de01a4 100644
+index 01953c7..9d44692 100644
 --- a/libavcodec/h264_slice.c
 +++ b/libavcodec/h264_slice.c
 @@ -1692,6 +1692,28 @@ static int h264_select_output_frame(H264Context *h)
@@ -63,7 +63,42 @@ index 01953c7..2de01a4 100644
  
      if (h->sei.recovery_point.recovery_frame_cnt >= 0) {
          const int sei_recovery_frame_cnt = h->sei.recovery_point.recovery_frame_cnt;
-@@ -3768,18 +3792,27 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
+@@ -3479,14 +3503,14 @@ static void er_add_slice(H264SliceContext *sl,
+  * concealed one.
+  *
+  * Guarded to progressive P slices of dependent MVC views with a valid
+- * reference (plain H.264 and the base view never take this path); slice
+- * threading is excluded: the fill re-decodes to the end of the picture
+- * and would race the other slice contexts.
++ * reference (plain H.264 and the base view never take this path). With
++ * slice threads the fill stays inside the failing slice's own region
++ * (see fill_dependent_anchor_slice_as_skip()), so it does not race the
++ * other slice contexts.
+  */
+ static int dependent_slice_fillable(const H264Context *h, H264SliceContext *sl)
+ {
+     return h->view_count > 1 && h->cur_view > 0 &&
+-           !(h->avctx->active_thread_type & FF_THREAD_SLICE) &&
+            h->ps.sps && h->ps.sps->mvc.present &&
+            !FIELD_OR_MBAFF_PICTURE(h) &&
+            sl->slice_type_nos == AV_PICTURE_TYPE_P &&
+@@ -3582,7 +3606,14 @@ static void fill_dependent_anchor_slice_as_skip(const H264Context *h,
+                "picture as skipped macroblocks against the base view "
+                "reference\n", sl->resync_mb_x, sl->resync_mb_y);
+     }
+-    fill_dep_region_as_skip(h, sl, sl->first_mb_addr, h->mb_num, lf_x_start);
++    /* Lumen: with slice threads the other slices of the picture are being
++     * decoded by their own contexts at the same time: fill this slice's
++     * macroblocks only, up to where the next slice begins. */
++    if (h->avctx->active_thread_type & FF_THREAD_SLICE)
++        fill_dep_region_as_skip(h, sl, sl->first_mb_addr,
++                                FFMIN(sl->next_slice_idx, h->mb_num), lf_x_start);
++    else
++        fill_dep_region_as_skip(h, sl, sl->first_mb_addr, h->mb_num, lf_x_start);
+ }
+ 
+ /**
+@@ -3768,18 +3799,27 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
               * unchanged. Clamping below the 3-byte guard defers to the
               * stock aligned handoff (the only state a pathologically
               * short NAL could produce). */
@@ -95,6 +130,30 @@ index 01953c7..2de01a4 100644
                      dep_cabac_buf[i] = raw[i];
              }
          }
+@@ -3897,7 +3937,10 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
+             if (ret < 0 || sl->cabac.bytestream > sl->cabac.bytestream_end + 4) {
+                 if (dependent_slice_fillable(h, sl)) {
+                     fill_dependent_anchor_slice_as_skip(h, sl, &lf_x_start);
+-                    dependent_fill_account((H264Context *) sl->h264, sl);
++                    /* (error resilience is off with slice threads, and the
++                     * accounting writes to the shared context) */
++                    if (!(h->avctx->active_thread_type & FF_THREAD_SLICE))
++                        dependent_fill_account((H264Context *) sl->h264, sl);
+                     goto finish;
+                 }
+                 av_log(h->avctx, AV_LOG_ERROR,
+@@ -3963,7 +4006,10 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
+             if (ret < 0) {
+                 if (dependent_slice_fillable(h, sl)) {
+                     fill_dependent_anchor_slice_as_skip(h, sl, &lf_x_start);
+-                    dependent_fill_account((H264Context *) sl->h264, sl);
++                    /* (error resilience is off with slice threads, and the
++                     * accounting writes to the shared context) */
++                    if (!(h->avctx->active_thread_type & FF_THREAD_SLICE))
++                        dependent_fill_account((H264Context *) sl->h264, sl);
+                     goto finish;
+                 }
+                 av_log(h->avctx, AV_LOG_ERROR,
 diff --git a/libavcodec/h264dec.h b/libavcodec/h264dec.h
 index 375e7de..ca1578d 100644
 --- a/libavcodec/h264dec.h
