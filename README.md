@@ -292,6 +292,15 @@ Not detected: which eye comes first (left is assumed unless the name says `RL`),
   renderer level is remembered per profile and kind of material (size and frame rate) for 14 days.
 - **Deinterlacing** is automatic for material flagged as interlaced; the switch in the *Picture* tab forces it.
 - In its own window Lumen asks mpv for `gpu-next` and, if that cannot start, the older `gpu` renderer.
+- **Start without lost frames.** A file is loaded paused and starts when its first picture is drawn; a
+  software decoder gets as long again as it took for that picture, because its threads are still working on the
+  next ones. Without this mpv drops the first pictures while the sound is already running. Frames are counted
+  from that start on.
+- **JPEG 2000 (DCP).** With Lumen's change to FFmpeg the decoder is 20 to 28 % faster. Measured on an Apple M3
+  Pro (12 threads): 2K at 183 Mbit/s 50 pictures per second (before: 42), 4K at 271 Mbit/s 27 (before: about 22),
+  4K at 293 Mbit/s 26 (before: 21). 4K at 24 pictures per second now plays at full resolution without dropped
+  frames on that machine; before it did not. A slower machine still falls back to half the resolution by itself.
+- `LUMEN_PERF_LOG=1` prints once a second: position, dropped and delayed frames, decoder path, levels taken back.
 
 ## DVD menus
 
@@ -349,7 +358,9 @@ versions are set at the top of the script, once for all platforms. mpv gets two 
 ([`tools/patches`](tools/patches)): a fix for the scalers' weight table (uninitialized padding, which gave
 a black picture with software OpenGL), and its timed null audio output can also write the samples to a pipe, with the
 time each block is played. Casting needs that; a stock libmpv plays everything else, but the cast button is
-disabled.
+disabled. FFmpeg gets one change: the JPEG 2000 decoder (DCP) runs its inverse wavelet transform over
+neighbouring memory instead of down single columns, and the arithmetic decoder is inlined into the coding
+passes. The decoded pictures are the same bit for bit.
 
 Everything else (Qt, libass, libplacebo, libbluray ...) comes from the platform's package manager. The exact
 package lists are in the workflows: [`release.yml`](.github/workflows/release.yml) (Windows, macOS) and

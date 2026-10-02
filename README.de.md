@@ -288,6 +288,16 @@ außer der Name sagt `RL`), Anaglyph, Schachbrett. `LUMEN_STEREO_DEBUG=1` gibt j
 - **Deinterlacing** ist automatisch für Material, das als Halbbild gekennzeichnet ist; der Schalter im
   Reiter *Bild* erzwingt es.
 - Im eigenen Fenster verlangt Lumen von mpv `gpu-next` und, wenn der nicht startet, den älteren Renderer `gpu`.
+- **Start ohne verlorene Bilder.** Eine Datei wird angehalten geladen und läuft los, wenn ihr erstes Bild
+  gezeichnet ist; ein Software-Decoder bekommt noch einmal so lange, wie er für dieses Bild gebraucht hat – seine
+  Threads arbeiten da noch an den nächsten. Ohne das verwirft mpv die ersten Bilder, während der Ton schon läuft.
+  Gezählt wird ab diesem Start.
+- **JPEG 2000 (DCP).** Mit Lumens Änderung an FFmpeg ist der Decoder 20 bis 28 % schneller. Gemessen auf einem
+  Apple M3 Pro (12 Threads): 2K mit 183 Mbit/s 50 Bilder je Sekunde (vorher 42), 4K mit 271 Mbit/s 27 (vorher
+  etwa 22), 4K mit 293 Mbit/s 26 (vorher 21). 4K mit 24 Bildern je Sekunde läuft dort jetzt in voller Auflösung
+  ohne verworfene Bilder; vorher nicht. Eine langsamere Maschine weicht weiterhin von selbst auf die halbe
+  Auflösung aus.
+- `LUMEN_PERF_LOG=1` schreibt je Sekunde: Position, verworfene und verspätete Bilder, Decoder-Weg, zurückgenommene Stufen.
 
 ## DVD-Menüs
 
@@ -345,7 +355,10 @@ Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt zwei 
 ([`tools/patches`](tools/patches)): eine Korrektur an der Gewichtstabelle der Skalierer (uninitialisierte
 Füllwerte, mit OpenGL auf der CPU ein schwarzes Bild), und seine zeitgesteuerte Null-Tonausgabe kann die Samples zusätzlich in eine
 Pipe schreiben, mit dem Zeitpunkt, zu dem jeder Block gespielt wird. Das braucht die Übertragung; ein
-unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt.
+unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt. FFmpeg bekommt eine
+Änderung: Der JPEG-2000-Decoder (DCP) rechnet die Wavelet-Rücktransformation über benachbarten Speicher statt
+Spalte für Spalte, und der arithmetische Decoder ist in die Kodierdurchgänge eingebettet. Die dekodierten
+Bilder sind Bit für Bit dieselben.
 
 Alles Übrige (Qt, libass, libplacebo, libbluray …) kommt aus der Paketverwaltung der Plattform. Die genauen
 Paketlisten stehen in den Workflows: [`release.yml`](.github/workflows/release.yml) (Windows, macOS) und

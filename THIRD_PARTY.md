@@ -8,7 +8,7 @@ and the GPL-licensed ones through section 13 of the GPLv3/AGPLv3.
 |-----------|-----|---------|
 | [Qt 6](https://www.qt.io) | UI, networking, XML | LGPL-3.0 |
 | [mpv / libmpv](https://mpv.io) | Playback. Built from source with two small changes, [`tools/patches`](tools/patches) | GPL-2.0-or-later |
-| [FFmpeg-mvc](https://github.com/tthayer93/FFmpeg-mvc) | FFmpeg with the Blu-ray 3D (MVC) decoder: decoding, and encoding the cast stream | GPL-3.0-or-later (as configured) |
+| [FFmpeg-mvc](https://github.com/tthayer93/FFmpeg-mvc) | FFmpeg with the Blu-ray 3D (MVC) decoder: decoding, and encoding the cast stream. Built with one change (faster JPEG 2000 decoding), [`tools/patches`](tools/patches) | GPL-3.0-or-later (as configured) |
 | [x264](https://www.videolan.org/developers/x264.html) | H.264 encoder for casting | GPL-2.0-or-later |
 | [hls.js](https://github.com/video-dev/hls.js) | In the receiver page ([`receiver/`](receiver)), for browsers without built-in HLS | Apache-2.0 |
 | [libbluray](https://www.videolan.org/developers/libbluray.html) | Blu-ray navigation | LGPL-2.1-or-later |
