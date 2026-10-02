@@ -194,6 +194,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/Recent.h            src/Recent.cpp
     src/Stereo3D.h          src/Stereo3D.cpp
     src/StereoDetect.h      src/StereoDetect.cpp
+    src/StereoSubs.h        src/StereoSubs.cpp
     src/Tuning.h            src/Tuning.cpp          src/HardwareProbe.cpp
     src/AudioTap.h          src/AudioTap.cpp
     src/CastStream.h        src/CastStream.cpp
@@ -219,6 +220,7 @@ set(LUMEN_QML
     qml/SelectList.qml
     qml/ValueSlider.qml
     qml/Toggle.qml
+    qml/LazyPane.qml
     qml/SectionLabel.qml
     qml/ProfileEditor.qml
     qml/CinemaPane.qml
@@ -499,7 +501,7 @@ if(LUMEN_BUILD_TESTS)
     target_include_directories(media_test PRIVATE src)
     target_link_libraries(media_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network lumen_mpv)
     # 3D-Bildfolge: gibt die Filterkette aus (tools/test_seq3d.sh prüft sie mit FFmpeg)
-    add_executable(stereo_test tests/stereo_test.cpp src/Stereo3D.cpp src/Stereo3D.h)
+    add_executable(stereo_test tests/stereo_test.cpp src/Stereo3D.cpp src/Stereo3D.h src/StereoSubs.cpp src/StereoSubs.h)
     target_include_directories(stereo_test PRIVATE src)
     target_link_libraries(stereo_test PRIVATE Qt6::Core Qt6::Gui)
     # Automatische 3D-Erkennung: Dateinamen, Container-Angaben, Bildvergleich (tools/test_stereodetect.sh)

@@ -7,9 +7,11 @@
 #include "DisplayManager.h"
 #include "MpvController.h"
 #include "OpticalMedia.h"
+#include "Tuning.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -20,6 +22,7 @@
 #include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QThread>
 #include <QThreadPool>
 #include <QtDebug>
 
@@ -557,6 +560,62 @@ int DcpManager::chooseReduction(const Dcp::Cpl &cpl) const
     return k;
 }
 
+// Datenrate des Bildes (größte Spurdatei) gegen die Zahl der Kerne: womit die Automatik beginnt.
+// Was diese Maschine bei solchem Material zuletzt gebraucht hat, gilt zwei Wochen weiter.
+int DcpManager::startRelief(const Dcp::Cpl &cpl) const
+{
+    double rate = 0;
+    for (const Dcp::Reel &r : cpl.reels) {
+        for (const Dcp::ReelAsset &a : r.assets) {
+            if (a.kind != Dcp::Kind::Picture && a.kind != Dcp::Kind::StereoPicture)
+                continue;
+            const qint64 units = a.intrinsic > 0 ? a.intrinsic : a.entryPoint + a.duration;
+            const qint64 size = m_package.assets.value(a.id).size;
+            if (size > 0 && units > 0 && a.editRate.valid())
+                rate = std::max(rate, size / (units / a.editRate.value()));
+        }
+    }
+    bool ok = false;
+    int cores = qEnvironmentVariableIntValue("LUMEN_DECODE_THREADS", &ok);
+    if (!ok || cores < 1)
+        cores = QThread::idealThreadCount();
+    int level = Tuning::j2kStartLevel(rate, cores);
+    const QStringList learned = QSettings().value(reliefKey(cpl)).toString().split(QLatin1Char(';'));
+    if (learned.size() == 2 && QDateTime::currentSecsSinceEpoch() / 86400 - learned.at(1).toLongLong() <= 14)
+        level = std::max(level, std::min(learned.at(0).toInt(), Tuning::kMaxJ2kRelief));
+    return level;
+}
+
+QString DcpManager::reliefKey(const Dcp::Cpl &cpl) const
+{
+    int width = 0, height = 0;
+    for (const Dcp::Reel &r : cpl.reels)
+        for (const Dcp::ReelAsset &a : r.assets)
+            if ((a.kind == Dcp::Kind::Picture || a.kind == Dcp::Kind::StereoPicture) && a.mxf.width > width) {
+                width = a.mxf.width;
+                height = a.mxf.height;
+            }
+    return QStringLiteral("dcp/relief/%1").arg(Tuning::loadClass(width, height, cpl.stereoscopic() ? 48 : 24));
+}
+
+QString DcpManager::decoderOptions() const
+{
+    QStringList o;
+    if (m_reduction > 0)
+        o << QStringLiteral("lowres=%1").arg(m_reduction);
+    if (m_skipPlanes > 0)
+        o << QStringLiteral("skip_planes=%1").arg(m_skipPlanes);
+    return o.join(QLatin1Char(','));
+}
+
+void DcpManager::setRelief(int level)
+{
+    m_relief = std::clamp(level, 0, Tuning::kMaxJ2kRelief);
+    const Tuning::J2kRelief r = Tuning::j2kRelief(m_relief);
+    m_reduction = std::min(3, m_baseReduction + r.lowres);
+    m_skipPlanes = r.skipPlanes;
+}
+
 bool DcpManager::play(int index, double start)
 {
     if (!m_player || index < 0 || index >= m_package.cpls.size())
@@ -702,16 +761,32 @@ bool DcpManager::play(int index, double start)
     }
 
     // --- Optionen ------------------------------------------------------------
-    m_reduction = m_forceReduction >= 0 ? m_forceReduction : chooseReduction(cpl);
-    m_forceReduction = -1;
-    m_adapted = false;
+    m_baseReduction = chooseReduction(cpl);
+    // Automatik: dieselbe Fassung an anderer Stelle neu gestartet behält ihre Stufe
+    if (m_decodeMode != QLatin1String("auto"))
+        setRelief(0);
+    else
+        setRelief(m_active && m_playing == index ? m_relief : startRelief(cpl));
+    m_dropMark = m_player->droppedFrames();
+    m_dropMarkMs = 0;
+    m_reliefHoldMs = 4000;
+    if (qEnvironmentVariableIsSet("LUMEN_PERF_LOG"))
+        qWarning().noquote() << "Lumen: perf dcp start stufe" << m_relief << decoderOptions();
+    bool threadsOk = false;
+    const int threads = qEnvironmentVariableIntValue("LUMEN_DECODE_THREADS", &threadsOk); // Entwickler-Hilfe
     QVariantMap opts{
         {"force-media-title", cpl.title},
         {"chapters-file", chapterPath},
         {"resume-playback", "no"},
         {"hwdec", "no"},                     // JPEG 2000: keine GPU-Dekodierung
-        {"vd-lavc-threads", "0"},
+        {"vd-lavc-threads", threadsOk && threads > 0 ? QString::number(threads) : QStringLiteral("0")},
         {"framedrop", "decoder+vo"},
+        // Der Decoder arbeitet in einem eigenen Thread voraus. Am Rollenwechsel beginnt er neu und
+        // braucht für das erste Bild so lange wie ein Kern für ein ganzes – ohne Vorrat gingen dort
+        // jedes Mal einige Bilder verloren.
+        {"vd-queue-enable", "yes"},
+        {"vd-queue-max-samples", "16"},
+        {"vd-queue-max-secs", "1"},
         {"demuxer-readahead-secs", "6"},
         {"demuxer-max-bytes", "768MiB"},
         {"volume-gain", faderToDb(m_fader)},
@@ -719,8 +794,8 @@ bool DcpManager::play(int index, double start)
         // (lumendcp://) in EDL-Quellen sonst nicht zu
         {"load-unsafe-playlists", "yes"},
     };
-    if (m_reduction > 0)
-        opts["vd-lavc-o"] = QStringLiteral("lowres=%1").arg(m_reduction);
+    if (!decoderOptions().isEmpty())
+        opts["vd-lavc-o"] = decoderOptions();
     if (m_iabActive) {
         opts["aid"] = "2"; // Immersive-Audio-Spur statt der PCM-Fassung
         opts["af"] = QString();
@@ -779,6 +854,7 @@ bool DcpManager::play(int index, double start)
     m_current = cpl.toVariant();
     m_current["index"] = index;
     m_current["reduction"] = m_reduction;
+    m_current["skipPlanes"] = m_skipPlanes;
     m_current["channelsUsed"] = m_channels;
     m_current["iab"] = m_iabActive;
     m_player->openPrepared(Optical::edlUrl(edl), opts, QStringLiteral("dcp"), cpl.root, want3d ? QStringLiteral("sbsl") : QStringLiteral("none"));
@@ -791,6 +867,8 @@ bool DcpManager::play(int index, double start)
         parts << LTR("entschlüsselt");
     if (m_reduction)
         parts << LTR("J2K 1/%1 Auflösung").arg(1 << m_reduction);
+    if (m_skipPlanes)
+        parts << LTR("J2K ohne die %1 feinsten Bit-Ebenen").arg(m_skipPlanes);
     if (stereo)
         parts << (want3d ? QStringLiteral("3D") : LTR("3D-DCP als 2D"));
     if (m_iabActive)
@@ -869,19 +947,40 @@ void DcpManager::updateImageSubtitle()
     m_player->setOverlay(58, img, qRound(x), qRound(y), qRound(dw), qRound(dh));
 }
 
-// Automatik: Schafft die CPU volle Auflösung nicht in Echtzeit, auf die nächste
-// Auflösungsstufe wechseln (einmal je Wiedergabe)
+// Automatik: Schafft die CPU das Bild nicht in Echtzeit, die nächste Stufe nehmen – erst weniger
+// Bit-Ebenen, dann weniger Auflösung (Tuning::j2kRelief). Der Decoder wird an Ort und Stelle neu
+// eingerichtet; die Stufe gilt für diese Maschine und solches Material zwei Wochen.
 void DcpManager::onDroppedFrames()
 {
-    if (!m_active || m_adapted || m_decodeMode != QLatin1String("auto") || m_reduction >= 2 || m_playing < 0)
+    if (!m_active || m_decodeMode != QLatin1String("auto") || m_playing < 0 || m_playing >= m_package.cpls.size())
         return;
-    if (m_player->droppedFrames() < 24 || m_playClock.elapsed() > 30000 || m_player->paused())
+    const qint64 now = m_playClock.elapsed();
+    const int drops = m_player->droppedFrames();
+    // nach Start und Umbau, in der Pause und nach einem ruhigen Abschnitt neu zählen
+    if (now < m_reliefHoldMs || m_player->paused() || drops < m_dropMark || now - m_dropMarkMs > 10000) {
+        m_dropMark = drops;
+        m_dropMarkMs = now;
         return;
-    const int next = m_reduction + 1;
-    m_forceReduction = next;
-    play(m_playing, m_player->position());
-    m_adapted = true;
-    m_player->showText(LTR("JPEG 2000: CPU zu langsam – dekodiere mit 1/%1 Auflösung").arg(1 << next), 4000);
+    }
+    if (drops - m_dropMark < 10 || m_relief >= Tuning::kMaxJ2kRelief)
+        return;
+    const int reductionBefore = m_reduction;
+    setRelief(m_relief + 1);
+    m_player->setOption(QStringLiteral("vd-lavc-o"), decoderOptions());
+    m_dropMark = drops;
+    m_dropMarkMs = now;
+    m_reliefHoldMs = now + 4000; // der Umbau selbst kostet Bilder
+    m_current["reduction"] = m_reduction;
+    m_current["skipPlanes"] = m_skipPlanes;
+    QSettings().setValue(reliefKey(m_package.cpls[m_playing]),
+                         QStringLiteral("%1;%2").arg(m_relief).arg(QDateTime::currentSecsSinceEpoch() / 86400));
+    emit activeChanged();
+    if (qEnvironmentVariableIsSet("LUMEN_PERF_LOG"))
+        qWarning().noquote() << "Lumen: perf dcp stufe" << m_relief << decoderOptions() << "bei" << m_player->position();
+    if (m_reduction != reductionBefore)
+        m_player->showText(LTR("JPEG 2000: CPU zu langsam – dekodiere mit 1/%1 Auflösung").arg(1 << m_reduction), 4000);
+    else
+        m_player->showText(LTR("JPEG 2000: CPU zu langsam – dekodiere ohne die %1 feinsten Bit-Ebenen").arg(m_skipPlanes), 4000);
 }
 
 // --------------------------------------------------------------------------

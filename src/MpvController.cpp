@@ -11,7 +11,12 @@
 #include "PlayerWindow.h"
 #include "Stereo3D.h"
 #include "StereoDetect.h"
+#include "StereoSubs.h"
 #include "VcdNav.h"
+
+extern "C" {
+#include <libavutil/avutil.h>
+}
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -51,7 +56,7 @@ enum PropId : quint64 {
     P_CHAPTER, P_TRACKLIST, P_AID, P_SID, P_VIDEOPARAMS, P_VIDEOFORMAT, P_FPS, P_DECPARAMS, P_DELAYED, P_MISTIMED,
     P_HWDEC, P_DISPLAYFPS, P_AUDIOOUTPARAMS, P_AUDIOCODEC, P_AUDIODEVICES,
     P_ABA, P_ABB, P_FULLSCREEN, P_AUDIODELAY, P_SUBDELAY, P_CACHEPAUSE, P_CACHEDUR,
-    P_OSDDIMS, P_MOUSEPOS, P_VODROPS, P_DECDROPS, P_EOF, P_WINDOWID,
+    P_OSDDIMS, P_MOUSEPOS, P_VODROPS, P_DECDROPS, P_EOF, P_WINDOWID, P_SUBTEXT,
 };
 
 struct Observed
@@ -105,6 +110,7 @@ const Observed kObserved[] = {
     {"decoder-frame-drop-count", MPV_FORMAT_INT64, P_DECDROPS},
     {"eof-reached", MPV_FORMAT_FLAG, P_EOF},
     {"window-id", MPV_FORMAT_INT64, P_WINDOWID},
+    {"sub-text", MPV_FORMAT_STRING, P_SUBTEXT},
 };
 
 // Optionen, die ein neues Player-Fenster / einen neuen Renderer erfordern
@@ -210,6 +216,10 @@ MpvController::MpvController(DisplayManager *displays, BlurayNav *nav, QObject *
     m_clock.start();
     m_tuneTimer.setInterval(1000);
     connect(&m_tuneTimer, &QTimer::timeout, this, &MpvController::tuneTick);
+    // Untertitel je Auge hängen an Format, Profil, Spurwahl und Fenstergröße
+    for (auto signal : {&MpvController::stereoInputChanged, &MpvController::profileApplied, &MpvController::tracksChanged,
+                        &MpvController::osdDimensionsChanged, &MpvController::idleChanged})
+        connect(this, signal, this, &MpvController::updateStereoSubs);
     const QString snap = qEnvironmentVariable("LUMEN_PLAYER_SNAPSHOT");
     if (snap.contains(QLatin1Char('@'))) {
         m_snapshotFile = snap.section(QLatin1Char('@'), 0, -2);
@@ -444,8 +454,11 @@ bool MpvController::create(const QVariantMap &options)
         return false;
     }
     observeAll();
+    m_stereoSubs = false; // ein neuer mpv-Kern zeigt Untertitel wieder selbst
+    m_subText.clear();
     // FFmpeg-mvc meldet sich mit "-mvc" in der Versionskennung (z. B. n9.0.2-mvc8)
-    m_mvcCapable = getProperty(QStringLiteral("ffmpeg-version")).toString().contains(QLatin1String("mvc"), Qt::CaseInsensitive);
+    // (nicht mpv fragen: die Antwort käme erst, wenn der Kern fertig eingerichtet ist)
+    m_mvcCapable = QString::fromLatin1(av_version_info()).contains(QLatin1String("mvc"), Qt::CaseInsensitive);
     if (m_nav) {
         m_nav->attach(m_mpv);
         m_nav->setStereo(want3D(), m_profile.value("stereoOut").toString());
@@ -658,6 +671,8 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
     syncOptions();
     m_preloadWaiting = false;
     m_havePreResult = false;
+    m_earlyAnalysis = false;
+    m_detectPassed = false;
 
     // 3D vor dem Start erkennen, wo es darauf ankommt: das Profil gibt 3D aus oder der Name sagt
     // "3D". Sonst würde das Bild nach einer Sekunde umspringen. Begrenzte Wartezeit; reicht sie
@@ -676,6 +691,13 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
             }
         });
         return;
+    }
+    // Sonst läuft die Bildprüfung neben dem Laden her, statt erst danach zu beginnen: Ihr Ergebnis
+    // liegt dann vor, wenn das erste Bild steht, und eine 3D-Datei springt auf einem 2D-Profil
+    // nicht mehr nach einer Sekunde auf ein Auge um.
+    if (m_stereoAuto && !m_autoStereo && m_sourceKind == QLatin1String("file") && fi.isFile()) {
+        runStereoAnalysis(fi.absoluteFilePath(), {}, {});
+        m_earlyAnalysis = true;
     }
     loadFileNow(url, fileOptions);
 }
@@ -1725,7 +1747,9 @@ void MpvController::tryStereoDetection()
 
 void MpvController::startStereoDetection()
 {
-    cancelStereoDetection();
+    // (die neben dem Laden gestartete Bildprüfung dieser Datei läuft weiter)
+    if (!(m_earlyAnalysis && m_detectThread))
+        cancelStereoDetection();
     if (!m_stereoAuto || !m_mpv)
         return;
     // Blu-ray 3D meldet sich selbst; ein Öffner (Plugin, DCP) hat das Format vorgegeben
@@ -1828,7 +1852,11 @@ void MpvController::continueStereoDetection()
     if (!local)
         return; // einen Netzwerkstrom ein zweites Mal zu öffnen, lohnt nicht
 
-    // 4. Das Bild selbst
+    // 4. Das Bild selbst – die Prüfung läuft schon seit dem Laden, oder sie beginnt jetzt
+    if (m_earlyAnalysis && m_detectThread) {
+        m_detectPassed = true;
+        return;
+    }
     runStereoAnalysis(m_detectPath, {}, {});
 }
 
@@ -1871,6 +1899,13 @@ void MpvController::runStereoAnalysis(const QString &path, const QString &url, c
                 }
                 self->loadFileNow(url, fileOptions);
             } else if (url.isEmpty() && !r.mvc) {
+                if (self->m_earlyAnalysis && !self->m_detectPassed) {
+                    // Die Datei lädt noch: für den Ablauf nach dem Laden aufheben (er fragt erst
+                    // den Container und nimmt sonst dieses Ergebnis) und schon jetzt einstellen
+                    self->m_havePreResult = true;
+                    self->m_preFormat = r.format;
+                    self->m_preSource = r.source;
+                }
                 self->applyDetectedStereo(r.format, r.source);
             }
         }, Qt::QueuedConnection);
@@ -1895,6 +1930,72 @@ void MpvController::applyDetectedStereo(const QString &format, const QString &so
     setStereoInput(format);
     if (format != QLatin1String("none"))
         showText(LTR("3D erkannt: %1").arg(source == QLatin1String("mvc") ? QStringLiteral("MVC") : stereoInLabel(format)), 2500);
+}
+
+// Text-Untertitel einer 3D-Datei: Gibt das Profil jedes Auge in einem eigenen Bereich aus
+// (Side-by-Side, Top-Bottom, Frame Packing), zeichnet Lumen den Text einmal je Auge und blendet
+// mpvs eigene Darstellung aus, die ihn quer über beide Augen legen würde. Die Tiefe aus dem
+// Profil (subtitleDepth) holt ihn vor die Leinwand. Bild-Untertitel (PGS, VobSub) liefern keinen
+// Text; dort bleibt es bei mpvs Darstellung. Blu-ray 3D führt ihre Untertitel selbst (BlurayNav).
+void MpvController::updateStereoSubs()
+{
+    if (!m_mpv)
+        return;
+    const QString out = m_profile.value("stereoOut", "none").toString();
+    bool want = !m_castEncoder && !m_idle && m_stereoIn != QLatin1String("none") && StereoSubs::splitsEyes(out)
+                && !mvcActive() && m_sid > 0;
+    if (want) {
+        for (const auto &v : std::as_const(m_rawTracks)) {
+            const QVariantMap t = v.toMap();
+            if (t.value("type").toString() == QLatin1String("sub") && t.value("selected").toBool()) {
+                want = !StereoSubs::isBitmapCodec(t.value("codec").toString());
+                break;
+            }
+        }
+    }
+    if (want != m_stereoSubs) {
+        m_stereoSubs = want;
+        setOptionRaw(QStringLiteral("sub-visibility"), want ? "no" : "yes", false);
+    }
+    const QList<StereoSubs::Eye> eyes = want ? StereoSubs::eyes(out, m_osdDims) : QList<StereoSubs::Eye>();
+    const QImage img = eyes.isEmpty() || m_subText.trimmed().isEmpty() ? QImage() : StereoSubs::render(m_subText, eyes.first().logical);
+    if (img.isNull()) {
+        removeOverlay(60);
+        removeOverlay(61);
+        return;
+    }
+    const double depth = m_profile.value("subtitleDepth").toDouble();
+    for (int i = 0; i < eyes.size() && i < 2; ++i) {
+        const StereoSubs::Eye &e = eyes.at(i);
+        const double sx = e.rect.width() / e.logical.width(), sy = e.rect.height() / e.logical.height();
+        // Tiefe in Bildpunkten eines 1920 breiten Bilds: linkes Auge nach rechts, rechtes nach links
+        const double shift = (e.left ? depth : -depth) * e.rect.width() / 1920.0;
+        const double bottom = e.rect.bottom() - e.rect.height() * 0.045;
+        setOverlay(60 + i, img, qRound(e.rect.x() + shift), qRound(bottom - img.height() * sy),
+                   qRound(img.width() * sx), qRound(img.height() * sy));
+    }
+}
+
+// Der vorbereitete Start läuft los. Prüft die 3D-Erkennung das Bild noch, kurz auf sie warten:
+// Sonst begänne die Wiedergabe mit beiden Bildhälften und spränge gleich darauf um.
+void MpvController::finishPrimedStart(int waitedMs)
+{
+    if (!m_mpv || m_idle)
+        return;
+    if (m_earlyAnalysis && m_detectThread && waitedMs < 500) {
+        QTimer::singleShot(25, this, [this, waitedMs] { finishPrimedStart(waitedMs + 25); });
+        return;
+    }
+    if (waitedMs > 0 && qEnvironmentVariableIsSet("LUMEN_PERF_LOG"))
+        qWarning().noquote() << "Lumen: perf start: 3D-Erkennung abgewartet," << waitedMs << "ms";
+    // Gezählt wird ab jetzt: Was mpv beim Einrichten (erstes Bild, Shader) als verworfen führt,
+    // hat niemand vermisst
+    m_dropBase = m_vo_drops + m_dec_drops;
+    if (m_droppedFrames != 0) {
+        m_droppedFrames = 0;
+        emit droppedFramesChanged();
+    }
+    setOptionRaw(QStringLiteral("pause"), false, false);
 }
 
 void MpvController::holdGovernor(double seconds)
@@ -2098,18 +2199,7 @@ void MpvController::handleEvent(mpv_event *ev)
                 const int more = software ? int(std::clamp<qint64>(firstFrame, 60, 1500)) - 60 : 0;
                 if (qEnvironmentVariableIsSet("LUMEN_PERF_LOG"))
                     qWarning().noquote() << "Lumen: perf start: erstes Bild nach" << firstFrame << "ms, warte" << 60 + more << "ms";
-                QTimer::singleShot(more, this, [this] {
-                    if (!m_mpv || m_idle)
-                        return;
-                    // Gezählt wird ab jetzt: Was mpv beim Einrichten (erstes Bild, Shader) als
-                    // verworfen führt, hat niemand vermisst
-                    m_dropBase = m_vo_drops + m_dec_drops;
-                    if (m_droppedFrames != 0) {
-                        m_droppedFrames = 0;
-                        emit droppedFramesChanged();
-                    }
-                    setOptionRaw(QStringLiteral("pause"), false, false);
-                });
+                QTimer::singleShot(more, this, [this] { finishPrimedStart(0); });
             });
         }
         break;
@@ -2326,6 +2416,14 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     }
     case P_AUDIODELAY: m_audioDelay = dbl(); emit delaysChanged(); break;
     case P_SUBDELAY: m_subDelay = dbl(); emit delaysChanged(); break;
+    case P_SUBTEXT: {
+        const QString text = str();
+        if (text != m_subText) {
+            m_subText = text;
+            updateStereoSubs();
+        }
+        break;
+    }
     case P_CACHEPAUSE: m_buffering = flag(); emit bufferingChanged(); break;
     case P_CACHEDUR: m_cacheSeconds = dbl(); emit bufferingChanged(); break;
     }

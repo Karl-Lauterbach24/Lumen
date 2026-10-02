@@ -283,7 +283,6 @@ void center(std::vector<float> &v, int cols, int rows)
     if (cols <= 0 || rows <= 0)
         return;
     std::vector<double> col(cols, 0);
-    double total = 0;
     for (int y = 0; y < rows; ++y) {
         float *p = v.data() + size_t(y) * cols;
         double row = 0;
@@ -294,7 +293,6 @@ void center(std::vector<float> &v, int cols, int rows)
             p[x] -= float(row);
             col[x] += p[x];
         }
-        total += row;
     }
     for (int y = 0; y < rows; ++y) {
         float *p = v.data() + size_t(y) * cols;

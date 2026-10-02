@@ -231,4 +231,22 @@ QString loadClass(int width, int height, double fps)
     return QStringLiteral("%1-%2").arg(QLatin1String(size), fps > 50 ? QStringLiteral("hfr") : QStringLiteral("std"));
 }
 
+J2kRelief j2kRelief(int level)
+{
+    static const J2kRelief steps[kMaxJ2kRelief + 1] = {{0, 0}, {0, 2}, {0, 4}, {1, 2}, {1, 4}, {2, 4}};
+    return steps[std::clamp(level, 0, kMaxJ2kRelief)];
+}
+
+int j2kStartLevel(double bytesPerSecond, int cores)
+{
+    if (bytesPerSecond <= 0 || cores < 1)
+        return 0;
+    // Gemessen: Ein Kern dekodiert rund 3,3 MB je Sekunde (Apple M3 Pro, 2K und 4K bei 250 Mbit/s);
+    // 2 ausgelassene Ebenen verdoppeln das, 4 bringen das 3,3-Fache (2K). 15 % Reserve.
+    const double capacity = 0.85 * cores * 3.3e6;
+    if (bytesPerSecond <= capacity)
+        return 0;
+    return bytesPerSecond <= capacity * 2.0 ? 1 : 2;
+}
+
 } // namespace Tuning

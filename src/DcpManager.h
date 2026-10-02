@@ -49,6 +49,7 @@ class DcpManager : public QObject
     Q_PROPERTY(QString iabLayout READ iabLayout WRITE setIabLayout NOTIFY iabLayoutChanged)
     Q_PROPERTY(bool iabActive READ iabActive NOTIFY activeChanged)
     Q_PROPERTY(int reduction READ reduction NOTIFY activeChanged)
+    Q_PROPERTY(int skipPlanes READ skipPlanes NOTIFY activeChanged)
     Q_PROPERTY(bool verifying READ verifying NOTIFY verifyChanged)
     Q_PROPERTY(double verifyProgress READ verifyProgress NOTIFY verifyChanged)
     Q_PROPERTY(QVariantMap verifyResult READ verifyResult NOTIFY verifyChanged)
@@ -82,6 +83,8 @@ public:
     void setIabLayout(const QString &layout);
     bool iabActive() const { return m_iabActive; }
     int reduction() const { return m_reduction; }
+    // ausgelassene Bit-Ebenen je Codeblock (Entlastung des Decoders ohne Verlust an Auflösung)
+    int skipPlanes() const { return m_skipPlanes; }
     bool verifying() const { return m_verifying; }
     double verifyProgress() const { return m_verifyProgress; }
     QVariantMap verifyResult() const { return m_verifyResult; }
@@ -129,6 +132,10 @@ private:
     void setStatus(const QString &s);
     QVariantMap keyStatus(const Dcp::Cpl &cpl) const;
     int chooseReduction(const Dcp::Cpl &cpl) const;
+    int startRelief(const Dcp::Cpl &cpl) const;
+    QString reliefKey(const Dcp::Cpl &cpl) const;
+    QString decoderOptions() const;
+    void setRelief(int level);
     void onDroppedFrames();
     void updateImageSubtitle();
 
@@ -148,10 +155,15 @@ private:
     QVariantMap m_current;
     int m_playing = -1;
     int m_reduction = 0;
-    int m_forceReduction = -1;
+    int m_baseReduction = 0; // Auflösungsstufe nach Ausgabe oder Wahl, ohne Entlastung
+    int m_skipPlanes = 0;
+    int m_relief = 0;        // Stufe der Entlastung (Tuning::j2kRelief), nur in der Automatik
     int m_channels = 0;
     QElapsedTimer m_playClock;
-    bool m_adapted = false;
+    // verlorene Bilder: Stand und Zeitpunkt, ab dem gezählt wird
+    int m_dropMark = 0;
+    qint64 m_dropMarkMs = 0;
+    qint64 m_reliefHoldMs = 0;
 
     // Bilduntertitel (PNG) als Overlay
     QList<Dcp::ImageSub> m_imageSubs;

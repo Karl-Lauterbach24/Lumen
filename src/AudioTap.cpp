@@ -19,7 +19,7 @@
 
 namespace {
 // Fassungsvermögen der Pipe; der Leser leert sie alle paar Millisekunden
-constexpr int kPipeBytes = 256 * 1024;
+[[maybe_unused]] constexpr int kPipeBytes = 256 * 1024; // Windows und Linux; macOS nimmt die Systemgröße
 }
 
 AudioTap::AudioTap() = default;

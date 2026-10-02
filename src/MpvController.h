@@ -429,6 +429,14 @@ private:
     QPointer<QThread> m_detectThread;
     // Erkennung vor dem Laden (3D-Profil oder "3D" im Namen): die Datei startet gleich im richtigen Format
     bool m_preloadWaiting = false;
+    // Die Bildprüfung läuft neben dem Laden her (lokale Datei, Profil ohne 3D-Ausgabe)
+    bool m_earlyAnalysis = false;
+    bool m_detectPassed = false; // der Ablauf nach dem Laden wartet nur noch auf ihr Ergebnis
+    void finishPrimedStart(int waitedMs);
+    // Text-Untertitel einer 3D-Datei je Auge (StereoSubs)
+    void updateStereoSubs();
+    QString m_subText;
+    bool m_stereoSubs = false;
     bool m_havePreResult = false;
     QString m_preFormat, m_preSource;
     Tuning::Governor m_governor;

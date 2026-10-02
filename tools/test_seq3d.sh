@@ -57,6 +57,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ -x "$BUILD/stereodetect_test" ] || [ -x "$BUILD/stereodetect_test.exe" ]; then
     "$HERE/test_stereodetect.sh" "$BUILD" "$WORK/../stereodetect"
 fi
+# subtitles of 3D files, once per eye: eye areas and line wrapping
+"$BUILD/stereo_test" --subs | grep -vE "^OK" || true
+"$BUILD/stereo_test" --subs > /dev/null
 if [ -x "$BUILD/tuning_test" ] || [ -x "$BUILD/tuning_test.exe" ]; then
     "$BUILD/tuning_test" | grep -vE "^OK" || true
     "$BUILD/tuning_test" > /dev/null

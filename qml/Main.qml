@@ -97,8 +97,10 @@ ApplicationWindow {
         Player.openSource(path, withMenu ? "menu" : "main", -1)
     }
 
-    function showHelp() { helpDialog.open() }
-    function showCast() { castDialog.open() }
+    // Dialoge entstehen erst beim ersten Öffnen: Das Steuerfenster ist schneller da
+    function showHelp() { helpLoader.active = true; helpLoader.item.open() }
+    function showCast() { castLoader.active = true; castLoader.item.open() }
+    function openEditor(profile) { editorLoader.active = true; editorLoader.item.openFor(profile) }
     function openRecentIndex(i) { if (Recent.items[i]) openRecent(Recent.items[i]) }
     function openRecent(item) {
         pendingResume = item.kind === "file" && item.position > 5 ? item.position : 0
@@ -184,9 +186,9 @@ ApplicationWindow {
         onAccepted: Player.addSubtitleFile(selectedFile)
     }
 
-    ProfileEditor { id: editor }
-    HelpDialog { id: helpDialog }
-    CastDialog { id: castDialog }
+    Loader { id: editorLoader; anchors.fill: parent; active: false; sourceComponent: Component { ProfileEditor {} } }
+    Loader { id: helpLoader; anchors.fill: parent; active: false; sourceComponent: Component { HelpDialog {} } }
+    Loader { id: castLoader; anchors.fill: parent; active: false; sourceComponent: Component { CastDialog {} } }
 
     // Dateien, Ordner und Links ins Fenster ziehen
     DropArea {
@@ -224,7 +226,7 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Open]; onActivated: fileDialog.open() }
     Shortcut { sequence: "Ctrl+E"; onActivated: win.ejectSelected() }
     Shortcut { sequence: "Ctrl+D"; onActivated: settings.tab = 5 }
-    Shortcut { sequence: "F1"; onActivated: helpDialog.open() }
+    Shortcut { sequence: "F1"; onActivated: win.showHelp() }
 
     // ------------------------------------------------------------------
     // Layout
@@ -308,14 +310,14 @@ ApplicationWindow {
                     currentIndex: indexFor(Profiles.currentId)
                     onActivated: Profiles.currentId = currentValue
                 }
-                IconButton { iconName: "tune"; tip: qsTr("Profil bearbeiten"); onClicked: editor.openFor(Profiles.current) }
+                IconButton { iconName: "tune"; tip: qsTr("Profil bearbeiten"); onClicked: win.openEditor(Profiles.current) }
                 IconButton {
                     iconName: "cast"
                     active: Cast.active
                     tip: Cast.active ? qsTr("Überträgt an „%1“").arg(Cast.deviceName) : qsTr("An Fernseher oder Empfänger übertragen")
-                    onClicked: castDialog.open()
+                    onClicked: win.showCast()
                 }
-                IconButton { iconName: "help"; tip: qsTr("Hilfe und Tastenkürzel (F1)"); onClicked: helpDialog.open() }
+                IconButton { iconName: "help"; tip: qsTr("Hilfe und Tastenkürzel (F1)"); onClicked: win.showHelp() }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
         }
@@ -406,6 +408,7 @@ ApplicationWindow {
                         Chip { text: Player.embedded ? qsTr("Eingebettet · SDR") : ""; tint: Theme.textDim }
                         Chip { text: Dcp.active && Dcp.current.encrypted ? qsTr("Entschlüsselt (KDM)") : ""; tint: Theme.good }
                         Chip { text: Dcp.active && Dcp.reduction > 0 ? qsTr("J2K 1/") + Math.pow(2, Dcp.reduction) : ""; tint: Theme.warn }
+                        Chip { text: Dcp.active && Dcp.skipPlanes > 0 ? qsTr("J2K −%1 Bit").arg(Dcp.skipPlanes) : ""; tint: Theme.warn }
                         Chip { text: Dcp.active && Dcp.fader !== 7 ? qsTr("Fader ") + Dcp.fader.toFixed(1) : ""; tint: Theme.textDim }
                         Chip { text: Player.droppedFrames > 0 && !Player.idle ? Player.droppedFrames + (Player.droppedFrames === 1 ? qsTr(" Bild verworfen") : qsTr(" Bilder verworfen")) : ""; tint: Theme.warn }
                         Chip { text: win.isDvd && DvdNav.angles > 1 ? qsTr("Winkel ") + DvdNav.angle + "/" + DvdNav.angles : ""; tint: Theme.accent }
@@ -1272,10 +1275,10 @@ ApplicationWindow {
                         }
 
                         // ---- Kino (DCP, KDM, Programm) ----
-                        CinemaPane {}
+                        LazyPane { sourceComponent: Component { CinemaPane {} } }
 
                         // ---- Streaming (Links, Medienserver) ----
-                        StreamingPane {}
+                        LazyPane { sourceComponent: Component { StreamingPane {} } }
 
                         // ---- Ausgabe ----
                         ScrollView {
@@ -1349,9 +1352,9 @@ ApplicationWindow {
                                             Chip { text: Profiles.current.stereoOut && Profiles.current.stereoOut !== "none" && !Player.mvcCapable ? qsTr("Kein MVC-Decoder") : ""; tint: Theme.warn }
                                         }
                                         RowLayout {
-                                            Button { text: qsTr("Bearbeiten"); flat: true; palette.windowText: Theme.accent; onClicked: editor.openFor(Profiles.current) }
+                                            Button { text: qsTr("Bearbeiten"); flat: true; palette.windowText: Theme.accent; onClicked: win.openEditor(Profiles.current) }
                                             Button { text: qsTr("Duplizieren"); flat: true; palette.windowText: Theme.textDim; onClicked: Profiles.currentId = Profiles.duplicateProfile(Profiles.currentId) }
-                                            Button { text: qsTr("Neu"); flat: true; palette.windowText: Theme.textDim; onClicked: editor.openFor(Profiles.defaults()) }
+                                            Button { text: qsTr("Neu"); flat: true; palette.windowText: Theme.textDim; onClicked: win.openEditor(Profiles.defaults()) }
                                         }
                                     }
                                 }
@@ -1410,7 +1413,7 @@ ApplicationWindow {
                         }
 
                         // ---- Plugins ----
-                        PluginsPane {}
+                        LazyPane { sourceComponent: Component { PluginsPane {} } }
                     }
                 }
             }

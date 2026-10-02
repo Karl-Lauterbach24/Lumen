@@ -163,6 +163,16 @@ int main(int argc, char **argv)
     check(run(g, 8, 3, 0, true, 35, 60).isEmpty(), "60 fps: 3 Bilder je Sekunde sind unter der Schwelle");
     check(run(g, 8, 8, 0, true, 35, 60) == "R", "60 fps: 8 je Sekunde nicht");
 
+    // JPEG 2000: erst Bit-Ebenen, dann Auflösung
+    check(j2kRelief(0).lowres == 0 && j2kRelief(0).skipPlanes == 0, "J2K Stufe 0: unverändert");
+    check(j2kRelief(1).lowres == 0 && j2kRelief(1).skipPlanes == 2 && j2kRelief(2).lowres == 0 && j2kRelief(2).skipPlanes == 4,
+          "J2K Stufen 1 und 2: nur Bit-Ebenen, volle Auflösung");
+    check(j2kRelief(3).lowres == 1 && j2kRelief(5).lowres == 2 && j2kRelief(99).lowres == 2, "J2K ab Stufe 3: Auflösung, oben begrenzt");
+    check(j2kStartLevel(250e6 / 8, 12) == 0, "J2K 250 Mbit/s auf 12 Kernen: volle Genauigkeit");
+    check(j2kStartLevel(250e6 / 8, 8) == 1, "… auf 8 Kernen: 2 Ebenen aus");
+    check(j2kStartLevel(250e6 / 8, 4) == 2 && j2kStartLevel(250e6 / 8, 2) == 2, "… auf 4 und 2 Kernen: 4 Ebenen aus, die Auflösung bleibt");
+    check(j2kStartLevel(60e6 / 8, 4) == 0 && j2kStartLevel(0, 4) == 0, "J2K 60 Mbit/s auf 4 Kernen, unbekannte Rate: nichts auslassen");
+
     check(loadClass(1920, 1080, 23.976) == "fhd-std", "1080p24 -> fhd-std");
     check(loadClass(3840, 2160, 59.94) == "uhd-hfr", "2160p60 -> uhd-hfr");
     check(loadClass(1280, 720, 50) == "hd-std", "720p50 -> hd-std");

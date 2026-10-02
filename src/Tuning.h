@@ -96,4 +96,19 @@ private:
 // Schlüssel, unter dem gelernte Stufen gemerkt werden: Bildgröße und -rate in groben Klassen
 QString loadClass(int width, int height, double fps);
 
+// JPEG 2000 (DCP) rechnet nur die CPU. Stufen, die eine zu langsame Maschine entlasten: zuerst
+// die feinsten Bit-Ebenen der Codeblöcke auslassen (volle Auflösung, die Abweichung liegt unter
+// dem, was eine Ausgabe mit 8 oder 10 Bit zeigt: 51 dB bei 2 Ebenen, 46 dB bei 4), erst danach
+// die Auflösung halbieren.
+struct J2kRelief
+{
+    int lowres = 0;     // zusätzliche Halbierungen der Auflösung
+    int skipPlanes = 0; // ausgelassene Bit-Ebenen je Codeblock
+};
+const int kMaxJ2kRelief = 5;
+J2kRelief j2kRelief(int level);
+// Ausgangsstufe, geschätzt aus der Datenrate des Bildes (Byte je Sekunde) und der Zahl der Kerne.
+// Schätzt nur die Stufen ohne sichtbaren Verlust; alles Weitere entscheidet die Wiedergabe selbst.
+int j2kStartLevel(double bytesPerSecond, int cores);
+
 } // namespace Tuning

@@ -307,7 +307,11 @@ void PlayerWindow::renderLoop()
             f->glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, img.bits());
             QMutexLocker lock(&m_lock);
             m_grab = false;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+            m_grabbed = img.flipped(Qt::Vertical);
+#else
             m_grabbed = img.mirrored();
+#endif
             m_grabDone.wakeAll();
         }
         m_gl->swapBuffers(this);
