@@ -1,0 +1,355 @@
+diff --git a/libavcodec/jpeg2000dec.c b/libavcodec/jpeg2000dec.c
+index 369377e..ba52d16 100644
+--- a/libavcodec/jpeg2000dec.c
++++ b/libavcodec/jpeg2000dec.c
+@@ -1906,13 +1906,13 @@ static void decode_sigpass(Jpeg2000T1Context *t1, int width, int height,
+                     flags_mask &= ~(JPEG2000_T1_SIG_S | JPEG2000_T1_SIG_SW | JPEG2000_T1_SIG_SE | JPEG2000_T1_SGN_S);
+                 if ((t1->flags[(y+1) * t1->stride + x+1] & JPEG2000_T1_SIG_NB & flags_mask)
+                 && !(t1->flags[(y+1) * t1->stride + x+1] & (JPEG2000_T1_SIG | JPEG2000_T1_VIS))) {
+-                    if (ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ff_jpeg2000_getsigctxno(t1->flags[(y+1) * t1->stride + x+1] & flags_mask, bandno))) {
++                    if (ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + ff_jpeg2000_getsigctxno(t1->flags[(y+1) * t1->stride + x+1] & flags_mask, bandno))) {
+                         int xorbit, ctxno = ff_jpeg2000_getsgnctxno(t1->flags[(y+1) * t1->stride + x+1] & flags_mask, &xorbit);
+                         if (t1->mqc.raw) {
+-                            t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno)) << 31;
++                            t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + ctxno)) << 31;
+                             t1->data[(y) * t1->stride + x] |= mask;
+                         } else {
+-                            t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno) ^ xorbit) << 31;
++                            t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + ctxno) ^ xorbit) << 31;
+                             t1->data[(y) * t1->stride + x] |= mask;
+                         }
+                         ff_jpeg2000_set_significance(t1, x, y,
+@@ -1939,7 +1939,7 @@ static void decode_refpass(Jpeg2000T1Context *t1, int width, int height,
+                         ~(JPEG2000_T1_SIG_S | JPEG2000_T1_SIG_SW | JPEG2000_T1_SIG_SE | JPEG2000_T1_SGN_S) : -1;
+                     int ctxno = ff_jpeg2000_getrefctxno(t1->flags[(y + 1) * t1->stride + x + 1] & flags_mask);
+                     t1->data[(y) * t1->stride + x] |= phalf >> 1;
+-                    if (ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno))
++                    if (ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + ctxno))
+                         t1->data[(y) * t1->stride + x] |= phalf;
+                     else {
+                         t1->data[(y) * t1->stride + x] &= ~(phalf);
+@@ -1965,11 +1965,11 @@ static void decode_clnpass(const Jpeg2000DecoderContext *s, Jpeg2000T1Context *t
+                   (t1->flags[(y0 + 2) * t1->stride + x + 1] & (JPEG2000_T1_SIG_NB | JPEG2000_T1_VIS | JPEG2000_T1_SIG)) ||
+                   (t1->flags[(y0 + 3) * t1->stride + x + 1] & (JPEG2000_T1_SIG_NB | JPEG2000_T1_VIS | JPEG2000_T1_SIG)) ||
+                   (t1->flags[(y0 + 4) * t1->stride + x + 1] & (JPEG2000_T1_SIG_NB | JPEG2000_T1_VIS | JPEG2000_T1_SIG) & flags_mask))) {
+-                if (!ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + MQC_CX_RL))
++                if (!ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + MQC_CX_RL))
+                     continue;
+-                runlen = ff_mqc_decode(&t1->mqc,
++                runlen = ff_mqc_decode_inline(&t1->mqc,
+                                        t1->mqc.cx_states + MQC_CX_UNI);
+-                runlen = (runlen << 1) | ff_mqc_decode(&t1->mqc,
++                runlen = (runlen << 1) | ff_mqc_decode_inline(&t1->mqc,
+                                                        t1->mqc.cx_states +
+                                                        MQC_CX_UNI);
+                 dec = 1;
+@@ -1984,7 +1984,7 @@ static void decode_clnpass(const Jpeg2000DecoderContext *s, Jpeg2000T1Context *t
+                     flags_mask &= ~(JPEG2000_T1_SIG_S | JPEG2000_T1_SIG_SW | JPEG2000_T1_SIG_SE | JPEG2000_T1_SGN_S);
+                 if (!dec) {
+                     if (!(t1->flags[(y+1) * t1->stride + x+1] & (JPEG2000_T1_SIG | JPEG2000_T1_VIS))) {
+-                        dec = ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ff_jpeg2000_getsigctxno(t1->flags[(y+1) * t1->stride + x+1] & flags_mask,
++                        dec = ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + ff_jpeg2000_getsigctxno(t1->flags[(y+1) * t1->stride + x+1] & flags_mask,
+                                                                                              bandno));
+                     }
+                 }
+@@ -1992,7 +1992,7 @@ static void decode_clnpass(const Jpeg2000DecoderContext *s, Jpeg2000T1Context *t
+                     int xorbit;
+                     int ctxno = ff_jpeg2000_getsgnctxno(t1->flags[(y + 1) * t1->stride + x + 1] & flags_mask,
+                                                         &xorbit);
+-                    t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + ctxno) ^ xorbit) << 31;
++                    t1->data[(y) * t1->stride + x] |= (uint32_t)(ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + ctxno) ^ xorbit) << 31;
+                     t1->data[(y) * t1->stride + x] |= mask;
+                     ff_jpeg2000_set_significance(t1, x, y, t1->data[(y) * t1->stride + x] & INT32_MIN);
+                 }
+@@ -2003,10 +2003,10 @@ static void decode_clnpass(const Jpeg2000DecoderContext *s, Jpeg2000T1Context *t
+     }
+     if (seg_symbols) {
+         int val;
+-        val = ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + MQC_CX_UNI);
+-        val = (val << 1) + ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + MQC_CX_UNI);
+-        val = (val << 1) + ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + MQC_CX_UNI);
+-        val = (val << 1) + ff_mqc_decode(&t1->mqc, t1->mqc.cx_states + MQC_CX_UNI);
++        val = ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + MQC_CX_UNI);
++        val = (val << 1) + ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + MQC_CX_UNI);
++        val = (val << 1) + ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + MQC_CX_UNI);
++        val = (val << 1) + ff_mqc_decode_inline(&t1->mqc, t1->mqc.cx_states + MQC_CX_UNI);
+         if (val != 0xa)
+             av_log(s->avctx, AV_LOG_ERROR,
+                    "Segmentation symbol value incorrect\n");
+diff --git a/libavcodec/jpeg2000dwt.c b/libavcodec/jpeg2000dwt.c
+index 9ee8122..46d5a24 100644
+--- a/libavcodec/jpeg2000dwt.c
++++ b/libavcodec/jpeg2000dwt.c
+@@ -25,6 +25,8 @@
+  * Discrete wavelet transform
+  */
+ 
++#include <string.h>
++
+ #include "libavutil/error.h"
+ #include "libavutil/macros.h"
+ #include "libavutil/mem.h"
+@@ -400,6 +402,77 @@ static void sr_1d97_float(float *p, int i0, int i1)
+         p[2 * i + 1] += F_LFTG_ALPHA * (p[2 * i]     + p[2 * i + 2]);
+ }
+ 
++/* The loops below are written to be vectorized; GCC only does that for loops
++ * of unknown length from -O3 on. */
++#if defined(__GNUC__) && !defined(__clang__)
++#define DWT_VECTORIZE __attribute__((optimize("O3")))
++#else
++#define DWT_VECTORIZE
++#endif
++
++/**
++ * sr_1d97_float() on FF_DWT_BLOCK columns at once: p[i * FF_DWT_BLOCK + c] is
++ * sample i of column c. Every column sees the same operations in the same
++ * order as in sr_1d97_float(), so the results are identical; the loops over c
++ * run over neighbouring memory and vectorize.
++ * Only for i1 - i0 >= 5 (the extension reads up to four samples inwards).
++ */
++static DWT_VECTORIZE void sr_1d97_float_block(float *p, int i0, int i1, int n)
++{
++    int i, c;
++
++    for (i = 1; i <= 4; i++) {
++        memcpy(p + (i0 - i) * FF_DWT_BLOCK,     p + (i0 + i) * FF_DWT_BLOCK,     n * sizeof(*p));
++        memcpy(p + (i1 + i - 1) * FF_DWT_BLOCK, p + (i1 - i - 1) * FF_DWT_BLOCK, n * sizeof(*p));
++    }
++
++#define LIFT(first, last, target, OP, K)                                      \
++    for (i = (first); i < (last); i++) {                                      \
++        float *d       = p + (2 * i + (target)) * FF_DWT_BLOCK;               \
++        const float *a = d - FF_DWT_BLOCK;                                    \
++        const float *b = d + FF_DWT_BLOCK;                                    \
++        for (c = 0; c < n; c++)                                               \
++            d[c] OP K * (a[c] + b[c]);                                        \
++    }
++
++    LIFT((i0 >> 1) - 1, (i1 >> 1) + 2, 0, -=, F_LFTG_DELTA)
++    LIFT((i0 >> 1) - 1, (i1 >> 1) + 1, 1, -=, F_LFTG_GAMMA)
++    LIFT((i0 >> 1),     (i1 >> 1) + 1, 0, +=, F_LFTG_BETA)
++    LIFT((i0 >> 1),     (i1 >> 1),     1, +=, F_LFTG_ALPHA)
++#undef LIFT
++}
++
++/**
++ * sr_1d97_float() with the even samples (low band) in e[] and the odd ones
++ * (high band) in o[]: p[2 * i] is e[i], p[2 * i + 1] is o[i]. That is how the
++ * coefficients lie in the picture anyway, and the lifting steps run over
++ * neighbouring memory. Same operations in the same order as sr_1d97_float().
++ * Only for i1 - i0 >= 5.
++ */
++static inline float *split_sample(float *e, float *o, int x)
++{
++    return (x & 1) ? o + (x - 1) / 2 : e + x / 2;
++}
++
++static DWT_VECTORIZE void sr_1d97_float_split(float *e, float *o, int i0, int i1)
++{
++    int i;
++
++    for (i = 1; i <= 4; i++) {
++        *split_sample(e, o, i0 - i)     = *split_sample(e, o, i0 + i);
++        *split_sample(e, o, i1 + i - 1) = *split_sample(e, o, i1 - i - 1);
++    }
++
++    for (i = (i0 >> 1) - 1; i < (i1 >> 1) + 2; i++)
++        e[i] -= F_LFTG_DELTA * (o[i - 1] + o[i]);
++    for (i = (i0 >> 1) - 1; i < (i1 >> 1) + 1; i++)
++        o[i] -= F_LFTG_GAMMA * (e[i] + e[i + 1]);
++    for (i = (i0 >> 1); i < (i1 >> 1) + 1; i++)
++        e[i] += F_LFTG_BETA  * (o[i - 1] + o[i]);
++    for (i = (i0 >> 1); i < (i1 >> 1); i++)
++        o[i] += F_LFTG_ALPHA * (e[i] + e[i + 1]);
++}
++
+ static void dwt_decode97_float(DWTContext *s, float *t)
+ {
+     int lev;
+@@ -417,6 +490,35 @@ static void dwt_decode97_float(DWTContext *s, float *t)
+             lp;
+         float *l;
+         // HOR_SD
++        if (lh >= 16 && s->f_blockbuf) {
++            /* the row holds the low band, then the high band: lift them where
++             * they are instead of interleaving first */
++            int nl   = (lh - mh + 1) >> 1;   // low band samples, at p[2 * mh], p[2 * mh + 2] ...
++            int nh   = lh - nl;              // high band samples, at p[1], p[3] ...
++            float *e = s->f_blockbuf + 8;
++            float *o = e + nl + mh + 16;
++            for (lp = 0; lp < lv; lp++) {
++                float *row = data + w * lp;
++                int i;
++                memcpy(e + mh, row,      nl * sizeof(*row));
++                memcpy(o,      row + nl, nh * sizeof(*row));
++
++                sr_1d97_float_split(e, o, mh, mh + lh);
++
++                // row[i] = p[mh + i]
++                if (mh) {
++                    for (i = 0; i < nh; i++)
++                        row[2 * i] = o[i];
++                    for (i = 0; i < nl; i++)
++                        row[2 * i + 1] = e[i + 1];
++                } else {
++                    for (i = 0; i < nl; i++)
++                        row[2 * i] = e[i];
++                    for (i = 0; i < nh; i++)
++                        row[2 * i + 1] = o[i];
++                }
++            }
++        } else {
+         l = line + mh;
+         for (lp = 0; lp < lv; lp++) {
+             int i, j = 0;
+@@ -431,8 +533,31 @@ static void dwt_decode97_float(DWTContext *s, float *t)
+             for (i = 0; i < lh; i++)
+                 data[w * lp + i] = l[i];
+         }
++        }
+ 
+         // VER_SD
++        if (lv >= 16 && s->f_blockbuf) {
++            /* FF_DWT_BLOCK columns at a time, held as rows of a small block:
++             * walking down a single column of a wide picture misses the cache
++             * at every sample */
++            float *blk = s->f_blockbuf + 5 * FF_DWT_BLOCK;
++            float *lb  = blk + mv * FF_DWT_BLOCK;
++            for (lp = 0; lp < lh; lp += FF_DWT_BLOCK) {
++                int n = FFMIN(FF_DWT_BLOCK, lh - lp);
++                int i, j = 0;
++                // copy with interleaving
++                for (i = mv; i < lv; i += 2, j++)
++                    memcpy(lb + i * FF_DWT_BLOCK, data + w * j + lp, n * sizeof(*data));
++                for (i = 1 - mv; i < lv; i += 2, j++)
++                    memcpy(lb + i * FF_DWT_BLOCK, data + w * j + lp, n * sizeof(*data));
++
++                sr_1d97_float_block(blk, mv, mv + lv, n);
++
++                for (i = 0; i < lv; i++)
++                    memcpy(data + w * i + lp, lb + i * FF_DWT_BLOCK, n * sizeof(*data));
++            }
++            continue;
++        }
+         l = line + mv;
+         for (lp = 0; lp < lh; lp++) {
+             int i, j = 0;
+@@ -563,6 +688,8 @@ int ff_jpeg2000_dwt_init(DWTContext *s, int border[2][2],
+         s->f_linebuf = av_malloc_array((maxlen + 12), sizeof(*s->f_linebuf));
+         if (!s->f_linebuf)
+             return AVERROR(ENOMEM);
++        /* optional: without it the vertical pass goes column by column */
++        s->f_blockbuf = av_malloc_array((maxlen + 12), FF_DWT_BLOCK * sizeof(*s->f_blockbuf));
+         break;
+      case FF_DWT97_INT:
+         s->i_linebuf = av_malloc_array((maxlen + 12), sizeof(*s->i_linebuf));
+@@ -622,5 +749,6 @@ int ff_dwt_decode(DWTContext *s, void *t)
+ void ff_dwt_destroy(DWTContext *s)
+ {
+     av_freep(&s->f_linebuf);
++    av_freep(&s->f_blockbuf);
+     av_freep(&s->i_linebuf);
+ }
+diff --git a/libavcodec/jpeg2000dwt.h b/libavcodec/jpeg2000dwt.h
+index 62f0548..faa91ae 100644
+--- a/libavcodec/jpeg2000dwt.h
++++ b/libavcodec/jpeg2000dwt.h
+@@ -41,6 +41,9 @@ enum DWTType {
+     FF_DWT_NB
+ };
+ 
++/// columns the vertical pass of the inverse 9/7 float transform handles together
++#define FF_DWT_BLOCK 32
++
+ typedef struct DWTContext {
+     /// line lengths { horizontal, vertical } in consecutive decomposition levels
+     int linelen[FF_DWT_MAX_DECLVLS][2];
+@@ -49,6 +52,7 @@ typedef struct DWTContext {
+     uint8_t type;                        ///< 0 for 9/7; 1 for 5/3
+     int32_t *i_linebuf;                  ///< int buffer used by transform
+     float   *f_linebuf;                  ///< float buffer used by transform
++    float   *f_blockbuf;                 ///< float buffer for FF_DWT_BLOCK columns at a time (vertical pass)
+ } DWTContext;
+ 
+ /**
+diff --git a/libavcodec/mqc.h b/libavcodec/mqc.h
+index 5e782b0..1489fc8 100644
+--- a/libavcodec/mqc.h
++++ b/libavcodec/mqc.h
+@@ -76,6 +76,75 @@ void ff_mqc_initdec(MqcState *mqc, uint8_t *bp, int raw, int reset);
+  */
+ int ff_mqc_decode(MqcState *mqc, uint8_t *cxstate);
+ 
++/**
++ * ff_mqc_decode() for inlining into the coding passes of the JPEG 2000
++ * decoder, where it is called once per decoded bit. Same operations as in
++ * mqcdec.c.
++ */
++static inline void ff_mqc_bytein_inline(MqcState *mqc)
++{
++    if (*mqc->bp == 0xff) {
++        if (*(mqc->bp + 1) > 0x8f)
++            mqc->c++;
++        else {
++            mqc->bp++;
++            mqc->c += 2 + 0xfe00 - (*mqc->bp << 9);
++        }
++    } else {
++        mqc->bp++;
++        mqc->c += 1 + 0xff00 - (*mqc->bp << 8);
++    }
++}
++
++static inline int ff_mqc_exchange_inline(MqcState *mqc, uint8_t *cxstate, int lps)
++{
++    int d;
++    if ((mqc->a < ff_mqc_qe[*cxstate]) ^ (!lps)) {
++        if (lps)
++            mqc->a = ff_mqc_qe[*cxstate];
++        d = *cxstate & 1;
++        *cxstate = ff_mqc_nmps[*cxstate];
++    } else {
++        if (lps)
++            mqc->a = ff_mqc_qe[*cxstate];
++        d = 1 - (*cxstate & 1);
++        *cxstate = ff_mqc_nlps[*cxstate];
++    }
++    // do RENORMD: see ISO/IEC 15444-1:2002 §C.3.3
++    do {
++        if (!(mqc->c & 0xff)) {
++            mqc->c -= 0x100;
++            ff_mqc_bytein_inline(mqc);
++        }
++        mqc->a += mqc->a;
++        mqc->c += mqc->c;
++    } while (!(mqc->a & 0x8000));
++    return d;
++}
++
++static inline int ff_mqc_decode_inline(MqcState *mqc, uint8_t *cxstate)
++{
++    if (mqc->raw) {
++        int bit = !(mqc->c & 0x40000000);
++        if (!(mqc->c & 0xff)) {
++            mqc->c -= 0x100;
++            ff_mqc_bytein_inline(mqc);
++        }
++        mqc->c += mqc->c;
++        return bit;
++    }
++    mqc->a -= ff_mqc_qe[*cxstate];
++    if ((mqc->c >> 16) < mqc->a) {
++        if (mqc->a & 0x8000)
++            return *cxstate & 1;
++        else
++            return ff_mqc_exchange_inline(mqc, cxstate, 0);
++    } else {
++        mqc->c -= mqc->a << 16;
++        return ff_mqc_exchange_inline(mqc, cxstate, 1);
++    }
++}
++
+ /* common */
+ 
+ /**

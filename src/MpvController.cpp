@@ -681,6 +681,16 @@ void MpvController::loadFileNow(const QString &url, const QVariantMap &options)
     if (m_fileMvc)
         fileOptions.insert(QStringLiteral("demuxer"), QStringLiteral("lavf"));
     m_mvcDemuxer = m_fileMvc;
+    // Angehalten laden und erst loslaufen, wenn das erste Bild steht (MPV_EVENT_PLAYBACK_RESTART):
+    // Decoder, Filter und Shader sind dann eingerichtet. Sonst verwirft mpv die ersten Bilder,
+    // weil der Ton schon läuft – bei 60 Bildern je Sekunde ein halbes Dutzend, bei JPEG 2000 mehr.
+    // Nicht für Disc-Menüs und Video-CD: dort führt die Navigation die Pause.
+    m_primedStart = false;
+    if ((m_sourceKind == QLatin1String("file") || m_sourceKind == QLatin1String("dcp")) && !fileOptions.contains(QStringLiteral("pause"))
+        && !m_paused && !qEnvironmentVariableIsSet("LUMEN_NO_PRIMED_START")) {
+        fileOptions.insert(QStringLiteral("pause"), QStringLiteral("yes"));
+        m_primedStart = true;
+    }
     // Benannte Argumente: unabhängig von der loadfile-Signatur der mpv-Version
     QByteArray bUrl = url.toUtf8();
     QByteArray bName("loadfile"), bFlags("replace");
@@ -1911,7 +1921,7 @@ void MpvController::tuneTick()
         qWarning().noquote() << QStringLiteral("Lumen: perf pos=%1 fps=%2 verworfen=%3 decoder=%4 verspaetet=%5 falscher-takt=%6 hwdec=%7 render=%8ms stufen=%9/%10 %11x%12")
                                     .arg(m_position, 0, 'f', 1)
                                     .arg(m_containerFps, 0, 'f', 2)
-                                    .arg(m_vo_drops)
+                                    .arg(m_vo_drops - m_dropBase)
                                     .arg(m_dec_drops)
                                     .arg(s.delayed)
                                     .arg(m_mistimedFrames)
@@ -1975,6 +1985,7 @@ void MpvController::handleEvent(mpv_event *ev)
         break;
     }
     case MPV_EVENT_END_FILE: {
+        m_primedStart = false;
         auto *e = static_cast<mpv_event_end_file *>(ev->data);
         if (e->reason == MPV_END_FILE_REASON_ERROR) {
             QString msg = LTR("Wiedergabe fehlgeschlagen: %1").arg(QString::fromUtf8(mpv_error_string(e->error)));
@@ -2001,6 +2012,7 @@ void MpvController::handleEvent(mpv_event *ev)
     }
     case MPV_EVENT_FILE_LOADED:
         m_vo_drops = m_dec_drops = 0;
+        m_dropBase = 0;
         m_matchedFps = 0;
         m_hdrState = -1;
         // VCD-Steuerung: die Pause, die keep-open am Ende des vorigen Elements setzt, kann erst nach
@@ -2008,10 +2020,40 @@ void MpvController::handleEvent(mpv_event *ev)
         if (m_vcd && m_vcd->active())
             setOptionRaw(QStringLiteral("pause"), false, false);
         holdGovernor(5);
+        m_loadedAt = m_clock.elapsed();
         // 3D-Erkennung, sobald die Spurliste der neuen Datei da ist (rebuildTracks)
         m_detectWanted = true;
         tryStereoDetection();
         emit fileLoaded();
+        break;
+    case MPV_EVENT_PLAYBACK_RESTART:
+        if (m_primedStart) {
+            m_primedStart = false;
+            // Das erste Bild ist an den Renderer übergeben. Ihm Zeit zum Zeichnen lassen – und dem
+            // Decoder so lange, wie er für das erste Bild gebraucht hat: Ein Software-Decoder mit
+            // vielen Threads (JPEG 2000 in 4K: eine halbe Sekunde je Bild) hat die nächsten Bilder
+            // in Arbeit; liefe die Uhr sofort los, kämen sie alle zu spät.
+            // (Ob in Hardware dekodiert wird, meldet mpv erst kurz danach: nach 60 ms nachsehen.)
+            const qint64 firstFrame = m_clock.elapsed() - m_loadedAt;
+            QTimer::singleShot(60, this, [this, firstFrame] {
+                const bool software = m_hwdec.isEmpty() || m_hwdec == QLatin1String("no");
+                const int more = software ? int(std::clamp<qint64>(firstFrame, 60, 1500)) - 60 : 0;
+                if (qEnvironmentVariableIsSet("LUMEN_PERF_LOG"))
+                    qWarning().noquote() << "Lumen: perf start: erstes Bild nach" << firstFrame << "ms, warte" << 60 + more << "ms";
+                QTimer::singleShot(more, this, [this] {
+                    if (!m_mpv || m_idle)
+                        return;
+                    // Gezählt wird ab jetzt: Was mpv beim Einrichten (erstes Bild, Shader) als
+                    // verworfen führt, hat niemand vermisst
+                    m_dropBase = m_vo_drops + m_dec_drops;
+                    if (m_droppedFrames != 0) {
+                        m_droppedFrames = 0;
+                        emit droppedFramesChanged();
+                    }
+                    setOptionRaw(QStringLiteral("pause"), false, false);
+                });
+            });
+        }
         break;
     case MPV_EVENT_SHUTDOWN:
         // Player-Fenster wurde geschlossen -> ganze App beenden
@@ -2191,8 +2233,9 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     case P_DECDROPS: {
         const int v = int(std::max<qint64>(0, i64(0)));
         (PropId(id) == P_VODROPS ? m_vo_drops : m_dec_drops) = v;
-        if (m_vo_drops + m_dec_drops != m_droppedFrames) {
-            m_droppedFrames = m_vo_drops + m_dec_drops;
+        const int shown = std::max(0, m_vo_drops + m_dec_drops - m_dropBase);
+        if (shown != m_droppedFrames) {
+            m_droppedFrames = shown;
             emit droppedFramesChanged();
         }
         break;

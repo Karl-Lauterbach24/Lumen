@@ -347,6 +347,7 @@ private:
     int m_droppedFrames = 0;
     int m_vo_drops = 0;
     int m_dec_drops = 0;
+    int m_dropBase = 0;            // Stand der Zähler beim eigentlichen Start der Wiedergabe
     bool m_eof = false;
     QVariantList m_queue;
     int m_queueIndex = -1;
@@ -413,6 +414,8 @@ private:
     bool m_stereoAuto = true;
     QString m_stereoSource;      // woran erkannt: metadata | name | picture | size | mvc
     bool m_fileMvc = false;      // Datei mit zwei Ansichten wird mit beiden dekodiert
+    qint64 m_loadedAt = 0;       // Zeitpunkt von "Datei geladen" (m_clock, ms)
+    bool m_primedStart = false;  // Datei wurde angehalten geladen und läuft nach dem ersten Bild los
     bool m_mvcStream = false;    // der Videostrom der Datei ist H.264/MVC (auch wenn nur eine Ansicht läuft)
     bool m_mvcDemuxer = false;   // die laufende Datei wurde dafür mit FFmpegs Demuxer geladen
     bool m_detectWanted = false; // Datei geladen, wartet auf die Spurliste

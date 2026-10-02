@@ -2,7 +2,8 @@
 # Builds the media libraries Lumen ships, from the same pinned sources on every platform:
 #
 #   x264        H.264 encoder (casting)
-#   FFmpeg-mvc  FFmpeg fork with the H.264/MVC decoder (Blu-ray 3D)
+#   FFmpeg-mvc  FFmpeg fork with the H.264/MVC decoder (Blu-ray 3D), with Lumen's patches:
+#               faster JPEG 2000 decoding (DCP), same output bit for bit
 #   mpv         libmpv, linked against that FFmpeg, with Lumen's patches (tools/patches):
 #               audio tap on the timed null output, used for casting; scaler weight table
 #               without uninitialized padding (black picture with software OpenGL)
@@ -130,6 +131,12 @@ fi
 if want ffmpeg; then
     echo "=== FFmpeg-mvc ($FFMPEG_REF)"
     src="$(checkout ffmpeg "$FFMPEG_REPO" "$FFMPEG_REF")"
+    # Lumen's changes to FFmpeg (tools/patches/ffmpeg-*.patch), always on a clean tree
+    git -C "$src" checkout -q -f HEAD -- .
+    for patch in "$HERE"/tools/patches/ffmpeg-*.patch; do
+        git -C "$src" apply "$patch"
+        echo "applied: $(basename "$patch")"
+    done
     mkdir -p "$SRCROOT/ffmpeg-build"
     cd "$SRCROOT/ffmpeg-build"
     # Built-in decoders cover Blu-ray, DVD, VCD and DCP (H.264/MVC, HEVC, VC-1, MPEG-2, JPEG 2000,
