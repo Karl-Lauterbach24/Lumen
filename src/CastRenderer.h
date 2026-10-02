@@ -25,6 +25,15 @@ public:
     // Muss vor mpv_terminate_destroy() aufgerufen werden
     void releaseRenderContext();
 
+    // Entwickler-Hilfe und Tests (LUMEN_CAST_DEBUG): Zähler über die gerenderten Bilder
+    struct DebugStats
+    {
+        int frames = 0; // gerenderte Bilder
+        int lit = 0;    // Bilder mit mindestens einem hellen Bildpunkt
+        int errors = 0; // Fehler von mpv_render_context_render()
+    };
+    const DebugStats &debugStats() const { return m_stats; }
+
 private slots:
     void onMpvUpdate();
 
@@ -42,4 +51,5 @@ private:
     bool m_warned = false;
     bool m_debug = qEnvironmentVariableIsSet("LUMEN_CAST_DEBUG");
     int m_count = 0;
+    DebugStats m_stats;
 };

@@ -106,7 +106,7 @@ void CastRenderer::onMpvUpdate()
         {MPV_RENDER_PARAM_FLIP_Y, &flipY},
         {MPV_RENDER_PARAM_INVALID, nullptr},
     };
-    mpv_render_context_render(m_ctx, params);
+    const int renderResult = mpv_render_context_render(m_ctx, params);
 
     QByteArray rgba(m_size.width() * m_size.height() * 4, Qt::Uninitialized);
     QOpenGLFunctions *f = m_gl.functions();
@@ -116,6 +116,17 @@ void CastRenderer::onMpvUpdate()
     if (const GLenum glError = f->glGetError(); glError != GL_NO_ERROR && !m_warned) {
         m_warned = true;
         qWarning("Lumen: OpenGL-Fehler 0x%x beim Auslesen des Bildes für die Übertragung", glError);
+    }
+    if (m_debug) {
+        // Zähler für Tests: Hat das Bild überhaupt helle Punkte?
+        const uchar *p = reinterpret_cast<const uchar *>(rgba.constData());
+        bool lit = false;
+        for (int y = 0; y < m_size.height() && !lit; y += 3)
+            for (int x = 0; x < m_size.width() && !lit; x += 3)
+                lit = p[(y * m_size.width() + x) * 4] > 100;
+        ++m_stats.frames;
+        m_stats.lit += lit;
+        m_stats.errors += renderResult < 0;
     }
     mpv_render_context_report_swap(m_ctx);
     m_gl.doneCurrent();

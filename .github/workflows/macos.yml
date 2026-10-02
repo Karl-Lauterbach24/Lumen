@@ -153,6 +153,8 @@ jobs:
                  -f lavfi -i "color=c=black:s=640x360:r=30,drawbox=x=0:y=0:w=80:h=45:c=white:t=fill,drawbox=c=white:t=fill:enable='lt(mod(t\,1)\,0.1)'" \
                  -f lavfi -i "aevalsrc='0.5*sin(2*PI*1000*t)*lt(mod(t\,1)\,0.1)':s=48000:c=stereo" \
                  -t 20 -c:v libx264 -g 30 -pix_fmt yuv420p -c:a aac build/tests/sync.mp4
+          # der Renderer allein, viele kurze Sitzungen: findet Fehler, die nur manchmal auftreten
+          build/cast_test --rendercheck build/tests/sync.mp4 24 2>/dev/null
           # die CI-Maschine hat keine Grafikkarte (OpenGL rechnet die CPU): kleines Bild, beim Zeitverhalten
           # zählt der Mittelwert
           export LUMEN_CAST_SIZE=640x360 LUMEN_CAST_TEST_SOFTWARE_GL=1 LUMEN_CAST_DEBUG=1 LUMEN_MPV_LOGFILE="$PWD/build/tests/cast-mpv.log"
