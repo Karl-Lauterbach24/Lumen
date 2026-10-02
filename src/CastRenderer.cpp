@@ -125,8 +125,17 @@ void CastRenderer::onMpvUpdate()
             const uchar *p = reinterpret_cast<const uchar *>(rgba.constData()) + (y * m_size.width() + x) * 4;
             return QStringLiteral("%1,%2,%3,%4").arg(p[0]).arg(p[1]).arg(p[2]).arg(p[3]);
         };
-        std::fprintf(stderr, "Lumen: Bild %d Mitte rgba=%s oben links rgba=%s\n", m_count,
-                 qPrintable(px(m_size.width() / 2, m_size.height() / 2)), qPrintable(px(m_size.width() / 32, m_size.height() / 32)));
+        auto prop = [&](const char *name) {
+            char *v = mpv_get_property_string(m_mpv, name);
+            const QByteArray text(v ? v : "-");
+            mpv_free(v);
+            return text;
+        };
+        std::fprintf(stderr, "Lumen: Bild %d Mitte rgba=%s oben links rgba=%s | mpv: pos=%s vo=%s out=%sx%s nr=%s drop=%s pause=%s info=%d/%lld\n", m_count,
+                     qPrintable(px(m_size.width() / 2, m_size.height() / 2)), qPrintable(px(m_size.width() / 32, m_size.height() / 32)),
+                     prop("time-pos").constData(), prop("vo-configured").constData(), prop("video-out-params/w").constData(),
+                     prop("video-out-params/h").constData(), prop("estimated-frame-number").constData(),
+                     prop("frame-drop-count").constData(), prop("pause").constData(), int(info.flags), static_cast<long long>(info.target_time));
     }
     m_encoder->pushFrame(std::move(rgba), pts);
 }
