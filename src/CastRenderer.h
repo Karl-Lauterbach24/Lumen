@@ -25,17 +25,12 @@ public:
     // Muss vor mpv_terminate_destroy() aufgerufen werden
     void releaseRenderContext();
 
-    // Entwickler-Hilfe (LUMEN_CAST_DEBUG): Zähler über die gerenderten Bilder
+    // Entwickler-Hilfe und Tests (LUMEN_CAST_DEBUG): Zähler über die gerenderten Bilder
     struct DebugStats
     {
-        int frames = 0;      // gerenderte Bilder
-        int lit = 0;         // Bilder mit mindestens einem hellen Bildpunkt
-        int errors = 0;      // Fehler von mpv_render_context_render()
-        double firstMs = 0;  // Dauer des ersten Aufrufs
-        double maxMs = 0;    // längster Aufruf
-        int fboCheck = -1;   // eigener Probe-Anstrich des Framebuffers: 1 = kam an
-        QString first;       // Zustand beim ersten Bild
-        QString boxes;       // helle Bereiche der ersten Bilder
+        int frames = 0; // gerenderte Bilder
+        int lit = 0;    // Bilder mit mindestens einem hellen Bildpunkt
+        int errors = 0; // Fehler von mpv_render_context_render()
     };
     const DebugStats &debugStats() const { return m_stats; }
 
@@ -57,5 +52,4 @@ private:
     bool m_debug = qEnvironmentVariableIsSet("LUMEN_CAST_DEBUG");
     int m_count = 0;
     DebugStats m_stats;
-    QByteArray m_exp = qgetenv("LUMEN_CAST_EXP"); // vorübergehend: Varianten für die Fehlersuche
 };

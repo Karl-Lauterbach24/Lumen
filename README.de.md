@@ -285,8 +285,9 @@ Medienbibliotheken. Optional und automatisch aktiv, wenn gefunden: **OpenSSL ≥
 
 **Medienbibliotheken.** `tools/build_deps.sh` baut x264, FFmpeg-mvc und mpv (und libdvdnav 7, wo das System
 eine ältere hat) aus festgelegten Quellen nach `3rdparty/prefix`; CMake findet dieses Präfix von selbst. Die
-Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt eine kleine Änderung
-([`tools/patches`](tools/patches)): seine zeitgesteuerte Null-Tonausgabe kann die Samples zusätzlich in eine
+Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt zwei kleine Änderungen
+([`tools/patches`](tools/patches)): eine Korrektur an der Gewichtstabelle der Skalierer (uninitialisierte
+Füllwerte, mit OpenGL auf der CPU ein schwarzes Bild), und seine zeitgesteuerte Null-Tonausgabe kann die Samples zusätzlich in eine
 Pipe schreiben, mit dem Zeitpunkt, zu dem jeder Block gespielt wird. Das braucht die Übertragung; ein
 unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt.
 

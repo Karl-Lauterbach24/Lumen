@@ -1,6 +1,7 @@
 // Übertragung an Empfänger im Netz, mit echter mpv-Wiedergabe und Testgeräten:
 //
 //   cast_test <python> <tools/mock_cast_devices.py> <openssl> <sync.mp4>
+//   cast_test --rendercheck <sync.mp4> <runden>     nur der Renderer, viele kurze Sitzungen
 //
 // sync.mp4: jede Sekunde ein weißes Bild und gleichzeitig ein Ton, dazu dauerhaft eine weiße
 // Marke oben links (siehe CI-Schritt).
@@ -16,7 +17,6 @@
 
 #include <QDir>
 #include <QElapsedTimer>
-#include <QFile>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -344,12 +344,15 @@ int main(int argc, char **argv)
     QCoreApplication::setApplicationName(QStringLiteral("cast_test"));
     std::setlocale(LC_NUMERIC, "C");
     if (argc >= 4 && QByteArray(argv[1]) == "--rendercheck") {
-        // Fehlersuche: viele kurze Sitzungen nur mit mpv und dem Renderer (ohne Encoder, ohne Netz).
-        //   cast_test --rendercheck <sync.mp4> <runden> [mpv-option=wert ...] [late]
+        // Viele kurze Sitzungen nur mit mpv und dem Renderer (ohne Encoder, ohne Netz): In jedem
+        // Bild der Testdatei ist die Marke zu sehen. Findet Fehler, die nur manchmal auftreten -
+        // so fiel auf, dass mpv die Gewichtstabelle der Skalierer mit uninitialisierten Füllwerten
+        // hochlud (mit OpenGL auf der CPU: jede vierte Sitzung schwarz; tools/patches).
+        //   cast_test --rendercheck <sync.mp4> <runden> [mpv-option=wert ...]
         qputenv("LUMEN_CAST_DEBUG", "1");
         const QByteArray file = argv[2];
         const int rounds = QByteArray(argv[3]).toInt();
-        int black = 0, shown = 0;
+        int bad = 0;
         for (int r = 1; r <= rounds; ++r) {
             CastEncoder::Settings s;
             s.width = 640;
@@ -360,54 +363,29 @@ int main(int argc, char **argv)
             const QVariantMap castOpts = castMpvOptions(QString());
             for (auto it = castOpts.cbegin(); it != castOpts.cend(); ++it)
                 opts.insert(it.key(), it.value());
-            bool late = false;
             for (int i = 4; i < argc; ++i) {
                 const QByteArray a = argv[i];
-                if (a == "late")
-                    late = true;
-                else if (a.contains('='))
+                if (a.contains('='))
                     opts.insert(QString::fromUtf8(a.left(a.indexOf('='))), QString::fromUtf8(a.mid(a.indexOf('=') + 1)));
             }
-            const QString logFile = QDir::tempPath() + QStringLiteral("/lumen-rc.log");
-            opts.insert("log-file", logFile);
-            opts.insert("msg-level", "all=v");
             for (auto it = opts.cbegin(); it != opts.cend(); ++it)
                 mpv_set_option_string(mpv, it.key().toUtf8().constData(), it.value().toString().toUtf8().constData());
             mpv_initialize(mpv);
             auto *renderer = new CastRenderer(mpv, &encoder);
-            if (late)
-                waitFor([] { return false; }, 300);
             const char *cmd[] = {"loadfile", file.constData(), nullptr};
             mpv_command(mpv, cmd);
-            waitFor([] { return false; }, 2500);
+            waitFor([] { return false; }, 2000);
             const CastRenderer::DebugStats st = renderer->debugStats();
-            const bool isBlack = st.lit < st.frames;
-            black += isBlack;
-            std::printf("RC %2d %s bilder=%d hell=%d fehler=%d erstes=%.0fms max=%.0fms probe=%d\n", r, isBlack ? "SCHWARZ" : "gut", st.frames,
-                        st.lit, st.errors, st.firstMs, st.maxMs, st.fboCheck);
-            const bool show = (isBlack && black <= 3) || (!isBlack && shown++ == 0);
-            if (show)
-                std::printf("RC   %s\nRC    %s\n", qPrintable(st.boxes), qPrintable(st.first.left(160)));
+            const bool ok = st.frames > 10 && st.lit == st.frames && st.errors == 0;
+            bad += !ok;
+            std::printf("     Sitzung %2d: %d Bilder, %d mit Inhalt, %d Fehler%s\n", r, st.frames, st.lit, st.errors, ok ? "" : "  <- FEHLER");
             std::fflush(stdout);
             renderer->releaseRenderContext();
             mpv_terminate_destroy(mpv);
             delete renderer;
-            QFile lf(logFile);
-            if (show && lf.open(QIODevice::ReadOnly)) {
-                int n = 0;
-                while (!lf.atEnd() && n < 14) {
-                    const QByteArray line = lf.readLine().trimmed();
-                    if (line.contains("Window size") || line.contains("Video source") || line.contains("Video display") || line.contains("Video scale")
-                        || line.contains("OSD borders") || line.contains("reconfig to")) {
-                        std::printf("RC    %s\n", line.left(150).constData());
-                        ++n;
-                    }
-                }
-            }
-            QFile::remove(logFile);
         }
-        std::printf("RCSUM %d von %d schwarz\n", black, rounds);
-        return 0;
+        check(bad == 0, QStringLiteral("Renderer: Bildinhalt in allen %1 Sitzungen (%2 ohne)").arg(rounds).arg(bad));
+        return bad ? 1 : 0;
     }
     if (argc < 5) {
         std::fprintf(stderr, "cast_test <python> <mock_cast_devices.py> <openssl> <sync.mp4>\n");
