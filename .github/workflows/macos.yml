@@ -158,11 +158,12 @@ jobs:
           export LUMEN_CAST_SIZE=640x360 LUMEN_CAST_TEST_SOFTWARE_GL=1 LUMEN_MPV_LOGFILE="$PWD/build/tests/cast-mpv.log"
           rc=0
           build/cast_test python3 tools/mock_cast_devices.py "$(brew --prefix openssl@3)/bin/openssl" build/tests/sync.mp4 > build/tests/cast.txt 2>&1 || rc=$?
-          grep -E "^(OK|FAIL|INFO) |Blitze|Toene|BESTANDEN|FEHLGESCHLAGEN" build/tests/cast.txt
           if grep -q "^FAIL" build/tests/cast.txt && [ -f build/tests/cast-mpv.log ]; then
-            echo "--- mpv (Renderer, Fehler, verworfene Bilder)"
-            { grep -iE "libmpv|GL_|error|fail|drop|late|desync" build/tests/cast-mpv.log || true; } | head -40 || true
+            echo "--- mpv (Renderer, verworfene Bilder)"
+            { grep -iE "GL_RENDERER|software renderer|drop|desync" build/tests/cast-mpv.log || true; } | cut -c1-200 | head -8 || true
           fi
+          # das Ergebnis zuletzt: das Ende dieses Protokolls wird bei einem Fehler als Annotation gezeigt
+          grep -E "^(FAIL|INFO) |Blitze|Toene|Bild:|Ton:|BESTANDEN|FEHLGESCHLAGEN" build/tests/cast.txt
           grep -q BESTANDEN build/tests/cast.txt && [ "$rc" -eq 0 ]
 
       - name: "Test: Video-CD-Menüs (PBC, mit vcdxbuild erstellt)"
