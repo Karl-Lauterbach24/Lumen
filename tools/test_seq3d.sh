@@ -49,3 +49,15 @@ check "trigger box: white for L, else black" "255,255 128,0 255,255 128,0" sbsl 
 check "box with sync pictures"               "255,255 76,0 128,0 76,0 255,255" sbsl 240 LSRS box=tl size=20
 check "right eye first in the source"        "128,128 255,255 128,128" sbsr 120 LR
 [ "$fail" = 0 ] && echo "PASSED" || { echo "FAILED"; exit 1; }
+
+# The other 3D and playback tests that need no window ride along here, because the CI workflows
+# already call this script: automatic 3D detection (tools/test_stereodetect.sh) and the adaptation
+# to the machine (tuning_test).
+HERE="$(cd "$(dirname "$0")" && pwd)"
+if [ -x "$BUILD/stereodetect_test" ] || [ -x "$BUILD/stereodetect_test.exe" ]; then
+    "$HERE/test_stereodetect.sh" "$BUILD" "$WORK/../stereodetect"
+fi
+if [ -x "$BUILD/tuning_test" ] || [ -x "$BUILD/tuning_test.exe" ]; then
+    "$BUILD/tuning_test" | grep -vE "^OK" || true
+    "$BUILD/tuning_test" > /dev/null
+fi

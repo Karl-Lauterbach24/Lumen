@@ -153,7 +153,7 @@ Doku und Beispiele: [plugins/README.md](plugins/README.md) (englisch).
 | Transport | Play/Pause, Stopp, ±10 s/±60 s, Kapitel, Einzelbild vor/zurück, A-B-Schleife, Geschwindigkeit, Scrubbing mit Kapitelmarken, Screenshot, **Vorführprogramm** (Werbung, Trailer, Hauptfilm nacheinander) |
 | Ton | Spurwahl, Bitstream (TrueHD/Atmos, DTS-HD MA/DTS:X, DD+, DD), WASAPI exklusiv, Kanal-Layout, Audio-Verzögerung; **Kino-Fader** (Dolby-Skala, 7,0 = Referenz) und **DCP-Kanalbelegung** (5.1, 7.1 DS, HI, VI-N) |
 | Untertitel | Spurwahl (PGS/SRT/ASS/VobSub/DCP), nur erzwungene, Verzögerung, Größe, Position (Cinemascope-Leinwand) |
-| Bild | Seitenverhältnis, Pan & Scan, Zoom, Helligkeit/Kontrast/Sättigung/Gamma, Deinterlacing, 3D-Quellformat für Dateien |
+| Bild | Seitenverhältnis, Pan & Scan, Zoom, Helligkeit/Kontrast/Sättigung/Gamma, automatisches Deinterlacing, **automatische 3D-Erkennung für Dateien** (Side-by-Side, Top-and-Bottom, MVC in MKV) oder ein von Hand gewähltes Format |
 | Ausgabeprofile | Zielgerät, Vollbild, Bildraten-Anpassung, System-HDR automatisch, HDR-Passthrough oder Tonemapping, **Referenz-Skalierung** (EWA Lanczos 4, Error Diffusion, HDR-Kontrastrückgewinnung), **Kalibrierung** (System-/eigenes ICC-Profil, 3D-LUT `.cube`, nativer Kontrast, Dither-Tiefe, GLSL-Shader), Sync, 3D-Ausgabeformat, Audiogerät, Experten-Optionen |
 
 Vorlagen: *Desktop*, *1080p DLP 3D-Beamer* (Half-SBS), *1080p DLP 3D-Beamer (Frame Packing)*,
@@ -235,6 +235,60 @@ libbluray bd_open_file_dec() ─ abhängige Ansicht (0x1012) ─┘   (je Bild p
   stehen im Ausgabeprofil. Die Bildfolgen sind getestet; **ob eine Brille darauf einrastet, ist nicht
   getestet**, und ein einziges ausgelassenes Bild vertauscht die Augen.
 
+## 3D-Dateien
+
+Lumen stellt selbst fest, ob eine Datei 3D ist und wie die beiden Augen angeordnet sind (Reiter *Bild*,
+3D-Quelle *Automatisch*). Vier Quellen, in dieser Reihenfolge:
+
+1. **Was die Datei sagt:** Matroska `StereoMode`, MP4 `st3d`, H.264-SEI zum Frame Packing, von mpv gelesen.
+2. **Der Dateiname:** `3D`, `SBS`, `H-SBS`, `Half-SBS`, `FSBS`, `TAB`, `HTAB`, `OU`, `H-OU`, `Over-Under`,
+   `Top-and-Bottom`, `RL` (rechtes Auge zuerst). `SBS` allein ist auch ein Sendername; ohne `3D` oder
+   Größenangabe zählt es nur, wenn das Bild nicht dagegen spricht. `OU` und `TAB` allein brauchen ein `3D` daneben.
+3. **Das Bild:** bis zu sieben Bilder, über die Laufzeit verteilt, werden dekodiert und ihre Hälften verglichen
+   (links/rechts und oben/unten, um bis zu 6 % gegeneinander verschoben; vorher wird alles abgezogen, was
+   entlang einer Zeile oder Spalte gleich bleibt – Balken, Streifen und schwarze Ränder sehen sonst wie eine
+   zweite Ansicht aus). Zwei Ansichten derselben Szene gleichen sich zu 0,75 bis 0,98, gewöhnliche Bilder zu
+   etwa 0. Drei Bilder ohne jede Ähnlichkeit beenden die Prüfung vorzeitig – der Normalfall, er dauert den
+   Bruchteil einer Sekunde.
+4. **Die Bildgröße** (3840×1080, 1920×2160) – nur, wenn der Name 3D sagt und sich das Bild nicht prüfen ließ.
+
+Ob jedes Auge die volle oder die halbe Auflösung hat, ergibt sich aus der Form einer Hälfte: schmaler als
+1,3:1 (nebeneinander) oder breiter als 3:1 (übereinander) heißt gestaucht.
+
+**MKV mit zwei Ansichten (H.264/MVC,** z. B. aus einer Blu-ray 3D erstellt): FFmpeg-mvc meldet das Profil
+*Stereo High*. Gibt das Ausgabeprofil 3D aus, dekodiert Lumen beide Ansichten (Software-Decoder,
+Matroska-Leser von FFmpeg) und behandelt das Ergebnis wie eine Datei in Side-by-Side Full; mit einem
+2D-Profil wird nur die Basisansicht dekodiert.
+
+Gibt das Ausgabeprofil 3D aus oder sagt der Name 3D, läuft die Prüfung **vor** dem Start der Datei (sie
+wartet höchstens 2,5 s) – die Wiedergabe beginnt gleich im richtigen Format. Sonst läuft sie direkt danach;
+eine 3D-Datei auf einem 2D-Profil springt nach etwa einer Sekunde auf ein Auge um. Ein von Hand gewähltes
+Format schaltet die Erkennung ab. Nicht erkannt werden: welches Auge zuerst kommt (angenommen wird links,
+außer der Name sagt `RL`), Anaglyph, Schachbrett. `LUMEN_STEREO_DEBUG=1` gibt jede Entscheidung aus.
+
+## Hardware und Leistung
+
+- **Skalierungsqualität *Automatisch*** wählt die Stufe nach der Grafikhardware: *Schnell*, wenn ein
+  Software-Renderer gefunden wird (llvmpipe, SwiftShader, Microsoft Basic Render Driver), *Ausgewogen* bei
+  integrierter Grafik, *Hoch* bei Grafikkarten und Apple Silicon. Der Treiber wird einmal gefragt, über einen
+  OpenGL-Kontext ohne Fenster; der Profil-Editor zeigt, was er geantwortet hat.
+- **Hardware-Decoding *Automatisch*** dekodiert auf der Grafikhardware und reicht die Bilder direkt an den
+  Renderer. Rechnet ein Filter auf der CPU (3D-Umrechnung), kopiert der Decoder sie in den Arbeitsspeicher,
+  statt sie den Umweg gehen zu lassen; für MVC ist es aus – das kann kein Hardware-Decoder. Was die
+  Hardware nicht dekodieren kann (Codec, Profil oder Größe nicht unterstützt), übernimmt von selbst der
+  Software-Decoder.
+- **Anpassung zur Laufzeit** (*Leistung automatisch anpassen* im Profil): Einmal je Sekunde sieht Lumen auf
+  die verworfenen und verspäteten Bilder. Ab 6 % über 3,5 s (oder 25 % über 2 s) nimmt es schrittweise zurück:
+  beim Renderer je eine Skalierungsstufe, bis *Schnell* ohne Debanding und Dithering; beim Software-Decoder
+  erst Abkürzungen, die man nicht sieht, dann den Deblocking-Filter, zuletzt lässt er Bilder aus, damit der
+  Ton nicht davonläuft. Misst der Renderer seine Zeit selbst, entscheidet das, welche Seite zu langsam ist;
+  sonst wechseln sich beide ab, bei 4K und mehr der Decoder zuerst. Das Steuerfenster zeigt, was
+  zurückgenommen wurde. Die Renderstufe wird je Profil und Art des Materials (Größe und Bildrate) 14 Tage
+  gemerkt.
+- **Deinterlacing** ist automatisch für Material, das als Halbbild gekennzeichnet ist; der Schalter im
+  Reiter *Bild* erzwingt es.
+- Im eigenen Fenster verlangt Lumen von mpv `gpu-next` und, wenn der nicht startet, den älteren Renderer `gpu`.
+
 ## DVD-Menüs
 
 - libdvdnav führt die virtuelle Maschine der DVD aus und liefert MPEG-PS über `lumendvd://` an mpv.
@@ -264,6 +318,8 @@ src/DiscScanner     Titel und Status für Blu-ray, DVD, HD DVD, VCD, Audio-CD (W
 src/PlayerWindow    eingebettetes Player-Fenster (mpv-Render-API/OpenGL), vor allem für macOS
 src/ProfileManager  Vorlagen + eigene Profile
 src/Stereo3D        Filterketten der 3D-Ausgabeformate, auch Bildfolge
+src/StereoDetect    automatische 3D-Erkennung: Dateiname, Container, Bildvergleich, MVC
+src/Tuning          Klasse der Grafikhardware, Skalierungsstufe und Decoder-Weg, Governor zur Laufzeit
 src/CastManager     Übertragen: Sitzung, Einstellungen, Geräteliste (QML „Cast“)
 src/CastRenderer    mpv-Render-API in einen Framebuffer, ausgelesen für den Encoder
 src/CastEncoder     H.264 + AAC -> MPEG-TS-Segmente (libavcodec/libavformat), eigener Thread
@@ -350,6 +406,14 @@ tools/test_bd3d.sh build build/tests/bd3d
 # 3D-Bildfolge: die Filterketten der Muster (L R, L S R S, Messfeld …) mit FFmpeg angewandt
 tools/test_seq3d.sh build build/tests/seq3d
 
+# 3D-Erkennung: Dateinamen, Container-Angaben und Größen; dann erzeugte Clips (zwei versetzte Ansichten
+# neben- und übereinander, und 2D-Bilder, die nicht durchgehen dürfen: Farbbalken, Testbild, Balken, Fraktal)
+tools/test_stereodetect.sh build build/tests/stereodetect
+stereodetect_test film.mkv sbs2l                      # eine Datei: Werte je Bild und das Ergebnis
+
+# Hardware-Klasse aus Treiber-Zeichenketten, Skalierungsstufe und Decoder-Weg, Governor mit Zählerständen
+tuning_test
+
 # Übertragen: echter Strom, über HTTP zurückgelesen (H.264/AAC, Ausrichtung, Bildrate, Ton-Bild-Abgleich mit
 # einem Clip, der jede Sekunde blitzt und piept), Geräteerkennung, DLNA, Chromecast, AirPlay und eine TV-App
 # gegen tools/mock_cast_devices.py. Braucht OpenGL (Linux-CI: Xvfb + Mesa mit LUMEN_CAST_SIZE=320x180)
@@ -369,7 +433,9 @@ python tools/make_test_vcd.py ffmpeg vcd && lumen vcd/vcd.cue
 ```
 
 Entwickler-Hilfen: `LUMEN_SNAPSHOT=shot.png` (optional `LUMEN_SNAPSHOT_DELAY=ms`) speichert das Steuerfenster als Bild;
-`LUMEN_MPV_LOG=warn|info|v` gibt mpvs Log aus (unter Windows zusammen mit `QT_FORCE_STDERR_LOGGING=1`).
+`LUMEN_MPV_LOG=warn|info|v` gibt mpvs Log aus (unter Windows zusammen mit `QT_FORCE_STDERR_LOGGING=1`);
+`LUMEN_APP_NAME=LumenDev` hält Einstellungen, Profile und Verlauf eines Testlaufs vom installierten Lumen getrennt;
+`LUMEN_GPU="llvmpipe"` gibt einen Grafiktreiber vor; `LUMEN_STEREO_DEBUG=1` nennt die Entscheidungen der 3D-Erkennung.
 
 ## Kommandozeile
 

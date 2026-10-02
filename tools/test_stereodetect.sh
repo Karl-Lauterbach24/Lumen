@@ -8,7 +8,8 @@ BUILD=$1; OUT=$2
 mkdir -p "$OUT"
 T="$BUILD/stereodetect_test"
 [ -x "$T" ] || T="$BUILD/stereodetect_test.exe"
-"$T"
+"$T" | grep -vE "^OK" || true
+"$T" > /dev/null
 
 FF="ffmpeg -hide_banner -loglevel error -y"
 ENC="-c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 12"
