@@ -1,0 +1,16 @@
+diff --git a/player/audio.c b/player/audio.c
+index b3e975d..f999103 100644
+--- a/player/audio.c
++++ b/player/audio.c
+@@ -475,6 +475,11 @@ static int reinit_audio_filters_and_output(struct MPContext *mpctx)
+                 goto init_error;
+             reset_audio_state(mpctx);
+             mp_output_chain_reset_harder(ao_c->filter);
++            // Lumen: the sink still believes its data request is pending, but
++            // the reset above made the chain forget it. Without a new request
++            // nobody pulls from the PCM decoder and playback never starts.
++            mp_filter_reset(ao_c->ao_filter);
++            mp_filter_wakeup(ao_c->ao_filter);
+             mp_wakeup_core(mpctx); // reinit with new format next time
+             return 0;
+         }

@@ -6,7 +6,8 @@
 #               faster JPEG 2000 decoding (DCP), same output bit for bit
 #   mpv         libmpv, linked against that FFmpeg, with Lumen's patches (tools/patches):
 #               audio tap on the timed null output, used for casting; scaler weight table
-#               without uninitialized padding (black picture with software OpenGL)
+#               without uninitialized padding (black picture with software OpenGL); sound starts
+#               after the fallback from refused bitstream output to decoding
 #   dvdnav      libdvdread + libdvdnav 7 (only where the system has an older one)
 #
 # All other libraries (Qt, libass, libplacebo, libbluray, libcdio, OpenSSL, libxml2 ...) come from
