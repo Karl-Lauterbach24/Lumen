@@ -342,6 +342,55 @@ int main(int argc, char **argv)
     QCoreApplication::setOrganizationName(QStringLiteral("LumenTest"));
     QCoreApplication::setApplicationName(QStringLiteral("cast_test"));
     std::setlocale(LC_NUMERIC, "C");
+    if (argc >= 4 && QByteArray(argv[1]) == "--rendercheck") {
+        // Fehlersuche: viele kurze Sitzungen nur mit mpv und dem Renderer (ohne Encoder, ohne Netz).
+        //   cast_test --rendercheck <sync.mp4> <runden> [mpv-option=wert ...] [late]
+        qputenv("LUMEN_CAST_DEBUG", "1");
+        const QByteArray file = argv[2];
+        const int rounds = QByteArray(argv[3]).toInt();
+        int black = 0, shown = 0;
+        for (int r = 1; r <= rounds; ++r) {
+            CastEncoder::Settings s;
+            s.width = 640;
+            s.height = 360;
+            CastEncoder encoder(nullptr, nullptr, s);
+            mpv_handle *mpv = mpv_create();
+            QVariantMap opts{{"terminal", "no"}, {"config", "no"}, {"idle", "yes"}, {"loop-file", "inf"}, {"hwdec", "no"}};
+            const QVariantMap castOpts = castMpvOptions(QString());
+            for (auto it = castOpts.cbegin(); it != castOpts.cend(); ++it)
+                opts.insert(it.key(), it.value());
+            bool late = false;
+            for (int i = 4; i < argc; ++i) {
+                const QByteArray a = argv[i];
+                if (a == "late")
+                    late = true;
+                else if (a.contains('='))
+                    opts.insert(QString::fromUtf8(a.left(a.indexOf('='))), QString::fromUtf8(a.mid(a.indexOf('=') + 1)));
+            }
+            for (auto it = opts.cbegin(); it != opts.cend(); ++it)
+                mpv_set_option_string(mpv, it.key().toUtf8().constData(), it.value().toString().toUtf8().constData());
+            mpv_initialize(mpv);
+            auto *renderer = new CastRenderer(mpv, &encoder);
+            if (late)
+                waitFor([] { return false; }, 300);
+            const char *cmd[] = {"loadfile", file.constData(), nullptr};
+            mpv_command(mpv, cmd);
+            waitFor([] { return false; }, 2500);
+            const CastRenderer::DebugStats st = renderer->debugStats();
+            const bool isBlack = st.lit == 0;
+            black += isBlack;
+            std::printf("RC %2d %s bilder=%d hell=%d fehler=%d erstes=%.0fms max=%.0fms probe=%d\n", r, isBlack ? "SCHWARZ" : "gut", st.frames,
+                        st.lit, st.errors, st.firstMs, st.maxMs, st.fboCheck);
+            if ((isBlack && black <= 2) || (!isBlack && shown++ == 0))
+                std::printf("RC    %s\n", qPrintable(st.first));
+            std::fflush(stdout);
+            renderer->releaseRenderContext();
+            mpv_terminate_destroy(mpv);
+            delete renderer;
+        }
+        std::printf("RCSUM %d von %d schwarz\n", black, rounds);
+        return 0;
+    }
     if (argc < 5) {
         std::fprintf(stderr, "cast_test <python> <mock_cast_devices.py> <openssl> <sync.mp4>\n");
         return 2;

@@ -169,6 +169,7 @@ jobs:
                  -f lavfi -i "color=c=black:s=640x360:r=30,drawbox=x=0:y=0:w=80:h=45:c=white:t=fill,drawbox=c=white:t=fill:enable='lt(mod(t\,1)\,0.1)'" \
                  -f lavfi -i "aevalsrc='0.5*sin(2*PI*1000*t)*lt(mod(t\,1)\,0.1)':s=48000:c=stereo" \
                  -t 20 -c:v libx264 -g 30 -pix_fmt yuv420p -c:a aac build/tests/sync.mp4
+          QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 tools/ci_rendercheck.sh build/cast_test build/tests/sync.mp4 xvfb-run -a -s "-screen 0 1280x720x24"
           # OpenGL ohne Grafikkarte: virtueller X-Server mit Mesa (llvmpipe). Das rechnet die CPU,
           # in voller Größe nicht in Echtzeit – deshalb ein kleines Bild (so groß wie die Quelle).
           export QT_QPA_PLATFORM=xcb LIBGL_ALWAYS_SOFTWARE=1 LUMEN_CAST_SIZE=640x360 LUMEN_CAST_TEST_SOFTWARE_GL=1 LUMEN_CAST_DEBUG=1

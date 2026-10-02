@@ -2,6 +2,7 @@
 
 #include "CastEncoder.h"
 
+#include <QElapsedTimer>
 #include <QOpenGLFramebufferObject>
 #include <QOpenGLFunctions>
 #include <QSurfaceFormat>
@@ -39,9 +40,11 @@ CastRenderer::CastRenderer(mpv_handle *mpv, CastEncoder *encoder, QObject *paren
     m_fbo = new QOpenGLFramebufferObject(m_size);
 
     mpv_opengl_init_params gl{getProcAddress, nullptr};
+    int advanced = m_exp.contains("adv") ? 1 : 0;
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_API_TYPE, const_cast<char *>(MPV_RENDER_API_TYPE_OPENGL)},
         {MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl},
+        {MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced},
         {MPV_RENDER_PARAM_INVALID, nullptr},
     };
     if (mpv_render_context_create(&m_ctx, m_mpv, params) < 0) {
@@ -101,21 +104,67 @@ void CastRenderer::onMpvUpdate()
     const double pts = m_encoder->streamTime(when);
     mpv_opengl_fbo fbo{int(m_fbo->handle()), m_size.width(), m_size.height(), 0};
     int flipY = 0; // mpv legt die oberste Bildzeile an y = 0 des Framebuffers: glReadPixels liefert sie zuerst
+    int block = m_exp.contains("noblock") ? 0 : 1;
     mpv_render_param params[] = {
         {MPV_RENDER_PARAM_OPENGL_FBO, &fbo},
         {MPV_RENDER_PARAM_FLIP_Y, &flipY},
+        {MPV_RENDER_PARAM_BLOCK_FOR_TARGET_TIME, &block},
         {MPV_RENDER_PARAM_INVALID, nullptr},
     };
-    mpv_render_context_render(m_ctx, params);
+    QOpenGLFunctions *f = m_gl.functions();
+    if (m_exp.contains("bind"))
+        f->glBindFramebuffer(GL_FRAMEBUFFER, m_fbo->handle());
+    QElapsedTimer renderTimer;
+    renderTimer.start();
+    const int renderResult = mpv_render_context_render(m_ctx, params);
+    const double renderMs = renderTimer.nsecsElapsed() / 1e6;
+    const GLenum afterRender = m_debug ? f->glGetError() : GL_NO_ERROR;
 
     QByteArray rgba(m_size.width() * m_size.height() * 4, Qt::Uninitialized);
-    QOpenGLFunctions *f = m_gl.functions();
     f->glBindFramebuffer(GL_FRAMEBUFFER, m_fbo->handle());
     f->glPixelStorei(GL_PACK_ALIGNMENT, 4);
     f->glReadPixels(0, 0, m_size.width(), m_size.height(), GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
     if (const GLenum glError = f->glGetError(); glError != GL_NO_ERROR && !m_warned) {
         m_warned = true;
         qWarning("Lumen: OpenGL-Fehler 0x%x beim Auslesen des Bildes für die Übertragung", glError);
+    }
+    if (m_debug) {
+        // Zähler: Gibt es im Bild überhaupt helle Punkte, und wo?
+        const uchar *p = reinterpret_cast<const uchar *>(rgba.constData());
+        int x0 = m_size.width(), y0 = m_size.height(), x1 = -1, y1 = -1;
+        for (int y = 0; y < m_size.height(); y += 3)
+            for (int x = 0; x < m_size.width(); x += 3)
+                if (p[(y * m_size.width() + x) * 4] > 100) {
+                    x0 = qMin(x0, x), x1 = qMax(x1, x), y0 = qMin(y0, y), y1 = qMax(y1, y);
+                }
+        ++m_stats.frames;
+        m_stats.lit += x1 >= 0;
+        m_stats.errors += renderResult < 0;
+        m_stats.maxMs = qMax(m_stats.maxMs, renderMs);
+        if (m_stats.frames == 1) {
+            m_stats.firstMs = renderMs;
+            auto prop = [&](const char *name) {
+                char *v = mpv_get_property_string(m_mpv, name);
+                const QString text = QString::fromUtf8(v ? v : "-");
+                mpv_free(v);
+                return text;
+            };
+            m_stats.first = QStringLiteral("render=%1 gl=0x%2 fbo=%3 status=0x%4 hell=%5,%6-%7,%8 px0=%9,%10,%11,%12 | in %13 | out %14 | ziel %15")
+                                .arg(renderResult).arg(afterRender, 0, 16).arg(m_fbo->handle())
+                                .arg(f->glCheckFramebufferStatus(GL_FRAMEBUFFER), 0, 16)
+                                .arg(x0).arg(y0).arg(x1).arg(y1).arg(p[0]).arg(p[1]).arg(p[2]).arg(p[3])
+                                .arg(prop("video-params"), prop("video-out-params"), prop("video-target-params"));
+        }
+        if (m_stats.frames == 20) {
+            // Probe: kommt ein eigener Anstrich des Framebuffers beim Auslesen an?
+            uchar probe[4] = {0, 0, 0, 0};
+            f->glDisable(GL_SCISSOR_TEST);
+            f->glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+            f->glClear(GL_COLOR_BUFFER_BIT);
+            f->glReadPixels(1, 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, probe);
+            f->glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            m_stats.fboCheck = probe[0] > 200 && probe[1] < 50;
+        }
     }
     mpv_render_context_report_swap(m_ctx);
     m_gl.doneCurrent();
