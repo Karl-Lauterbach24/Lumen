@@ -2,3 +2,8 @@ build/
 build-*/
 3rdparty/
 *.user
+# Testfilme im Arbeitsverzeichnis gehören nicht ins Repo
+/*.mkv
+/*.mp4
+/*.m2ts
+/*.iso
