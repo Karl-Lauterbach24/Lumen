@@ -1,5 +1,5 @@
 diff --git a/libavcodec/jpeg2000dec.c b/libavcodec/jpeg2000dec.c
-index 369377e..ba52d16 100644
+index 369377e..3a738fd 100644
 --- a/libavcodec/jpeg2000dec.c
 +++ b/libavcodec/jpeg2000dec.c
 @@ -1906,13 +1906,13 @@ static void decode_sigpass(Jpeg2000T1Context *t1, int width, int height,
@@ -76,6 +76,51 @@ index 369377e..ba52d16 100644
          if (val != 0xa)
              av_log(s->avctx, AV_LOG_ERROR,
                     "Segmentation symbol value incorrect\n");
+@@ -2019,6 +2019,14 @@ static int decode_cblk(const Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *cod
+ {
+     int passno = cblk->npasses, pass_t = 2, bpno = cblk->nonzerobits - 1 + 31 - M_b - 1 - roi_shift;
+     int pass_cnt = 0;
++    /* Lumen: leave out the last bit planes of the block (three passes each).
++     * The code stream is embedded, so what was decoded up to there is the
++     * same picture quantised more coarsely; the passes left out are the
++     * longest ones. At least the first pass is always decoded. */
++    const int truncated = s->skip_planes > 0 && passno > 1;
++
++    if (truncated)
++        passno = FFMAX(passno - 3 * s->skip_planes, 1);
+     int vert_causal_ctx_csty_symbol = codsty->cblk_style & JPEG2000_CBLK_VSC;
+     int term_cnt = 0;
+     int coder_type;
+@@ -2083,7 +2091,7 @@ static int decode_cblk(const Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *cod
+         pass_cnt ++;
+     }
+ 
+-    if (cblk->data + cblk->length - 2 > t1->mqc.bp) {
++    if (!truncated && cblk->data + cblk->length - 2 > t1->mqc.bp) {
+         av_log(s->avctx, AV_LOG_WARNING, "End mismatch %td\n",
+                cblk->data + cblk->length - 2 - t1->mqc.bp);
+     }
+@@ -2938,6 +2946,8 @@ end:
+ static const AVOption options[] = {
+     { "lowres",  "Lower the decoding resolution by a power of two",
+         OFFSET(reduction_factor), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, JPEG2000_MAX_RESLEVELS - 1, VD },
++    { "skip_planes", "Leave out this many of the finest bit planes of every code block (faster, coarser)",
++        OFFSET(skip_planes), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 8, VD },
+     { NULL },
+ };
+ 
+diff --git a/libavcodec/jpeg2000dec.h b/libavcodec/jpeg2000dec.h
+index fce3823..2084212 100644
+--- a/libavcodec/jpeg2000dec.h
++++ b/libavcodec/jpeg2000dec.h
+@@ -120,6 +120,7 @@ typedef struct Jpeg2000DecoderContext {
+ 
+     /*options parameters*/
+     int             reduction_factor;
++    int             skip_planes;     ///< Lumen: bit planes left out at the end of every code block
+ } Jpeg2000DecoderContext;
+ 
+ #endif //AVCODEC_JPEG2000DEC_H
 diff --git a/libavcodec/jpeg2000dwt.c b/libavcodec/jpeg2000dwt.c
 index 9ee8122..46d5a24 100644
 --- a/libavcodec/jpeg2000dwt.c

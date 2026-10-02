@@ -1,0 +1,114 @@
+diff --git a/libavcodec/avcodec.c b/libavcodec/avcodec.c
+index 5220058..cc7caff 100644
+--- a/libavcodec/avcodec.c
++++ b/libavcodec/avcodec.c
+@@ -341,10 +341,15 @@ int attribute_align_arg avcodec_open2(AVCodecContext *avctx, const AVCodec *code
+     if (HAVE_THREADS && avctx->codec_id == AV_CODEC_ID_H264 &&
+         ff_codec_is_decoder(codec) && avctx->thread_count != 1 &&
+         ff_h264_allviews_composition(avctx)) {
++        /* Lumen: the pairing only rules out frame threading. Slices of one
++         * picture can still be decoded in parallel (Blu-ray 3D carries
++         * several per picture and view): the pictures leave the decoder in
++         * the same order as without threads. */
+         av_log(avctx, AV_LOG_INFO,
+-               "allviews composition: frame threading disabled%s\n",
+-               avctx->thread_count > 1 ? " (overriding the requested thread count)" : "");
+-        avctx->thread_count = 1;
++               "allviews composition: frame threading disabled, slice threading kept\n");
++        avctx->thread_type &= ~FF_THREAD_FRAME;
++        if (!(avctx->thread_type & FF_THREAD_SLICE))
++            avctx->thread_count = 1;
+     }
+ 
+     if (HAVE_THREADS && !avci->frame_thread_encoder) {
+diff --git a/libavcodec/h264_slice.c b/libavcodec/h264_slice.c
+index 01953c7..2de01a4 100644
+--- a/libavcodec/h264_slice.c
++++ b/libavcodec/h264_slice.c
+@@ -1692,6 +1692,28 @@ static int h264_select_output_frame(H264Context *h)
+          * previous POC epoch (flush) or ordinary in-epoch reorder. */
+         unsigned wrap_gap   = 0;
+         int wrap_flushed    = 0;
++
++        /* Lumen: an IDR picture of a dependent view starts a new POC epoch
++         * whatever the gap to the previous one. Everything still queued
++         * belongs to the old epoch and leaves ahead of it - the base view
++         * gets this from its key-frame barrier, which a dependent picture
++         * does not carry. The gap test below misses a short epoch (an IDR
++         * a few pictures after the last one): its tail then came out after
++         * the first pictures of the new epoch, the pairing found no partner
++         * for either and shipped both with one eye black. */
++        if (h->view_count > 1 && h->cur_view > 0 && h->picture_dep_idr &&
++            cur == v->delayed_pic[pics - 1]) {
++            int j;
++
++            for (j = 0; j < pics - 1; j++)
++                if (!v->delayed_pic[j]->flush_old_epoch) {
++                    v->delayed_pic[j]->flush_old_epoch = 1;
++                    wrap_flushed = 1;
++                }
++            if (v->parked_pic && !v->parked_pic->flush_old_epoch)
++                v->parked_pic->flush_old_epoch = 1;
++            v->next_outputed_poc = INT_MIN;
++        }
+         if (h->view_count > 1 && v->next_outputed_poc != INT_MIN &&
+             out->poc < v->next_outputed_poc &&
+             (out == cur ||
+@@ -2297,6 +2319,8 @@ static int h264_field_start(H264Context *h, const H264SliceContext *sl,
+     h->explicit_ref_marking = sl->explicit_ref_marking;
+ 
+     h->picture_idr = nal->type == H264_NAL_IDR_SLICE;
++    h->picture_dep_idr = nal->type == H264_NAL_EXTEN_SLICE &&
++                         nal->mv_ext_parsed && !nal->mv_non_idr;
+ 
+     if (h->sei.recovery_point.recovery_frame_cnt >= 0) {
+         const int sei_recovery_frame_cnt = h->sei.recovery_point.recovery_frame_cnt;
+@@ -3768,18 +3792,27 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
+              * unchanged. Clamping below the 3-byte guard defers to the
+              * stock aligned handoff (the only state a pathologically
+              * short NAL could produce). */
++            /* Lumen: the copy takes every byte of the NAL, not only the
++             * logical length. A NAL that ends in a lone stop-bit byte
++             * (0x80) after a byte-aligned header has a logical length one
++             * byte short of it, and that byte is part of the arithmetic
++             * code word: without it the last end_of_slice_flag decodes as
++             * 0, the slice runs on into the next band and is then replaced
++             * by a copy of the base view. The stock decoder reads the NAL
++             * buffer itself and so always sees that byte. */
++            int avail = sl->nal_size - 4 - start;
++
+             dep_cabac_bytes = (bits + 7) / 8;
+-            dep_cabac_bytes = FFMIN(dep_cabac_bytes,
+-                                     sl->nal_size - 4 - start);
++            dep_cabac_bytes = FFMIN(dep_cabac_bytes, avail);
+             /* Need the 3 bytes ff_init_cabac_decoder() may fetch ahead;
+              * the +8 zero pad keeps renormalizing over-reads near the
+              * logical end in bounds, as the +2/+4 checks expect. */
+             dep_cabac_buf = dep_cabac_bytes >= 3 ?
+-                av_mallocz(dep_cabac_bytes + 8) : NULL;
++                av_mallocz(avail + 8) : NULL;
+             if (dep_cabac_buf) {
+                 const uint8_t *raw = sl->gb.buffer + 4 + start;
+ 
+-                for (i = 0; i < dep_cabac_bytes; i++)
++                for (i = 0; i < avail; i++)
+                     dep_cabac_buf[i] = raw[i];
+             }
+         }
+diff --git a/libavcodec/h264dec.h b/libavcodec/h264dec.h
+index 375e7de..ca1578d 100644
+--- a/libavcodec/h264dec.h
++++ b/libavcodec/h264dec.h
+@@ -653,6 +653,12 @@ typedef struct H264Context {
+      */
+     int picture_idr;
+ 
++    /*
++     * Lumen: set to 1 when the current picture is an IDR picture of a
++     * dependent view (slice extension NAL with non_idr_flag == 0).
++     */
++    int picture_dep_idr;
++
+     /*
+      * Set to 1 when the current picture contains only I slices, 0 otherwise.
+      */

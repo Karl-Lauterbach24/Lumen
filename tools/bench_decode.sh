@@ -57,10 +57,16 @@ j2k() {
 }
 j2k "$WORK/j2k-2k.mxf" 2048x1080 24 12
 bench "JPEG 2000 2K 24 (DCP)" 24 "$WORK/j2k-2k.mxf"
+# what Lumen falls back to when the machine is too slow: first the finest bit planes of every
+# code block are left out (full resolution, below what an 8 or 10 bit output shows) ...
+bench "JPEG 2000 2K 24, -2 planes" 24 "$WORK/j2k-2k.mxf" -skip_planes 2
+bench "JPEG 2000 2K 24, -4 planes" 24 "$WORK/j2k-2k.mxf" -skip_planes 4
 j2k "$WORK/j2k-2k48.mxf" 2048x1080 48 12
 bench "JPEG 2000 2K 48 (3D DCP)" 48 "$WORK/j2k-2k48.mxf"
 j2k "$WORK/j2k-4k.mxf" 4096x2160 24 6
 bench "JPEG 2000 4K 24 (DCP)" 24 "$WORK/j2k-4k.mxf"
-# what Lumen falls back to when 4K is too much: half resolution inside the decoder
+bench "JPEG 2000 4K 24, -4 planes" 24 "$WORK/j2k-4k.mxf" -skip_planes 4
+# ... then half the resolution inside the decoder
 bench "JPEG 2000 4K 24, half res." 24 "$WORK/j2k-4k.mxf" -lowres 1
+bench "JPEG 2000 4K 24, half, -4" 24 "$WORK/j2k-4k.mxf" -lowres 1 -skip_planes 4
 exit 0

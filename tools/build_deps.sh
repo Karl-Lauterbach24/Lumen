@@ -3,7 +3,8 @@
 #
 #   x264        H.264 encoder (casting)
 #   FFmpeg-mvc  FFmpeg fork with the H.264/MVC decoder (Blu-ray 3D), with Lumen's patches:
-#               faster JPEG 2000 decoding (DCP), same output bit for bit
+#               faster JPEG 2000 decoding (DCP), same output bit for bit, and the option
+#               skip_planes; MVC: slice threading with both views, two decoding faults fixed
 #   mpv         libmpv, linked against that FFmpeg, with Lumen's patches (tools/patches):
 #               audio tap on the timed null output, used for casting; scaler weight table
 #               without uninitialized padding (black picture with software OpenGL); sound starts
