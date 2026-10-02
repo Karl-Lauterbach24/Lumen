@@ -374,7 +374,10 @@ int main(int argc, char **argv)
             auto *renderer = new CastRenderer(mpv, &encoder);
             const char *cmd[] = {"loadfile", file.constData(), nullptr};
             mpv_command(mpv, cmd);
+            // zwei Sekunden, auf einer langsamen Maschine länger: die erste Sitzung bringt dort in
+            // zwei Sekunden nur eine Handvoll Bilder zustande (CI unter macOS: 6)
             waitFor([] { return false; }, 2000);
+            waitFor([&] { return renderer->debugStats().frames > 10; }, 8000);
             const CastRenderer::DebugStats st = renderer->debugStats();
             const bool ok = st.frames > 10 && st.lit == st.frames && st.errors == 0;
             bad += !ok;

@@ -431,17 +431,31 @@ Hint analyzeFile(const QString &path, bool hint3d, const std::atomic_bool *cance
         *confidence = 0;
     auto cancelled = [&] { return cancel && cancel->load(); };
 
-    AVFormatContext *fmt = nullptr;
-    if (avformat_open_input(&fmt, path.toUtf8().constData(), nullptr, nullptr) < 0)
+    QElapsedTimer timer;
+    timer.start();
+    // Auch mitten im Lesen abbrechen können (langsames Laufwerk, Netzlaufwerk)
+    struct Guard
+    {
+        const std::atomic_bool *cancel;
+        const QElapsedTimer *timer;
+        qint64 limit;
+    } guard{cancel, &timer, kBudgetMs + 1500};
+    AVFormatContext *fmt = avformat_alloc_context();
+    if (!fmt)
         return none;
+    fmt->interrupt_callback.opaque = &guard;
+    fmt->interrupt_callback.callback = [](void *opaque) -> int {
+        const auto *g = static_cast<const Guard *>(opaque);
+        return (g->cancel && g->cancel->load()) || g->timer->elapsed() > g->limit;
+    };
+    if (avformat_open_input(&fmt, path.toUtf8().constData(), nullptr, nullptr) < 0)
+        return none; // gibt fmt selbst frei
     AVCodecContext *dec = nullptr;
     AVFrame *frame = av_frame_alloc();
     AVPacket *pkt = av_packet_alloc();
     SwsContext *sws = nullptr;
     QList<Scores> scores;
     std::vector<unsigned char> gray(size_t(kW) * kH);
-    QElapsedTimer timer;
-    timer.start();
 
     do {
         if (avformat_find_stream_info(fmt, nullptr) < 0)
@@ -470,8 +484,11 @@ Hint analyzeFile(const QString &path, bool hint3d, const std::atomic_bool *cance
         dec->thread_count = std::clamp(QThread::idealThreadCount(), 1, 4);
         if (avcodec_open2(dec, codec, nullptr) < 0)
             break;
+        // Größe, wie sie gezeigt wird (nicht quadratische Bildpunkte eingerechnet): danach
+        // richtet sich, ob eine Hälfte gestaucht ist
+        const AVRational sar = av_guess_sample_aspect_ratio(fmt, stream, nullptr);
         if (width)
-            *width = stream->codecpar->width;
+            *width = sar.num > 0 && sar.den > 0 ? int(av_rescale(stream->codecpar->width, sar.num, sar.den)) : stream->codecpar->width;
         if (height)
             *height = stream->codecpar->height;
 

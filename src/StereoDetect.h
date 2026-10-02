@@ -64,7 +64,8 @@ Scores compare(const unsigned char *gray, int width, int height, int stride);
 Hint fromScores(const QList<Scores> &frames, bool hint3d, double *confidence = nullptr);
 
 // Datei öffnen, einige Bilder über die Laufzeit verteilt dekodieren und vergleichen.
-// Läuft synchron (für einen Arbeits-Thread); cancel bricht ab. width/height: Bildgröße der Datei.
+// Läuft synchron (für einen Arbeits-Thread); cancel bricht ab. width/height: Bildgröße der Datei,
+// wie sie gezeigt wird (Seitenverhältnis der Bildpunkte eingerechnet).
 Hint analyzeFile(const QString &path, bool hint3d, const std::atomic_bool *cancel = nullptr, double *confidence = nullptr,
                  int *width = nullptr, int *height = nullptr, QList<Scores> *scores = nullptr, bool *mvc = nullptr);
 

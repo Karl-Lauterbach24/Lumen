@@ -1701,7 +1701,8 @@ void MpvController::continueStereoDetection()
         return;
     // Was der Decoder liefert – vor der 3D-Filterkette
     const QVariantMap dec = getProperty(QStringLiteral("video-dec-params")).toMap();
-    const int w = dec.value("w").toInt(), h = dec.value("h").toInt();
+    // Größe, wie sie gezeigt wird: danach richtet sich, ob eine Bildhälfte gestaucht ist
+    const int w = dec.value("dw", dec.value("w")).toInt(), h = dec.value("dh", dec.value("h")).toInt();
     if (w <= 0 || h <= 0)
         return; // noch kein Bild: weiter, sobald video-params kommt
     m_detectPending = false;
