@@ -177,12 +177,12 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x720x24" build/cast_test python3 tools/mock_cast_devices.py openssl build/tests/sync.mp4 > build/tests/cast.txt 2>&1 || rc=$?
           cat build/tests/cast.txt
           { grep -E "^FAIL" build/tests/cast.txt || true; } | while IFS= read -r l; do echo "::error::$l"; done
-          if grep -q "^FAIL" build/tests/cast.txt && [ -f build/tests/cast-mpv.log ]; then
+          if grep -q "^FAIL" build/tests/cast.txt && [ -f build/tests/cast-mpv.log.1 ]; then
             # das Wesentliche aus dem mpv-Protokoll als eine Annotation (ohne Anmeldung per API lesbar)
-            body=$( { grep -E "\\]\\[(e|w|f)\\]|vo/libmpv|\\[vd\\]|\\[vo\\]|VO:|Video:|Disabling|dropp|GL_RENDERER|desync|Starting playback|video-params|\\[cplayer\\] (V|A)" build/tests/cast-mpv.log || true; } | grep -v "shader\\|#define\\|Texture formats" | cut -c1-180 | head -45 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            body=$( { grep -E "\\]\\[(e|w|f)\\]|vo/libmpv|\\[vd\\]|\\[vo\\]|VO:|Video:|Disabling|dropp|GL_RENDERER|desync|Starting playback|video-params|first video frame|Dropping|Set property|\\[cplayer\\] (V|A)" build/tests/cast-mpv.log.1 || true; } | grep -v "shader\\|#define\\|Texture formats" | cut -c1-170 | head -70 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=cast-mpv::$body"
             echo "--- mpv (Renderer, Fehler, verworfene Bilder)"
-            { grep -iE "libmpv|opengl|GL_|shader|error|fail|drop|late|software|llvmpipe" build/tests/cast-mpv.log || true; } | head -80 || true
+            { grep -iE "libmpv|opengl|GL_|shader|error|fail|drop|late|software|llvmpipe" build/tests/cast-mpv.log.1 || true; } | head -80 || true
           fi
           grep -q BESTANDEN build/tests/cast.txt && [ "$rc" -eq 0 ]
 

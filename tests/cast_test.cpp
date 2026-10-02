@@ -100,7 +100,8 @@ private:
         }
         // Entwickler/CI: LUMEN_MPV_LOGFILE=<datei> schreibt das mpv-Protokoll der Übertragung mit
         if (encoder && qEnvironmentVariableIsSet("LUMEN_MPV_LOGFILE")) {
-            opts.insert("log-file", qEnvironmentVariable("LUMEN_MPV_LOGFILE"));
+            // je Übertragung eine Datei: <datei>.1 ist die erste (deren Strom unten ausgewertet wird)
+            opts.insert("log-file", QStringLiteral("%1.%2").arg(qEnvironmentVariable("LUMEN_MPV_LOGFILE")).arg(++m_session));
             opts.insert("msg-level", "all=v");
         }
         for (auto it = opts.cbegin(); it != opts.cend(); ++it)
@@ -125,6 +126,7 @@ private:
     }
 
     QString m_file;
+    int m_session = 0;
     mpv_handle *m_mpv = nullptr;
     CastRenderer *m_renderer = nullptr;
 };
