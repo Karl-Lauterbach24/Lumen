@@ -1435,6 +1435,12 @@ void MpvController::applyProfile(const QVariantMap &profile)
     if (m_displays && profile.value("output") != m_profile.value("output"))
         m_displays->restoreAll();
 
+    // Zurückgenommene Stufen gelten für das alte Profil: erst in dessen Normalzustand zurück,
+    // damit der Vergleich unten nur die Unterschiede der Profile sieht
+    m_governor.reset();
+    updateTuningStatus();
+    syncOptions();
+
     m_profile = profile;
     const QVariantMap opts = buildOptions(profile);
 
@@ -1469,8 +1475,9 @@ void MpvController::applyProfile(const QVariantMap &profile)
     emit profileApplied();
     onContentFormatKnown();
     m_governor.setLimits(Tuning::maxRenderLevel(m_profile, Tuning::hardware()), Tuning::kMaxDecodeLevel);
-    // ein anderes Ausgabeformat kann die 3D-Wiedergabe ändern (MVC-Datei: zweite Ansicht nur für 3D)
-    if (m_stereoAuto && !m_idle)
+    // MVC-Datei: die zweite Ansicht wird nur für ein 3D-Profil dekodiert. (Alle anderen Formate
+    // hängen nicht vom Profil ab – sie neu zu prüfen, ließe das Bild kurz umspringen.)
+    if (m_stereoAuto && !m_idle && m_mvcStream)
         startStereoDetection();
 }
 
