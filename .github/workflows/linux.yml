@@ -179,9 +179,9 @@ jobs:
           { grep -E "^FAIL" build/tests/cast.txt || true; } | while IFS= read -r l; do echo "::error::$l"; done
           if grep -q "^FAIL" build/tests/cast.txt && [ -f build/tests/cast-mpv.log.1 ]; then
             # das Wesentliche aus dem mpv-Protokoll als eine Annotation (ohne Anmeldung per API lesbar)
-            body=$( { grep -E "\\]\\[(e|w|f)\\]|vo/libmpv|\\[vd\\]|\\[vo\\]|VO:|Video:|Disabling|dropp|GL_RENDERER|desync|Starting playback|first video frame|report_swap|\\[cplayer\\] (V|A)" build/tests/cast-mpv.log.1 || true; } | grep -v "shader\\|#define\\|Texture formats" | cut -c1-170 | head -70 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            body=$( { grep -E "\\]\\[(e|w|f)\\]|vo/libmpv|\\[vd\\]|\\[vo\\]|VO:|Video:|Disabling|dropp|GL_RENDERER|desync|Starting playback|first video frame|report_swap|[Ff]ail|[Ee]rror|broken|[Uu]nsupported|dumb|FBO|\\[cplayer\\] (V|A)" build/tests/cast-mpv.log.1 || true; } | grep -v "shader\\|#define\\|Texture formats" | cut -c1-170 | head -70 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=cast-mpv::$body"
-            body=$( { grep -E "^cast [0-9.]+s:|^(INFO|FAIL) |Blitze|Toene|Lumen:" build/tests/cast.txt || true; } | cut -c1-200 | head -30 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            body=$( { grep -E "^cast [0-9.]+s:|^(INFO|FAIL) |Blitze|Toene|Lumen:" build/tests/cast.txt || true; } | cut -c1-200 | head -24 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=cast-zaehler::$body"
             echo "--- mpv (Renderer, Fehler, verworfene Bilder)"
             { grep -iE "libmpv|opengl|GL_|shader|error|fail|drop|late|software|llvmpipe" build/tests/cast-mpv.log.1 || true; } | head -80 || true

@@ -40,4 +40,6 @@ private:
     QOpenGLFramebufferObject *m_fbo = nullptr;
     mpv_render_context *m_ctx = nullptr;
     bool m_warned = false;
+    bool m_debug = qEnvironmentVariableIsSet("LUMEN_CAST_DEBUG");
+    int m_count = 0;
 };

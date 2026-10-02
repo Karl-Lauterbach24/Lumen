@@ -118,5 +118,14 @@ void CastRenderer::onMpvUpdate()
     }
     mpv_render_context_report_swap(m_ctx);
     m_gl.doneCurrent();
+    // Entwickler-Hilfe (LUMEN_CAST_DEBUG): Farbe in Bildmitte und oben links, einmal je Sekunde
+    if (m_debug && ++m_count % 30 == 1) {
+        auto px = [&](int x, int y) {
+            const uchar *p = reinterpret_cast<const uchar *>(rgba.constData()) + (y * m_size.width() + x) * 4;
+            return QStringLiteral("%1,%2,%3,%4").arg(p[0]).arg(p[1]).arg(p[2]).arg(p[3]);
+        };
+        qWarning("Lumen: Bild %d Mitte rgba=%s oben links rgba=%s", m_count,
+                 qPrintable(px(m_size.width() / 2, m_size.height() / 2)), qPrintable(px(m_size.width() / 32, m_size.height() / 32)));
+    }
     m_encoder->pushFrame(std::move(rgba), pts);
 }
