@@ -560,9 +560,8 @@ int DcpManager::chooseReduction(const Dcp::Cpl &cpl) const
     return k;
 }
 
-// Datenrate des Bildes (größte Spurdatei) gegen die Zahl der Kerne: womit die Automatik beginnt.
-// Was diese Maschine bei solchem Material zuletzt gebraucht hat, gilt zwei Wochen weiter.
-int DcpManager::startRelief(const Dcp::Cpl &cpl) const
+// Datenrate des Bildes in Byte je Sekunde (die Rolle mit der höchsten zählt), 0 = unbekannt
+double DcpManager::pictureRate(const Dcp::Cpl &cpl) const
 {
     double rate = 0;
     for (const Dcp::Reel &r : cpl.reels) {
@@ -575,13 +574,23 @@ int DcpManager::startRelief(const Dcp::Cpl &cpl) const
                 rate = std::max(rate, size / (units / a.editRate.value()));
         }
     }
+    return rate;
+}
+
+// Datenrate des Bildes gegen die Zahl der Kerne: womit die Automatik beginnt. Was diese Maschine
+// bei solchem Material zuletzt gebraucht hat, gilt zwei Wochen weiter – für Material mit
+// mindestens vier Fünfteln der Datenrate von damals; ein leichteres DCP beginnt wieder oben.
+int DcpManager::startRelief(const Dcp::Cpl &cpl) const
+{
+    const double rate = pictureRate(cpl);
     bool ok = false;
     int cores = qEnvironmentVariableIntValue("LUMEN_DECODE_THREADS", &ok);
     if (!ok || cores < 1)
         cores = QThread::idealThreadCount();
     int level = Tuning::j2kStartLevel(rate, cores);
     const QStringList learned = QSettings().value(reliefKey(cpl)).toString().split(QLatin1Char(';'));
-    if (learned.size() == 2 && QDateTime::currentSecsSinceEpoch() / 86400 - learned.at(1).toLongLong() <= 14)
+    if (learned.size() == 3 && QDateTime::currentSecsSinceEpoch() / 86400 - learned.at(1).toLongLong() <= 14
+        && (rate <= 0 || rate >= 0.8 * learned.at(2).toDouble()))
         level = std::max(level, std::min(learned.at(0).toInt(), Tuning::kMaxJ2kRelief));
     return level;
 }
@@ -973,7 +982,8 @@ void DcpManager::onDroppedFrames()
     m_current["reduction"] = m_reduction;
     m_current["skipPlanes"] = m_skipPlanes;
     QSettings().setValue(reliefKey(m_package.cpls[m_playing]),
-                         QStringLiteral("%1;%2").arg(m_relief).arg(QDateTime::currentSecsSinceEpoch() / 86400));
+                         QStringLiteral("%1;%2;%3").arg(m_relief).arg(QDateTime::currentSecsSinceEpoch() / 86400)
+                             .arg(qRound64(pictureRate(m_package.cpls[m_playing]))));
     emit activeChanged();
     if (qEnvironmentVariableIsSet("LUMEN_PERF_LOG"))
         qWarning().noquote() << "Lumen: perf dcp stufe" << m_relief << decoderOptions() << "bei" << m_player->position();

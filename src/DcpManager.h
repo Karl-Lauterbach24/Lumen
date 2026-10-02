@@ -133,6 +133,7 @@ private:
     QVariantMap keyStatus(const Dcp::Cpl &cpl) const;
     int chooseReduction(const Dcp::Cpl &cpl) const;
     int startRelief(const Dcp::Cpl &cpl) const;
+    double pictureRate(const Dcp::Cpl &cpl) const;
     QString reliefKey(const Dcp::Cpl &cpl) const;
     QString decoderOptions() const;
     void setRelief(int level);
