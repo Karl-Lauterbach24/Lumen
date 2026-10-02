@@ -39,4 +39,5 @@ private:
     QOpenGLContext m_gl;
     QOpenGLFramebufferObject *m_fbo = nullptr;
     mpv_render_context *m_ctx = nullptr;
+    bool m_warned = false;
 };

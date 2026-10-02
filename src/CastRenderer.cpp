@@ -112,6 +112,10 @@ void CastRenderer::onMpvUpdate()
     f->glBindFramebuffer(GL_FRAMEBUFFER, m_fbo->handle());
     f->glPixelStorei(GL_PACK_ALIGNMENT, 4);
     f->glReadPixels(0, 0, m_size.width(), m_size.height(), GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    if (const GLenum glError = f->glGetError(); glError != GL_NO_ERROR && !m_warned) {
+        m_warned = true;
+        qWarning("Lumen: OpenGL-Fehler 0x%x beim Auslesen des Bildes für die Übertragung", glError);
+    }
     mpv_render_context_report_swap(m_ctx);
     m_gl.doneCurrent();
     m_encoder->pushFrame(std::move(rgba), pts);
