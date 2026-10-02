@@ -9,6 +9,7 @@
 #include <mpv/client.h>
 #include <mpv/render_gl.h>
 
+#include <cstdio>
 #include <cstdlib>
 
 CastRenderer::CastRenderer(mpv_handle *mpv, CastEncoder *encoder, QObject *parent)
@@ -124,7 +125,7 @@ void CastRenderer::onMpvUpdate()
             const uchar *p = reinterpret_cast<const uchar *>(rgba.constData()) + (y * m_size.width() + x) * 4;
             return QStringLiteral("%1,%2,%3,%4").arg(p[0]).arg(p[1]).arg(p[2]).arg(p[3]);
         };
-        qWarning("Lumen: Bild %d Mitte rgba=%s oben links rgba=%s", m_count,
+        std::fprintf(stderr, "Lumen: Bild %d Mitte rgba=%s oben links rgba=%s\n", m_count,
                  qPrintable(px(m_size.width() / 2, m_size.height() / 2)), qPrintable(px(m_size.width() / 32, m_size.height() / 32)));
     }
     m_encoder->pushFrame(std::move(rgba), pts);
