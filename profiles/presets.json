@@ -5,7 +5,7 @@
     "description": "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, ausgewogene Qualität.",
     "fullscreen": false,
     "hdr": "auto",
-    "quality": "balanced"
+    "quality": "auto"
   },
   {
     "id": "dlp-1080p-3d",

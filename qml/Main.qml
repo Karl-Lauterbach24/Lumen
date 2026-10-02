@@ -394,11 +394,13 @@ ApplicationWindow {
                         Chip { text: win.ainfo.passthrough ? qsTr("BITSTREAM") : ""; tint: Theme.good }
                         Chip {
                             text: Player.mvcActive ? qsTr("3D MVC → ") + win.stereoLabel(Profiles.current.stereoOut)
+                                : Player.fileMvc ? qsTr("3D MVC → ") + win.stereoLabel(Profiles.current.stereoOut)
                                 : Player.stereoInput !== "none" ? "3D"
                                 : Disc.info.has3d ? qsTr("3D-Disc (2D)") : ""
                             tint: Theme.accent
-                            filled: Player.mvcActive
+                            filled: Player.mvcActive || Player.fileMvc
                         }
+                        Chip { text: Player.tuningStatus; tint: Theme.warn }
                         Chip { text: Player.buffering ? qsTr("Puffert …") : ""; tint: Theme.warn }
                         Chip { text: Player.speed !== 1 ? Player.speed.toFixed(2) + "×" : ""; tint: Theme.accent }
                         Chip { text: Player.embedded ? qsTr("Eingebettet · SDR") : ""; tint: Theme.textDim }
@@ -1205,9 +1207,9 @@ ApplicationWindow {
                                 }
                                 Toggle {
                                     Layout.fillWidth: true
-                                    label: qsTr("Deinterlacing")
-                                    hint: qsTr("Für 1080i-Material (Konzerte, Doku)")
-                                    onToggled: Player.setOption("deinterlace", checked)
+                                    label: qsTr("Deinterlacing erzwingen")
+                                    hint: qsTr("Halbbild-Material (1080i, DVD) erkennt Lumen selbst")
+                                    onToggled: Player.setOption("deinterlace", checked ? "yes" : "auto")
                                 }
 
                                 SectionLabel { text: qsTr("3D-Quelle") }
@@ -1215,16 +1217,34 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     enabled: !Player.mvcActive
                                     model: [
+                                        { value: "auto", text: qsTr("Automatisch") },
                                         { value: "none", text: "2D" },
                                         { value: "sbsl", text: Player.mvcActive ? qsTr("Blu-ray 3D (MVC) – automatisch") : qsTr("Side-by-Side (Full)") },
                                         { value: "sbsr", text: qsTr("Blu-ray 3D (MVC, Basis rechts) – automatisch") },
                                         { value: "sbs2l", text: qsTr("Side-by-Side (Half)") },
                                         { value: "abl", text: qsTr("Top-and-Bottom (Full)") },
-                                        { value: "ab2l", text: qsTr("Top-and-Bottom (Half)") }
+                                        { value: "ab2l", text: qsTr("Top-and-Bottom (Half)") },
+                                        { value: "sbs2r", text: qsTr("Side-by-Side (Half)") + qsTr(", rechtes Auge zuerst") },
+                                        { value: "ab2r", text: qsTr("Top-and-Bottom (Half)") + qsTr(", rechtes Auge zuerst") }
                                     ]
                                     textRole: "text"; valueRole: "value"
-                                    currentIndex: indexFor(Player.stereoInput)
-                                    onActivated: Player.stereoInput = currentValue
+                                    currentIndex: Player.stereoAuto && !Player.mvcActive ? 0 : indexFor(Player.stereoInput)
+                                    onActivated: {
+                                        if (currentValue === "auto") {
+                                            Player.stereoAuto = true
+                                        } else {
+                                            Player.stereoAuto = false
+                                            Player.stereoInput = currentValue
+                                        }
+                                    }
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap
+                                    visible: text.length > 0
+                                    color: Theme.accent
+                                    font.pixelSize: 11
+                                    text: Player.stereoStatus
                                 }
                                 Text {
                                     Layout.fillWidth: true

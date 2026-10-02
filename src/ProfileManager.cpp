@@ -68,8 +68,9 @@ QVariantMap ProfileManager::defaults() const
         // Video
         {"vo", QStringLiteral("gpu-next")},
         {"gpuApi", QStringLiteral("auto")},
-        {"hwdec", QStringLiteral("auto-safe")},
-        {"quality", QStringLiteral("balanced")}, // fast | balanced | high
+        {"hwdec", QStringLiteral("smart")},      // smart = nach Lage (Tuning.h), sonst ein mpv-Wert
+        {"quality", QStringLiteral("auto")},     // auto | fast | balanced | high | reference
+        {"adaptive", true},                      // bei verlorenen Bildern Stufen zurücknehmen
         {"hdr", QStringLiteral("auto")},         // auto | passthrough | tonemap
         {"targetPeak", 0},                       // 0 = auto (nits)
         {"targetPrim", QStringLiteral("auto")},
@@ -306,7 +307,9 @@ QVariantMap ProfileManager::toMpvOptions(const QVariantMap &p)
     // --- Renderer ----------------------------------------------------------
     o["vo"] = p.value("vo", "gpu-next").toString();
     o["gpu-api"] = p.value("gpuApi", "auto").toString();
-    o["hwdec"] = p.value("hwdec", "auto-safe").toString();
+    // "smart" löst der MpvController auf (Tuning::resolve); ohne ihn: mpvs sichere Automatik
+    const QString hwdec = p.value("hwdec", "auto-safe").toString();
+    o["hwdec"] = hwdec == QLatin1String("smart") ? QStringLiteral("auto-safe") : hwdec;
 
     const QString q = p.value("quality", "balanced").toString();
     if (q == QLatin1String("fast")) {

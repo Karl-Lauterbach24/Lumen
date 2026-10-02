@@ -97,7 +97,9 @@ int main(int argc, char *argv[])
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
     QGuiApplication app(argc, argv);
     QGuiApplication::setOrganizationName(QStringLiteral("Lumen"));
-    QGuiApplication::setApplicationName(QStringLiteral("Lumen"));
+    // Entwickler-Hilfe: LUMEN_APP_NAME=<name> hält Einstellungen, Profile und Verlauf eines
+    // Testlaufs von denen der installierten Anwendung getrennt
+    QGuiApplication::setApplicationName(qEnvironmentVariable("LUMEN_APP_NAME", QStringLiteral("Lumen")));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("Lumen"));
     QGuiApplication::setApplicationVersion(QStringLiteral(LUMEN_VERSION));
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/qt/qml/Lumen/resources/logo/lumen-icon-256.png")));

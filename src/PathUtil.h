@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDir>
+#include <QMutex>
 #include <QString>
 
 #ifdef Q_OS_WIN
@@ -29,4 +30,13 @@ inline QString blurayPath(const QString &path)
 #else
     return path;
 #endif
+}
+
+// bd_open() liest die Disc-Metadaten (bdmt_*.xml) und räumt danach libxml2 global auf
+// (xmlCleanupParser). Zwei gleichzeitige Aufrufe – Disc-Übersicht und Wiedergabe öffnen dieselbe
+// Disc in verschiedenen Threads – geben dabei denselben Speicher zweimal frei. Deshalb nacheinander.
+inline QMutex &blurayOpenMutex()
+{
+    static QMutex mutex;
+    return mutex;
 }

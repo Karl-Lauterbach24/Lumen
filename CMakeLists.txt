@@ -193,6 +193,8 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/Updater.h           src/Updater.cpp
     src/Recent.h            src/Recent.cpp
     src/Stereo3D.h          src/Stereo3D.cpp
+    src/StereoDetect.h      src/StereoDetect.cpp
+    src/Tuning.h            src/Tuning.cpp          src/HardwareProbe.cpp
     src/AudioTap.h          src/AudioTap.cpp
     src/CastStream.h        src/CastStream.cpp
     src/CastAudio.h         src/CastAudio.cpp
@@ -500,6 +502,14 @@ if(LUMEN_BUILD_TESTS)
     add_executable(stereo_test tests/stereo_test.cpp src/Stereo3D.cpp src/Stereo3D.h)
     target_include_directories(stereo_test PRIVATE src)
     target_link_libraries(stereo_test PRIVATE Qt6::Core Qt6::Gui)
+    # Automatische 3D-Erkennung: Dateinamen, Container-Angaben, Bildvergleich (tools/test_stereodetect.sh)
+    add_executable(stereodetect_test tests/stereodetect_test.cpp src/StereoDetect.cpp src/StereoDetect.h)
+    target_include_directories(stereodetect_test PRIVATE src)
+    target_link_libraries(stereodetect_test PRIVATE Qt6::Core PkgConfig::FFMPEG)
+    # Anpassung an die Maschine: Grafikhardware einordnen, Stufen wählen, Governor
+    add_executable(tuning_test tests/tuning_test.cpp src/Tuning.cpp src/Tuning.h)
+    target_include_directories(tuning_test PRIVATE src)
+    target_link_libraries(tuning_test PRIVATE Qt6::Core)
     # Übertragung: Sendestrom (H.264/AAC, Ton-Bild-Abgleich), Geräteerkennung, DLNA/Chromecast/AirPlay/TV-App
     # gegen tools/mock_cast_devices.py
     qt_add_executable(cast_test tests/cast_test.cpp

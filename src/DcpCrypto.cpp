@@ -95,6 +95,7 @@ struct Free
     void operator()(BIO *p) const { BIO_free_all(p); }
     void operator()(EVP_PKEY_CTX *p) const { EVP_PKEY_CTX_free(p); }
     void operator()(BIGNUM *p) const { BN_free(p); }
+    void operator()(X509_NAME *p) const { X509_NAME_free(p); }
 };
 template <typename T> using Ptr = std::unique_ptr<T, Free>;
 
@@ -149,7 +150,7 @@ QByteArray keyPem(EVP_PKEY *k)
     return QByteArray(data, int(n));
 }
 
-QString nameString(X509_NAME *n)
+QString nameString(const X509_NAME *n)
 {
     Ptr<BIO> bio(BIO_new(BIO_s_mem()));
     X509_NAME_print_ex(bio.get(), n, 0, XN_FLAG_RFC2253);
@@ -231,12 +232,15 @@ Ptr<X509> makeCert(EVP_PKEY *key, EVP_PKEY *signKey, X509 *issuer, const QString
     X509_gmtime_adj(X509_getm_notAfter(x.get()), 60L * 60 * 24 * 3650);
     X509_set_pubkey(x.get(), key);
 
-    X509_NAME *name = X509_get_subject_name(x.get());
+    // eigener Name, dann ins Zertifikat kopiert: OpenSSL 4 gibt den des Zertifikats nur noch zum Lesen heraus
+    Ptr<X509_NAME> ownName(X509_NAME_new());
+    X509_NAME *name = ownName.get();
     const QByteArray o = org.toUtf8(), ou = QByteArrayLiteral("lumen.player"), c = cn.toUtf8(), dnq = dnQualifierFor(key).toLatin1();
     X509_NAME_add_entry_by_txt(name, "O", MBSTRING_UTF8, reinterpret_cast<const unsigned char *>(o.constData()), -1, -1, 0);
     X509_NAME_add_entry_by_txt(name, "OU", MBSTRING_UTF8, reinterpret_cast<const unsigned char *>(ou.constData()), -1, -1, 0);
     X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_UTF8, reinterpret_cast<const unsigned char *>(c.constData()), -1, -1, 0);
     X509_NAME_add_entry_by_txt(name, "dnQualifier", MBSTRING_ASC, reinterpret_cast<const unsigned char *>(dnq.constData()), -1, -1, 0);
+    X509_set_subject_name(x.get(), name);
     X509_set_issuer_name(x.get(), issuer ? X509_get_subject_name(issuer) : name);
 
     X509 *iss = issuer ? issuer : x.get();

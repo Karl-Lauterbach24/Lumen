@@ -420,7 +420,10 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
     auto *s = new Session;
     s->nav = nav;
     s->menu = nav->m_mode == QLatin1String("menu");
-    s->bd = bd_open(blurayPath(nav->m_device).toUtf8().constData(), nullptr);
+    {
+        QMutexLocker lock(&blurayOpenMutex());
+        s->bd = bd_open(blurayPath(nav->m_device).toUtf8().constData(), nullptr);
+    }
     if (!s->bd)
         return fail(s, LTR("libbluray konnte die Disc nicht öffnen"));
 

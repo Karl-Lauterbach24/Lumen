@@ -170,7 +170,11 @@ QVariantMap DiscScanner::scanBlocking(const QString &device)
     }
     m["kind"] = QStringLiteral("bluray");
 #ifdef LUMEN_HAVE_BLURAY
-    BLURAY *bd = bd_open(blurayPath(device).toUtf8().constData(), nullptr);
+    BLURAY *bd = nullptr;
+    {
+        QMutexLocker lock(&blurayOpenMutex());
+        bd = bd_open(blurayPath(device).toUtf8().constData(), nullptr);
+    }
     if (!bd) {
         m["error"] = LTR("libbluray konnte die Disc nicht öffnen");
         return m;

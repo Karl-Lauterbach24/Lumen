@@ -10,6 +10,7 @@
 #include "PathUtil.h"
 #include "PlayerWindow.h"
 #include "Stereo3D.h"
+#include "StereoDetect.h"
 #include "VcdNav.h"
 
 #ifdef Q_OS_WIN
@@ -18,6 +19,7 @@
 #include "ProfileManager.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QGuiApplication>
 #include <QImage>
 #include <QScreen>
@@ -29,6 +31,8 @@
 #include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QThread>
+#include <QUrl>
 #include <QtDebug>
 
 #include <mpv/client.h>
@@ -197,6 +201,10 @@ MpvController::MpvController(DisplayManager *displays, BlurayNav *nav, QObject *
     m_ytdl = QStandardPaths::findExecutable(QStringLiteral("yt-dlp"), {QCoreApplication::applicationDirPath()});
     if (m_ytdl.isEmpty())
         m_ytdl = QStandardPaths::findExecutable(QStringLiteral("yt-dlp"));
+    m_stereoAuto = QSettings().value(QStringLiteral("video/stereoAuto"), true).toBool();
+    m_clock.start();
+    m_tuneTimer.setInterval(1000);
+    connect(&m_tuneTimer, &QTimer::timeout, this, &MpvController::tuneTick);
     const QString snap = qEnvironmentVariable("LUMEN_PLAYER_SNAPSHOT");
     if (snap.contains(QLatin1Char('@'))) {
         m_snapshotFile = snap.section(QLatin1Char('@'), 0, -2);
@@ -287,6 +295,9 @@ bool MpvController::wantsEmbedded(const QVariantMap &profile)
 
 MpvController::~MpvController()
 {
+    cancelStereoDetection();
+    if (m_detectThread)
+        m_detectThread->wait(6000);
     shutdown();
 }
 
@@ -393,6 +404,8 @@ bool MpvController::create(const QVariantMap &options)
         {"slang", langs},
         {"sub-auto", "fuzzy"},
         {"hr-seek-framedrop", "no"},
+        // Halbbild-Material (DVD, 1080i) erkennt mpv am Bild selbst
+        {"deinterlace", "auto"},
     };
     for (auto it = base.cbegin(); it != base.cend(); ++it)
         setOptionRaw(it.key(), it.value(), true);
@@ -617,6 +630,49 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
     m_lastUrl = url;
     m_lastOptions = fileOptions;
     m_eof = false;
+    // Was nur für die vorige Datei galt: beide MVC-Ansichten, zurückgenommene Stufen
+    cancelStereoDetection();
+    m_fileMvc = false;
+    m_mvcStream = false;
+    m_learnedLoaded = false;
+    m_governor.reset();
+    m_governor.setLimits(Tuning::maxRenderLevel(m_profile, Tuning::hardware()), Tuning::kMaxDecodeLevel);
+    updateTuningStatus();
+    syncOptions();
+    m_preloadWaiting = false;
+    m_havePreResult = false;
+
+    // 3D vor dem Start erkennen, wo es darauf ankommt: das Profil gibt 3D aus oder der Name sagt
+    // "3D". Sonst würde das Bild nach einer Sekunde umspringen. Begrenzte Wartezeit; reicht sie
+    // nicht, geht es nach dem Laden weiter (startStereoDetection).
+    const QFileInfo fi(url);
+    if (m_stereoAuto && !m_autoStereo && m_sourceKind == QLatin1String("file") && fi.isFile()
+        && ((!m_castEncoder && m_profile.value("stereoOut", "none").toString() != QLatin1String("none"))
+            || StereoDetect::fromName(fi.fileName()).is3d)) {
+        m_preloadWaiting = true;
+        const int generation = m_detectGeneration + 1; // runStereoAnalysis zählt weiter
+        runStereoAnalysis(fi.absoluteFilePath(), url, fileOptions);
+        QTimer::singleShot(2500, this, [this, generation, url, fileOptions] {
+            if (m_preloadWaiting && generation == m_detectGeneration) {
+                m_preloadWaiting = false;
+                loadFileNow(url, fileOptions);
+            }
+        });
+        return;
+    }
+    loadFileNow(url, fileOptions);
+}
+
+void MpvController::loadFileNow(const QString &url, const QVariantMap &options)
+{
+    if (!m_mpv)
+        return;
+    QVariantMap fileOptions = options;
+    // Zwei Ansichten (MVC): mpvs eigener Matroska-Leser reicht die zweite nicht vollständig durch,
+    // der von FFmpeg schon
+    if (m_fileMvc)
+        fileOptions.insert(QStringLiteral("demuxer"), QStringLiteral("lavf"));
+    m_mvcDemuxer = m_fileMvc;
     // Benannte Argumente: unabhängig von der loadfile-Signatur der mpv-Version
     QByteArray bUrl = url.toUtf8();
     QByteArray bName("loadfile"), bFlags("replace");
@@ -1203,16 +1259,20 @@ void MpvController::stop()
         m_queueActive = false;
         emit queueChanged();
     }
+    cancelStereoDetection();
+    m_preloadWaiting = false;
     command({"stop"});
 }
 
 void MpvController::seek(double seconds, bool relative)
 {
+    holdGovernor(3);
     command({"osd-msg-bar", "seek", QString::number(seconds, 'f', 3), relative ? "relative" : "absolute"});
 }
 
 void MpvController::seekExact(double seconds)
 {
+    holdGovernor(3);
     command({"osd-msg-bar", "seek", QString::number(seconds, 'f', 3), "absolute+exact"});
 }
 
@@ -1303,7 +1363,24 @@ void MpvController::showText(const QString &text, int ms)
 
 QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
 {
-    QVariantMap o = ProfileManager::toMpvOptions(profile);
+    // 3D: Quellformat (Laufzeit) -> Geräteformat (Profil). Ohne 3D-Gerät wird
+    // eine 3D-Quelle auf das linke Auge (2D) reduziert.
+    // Übertragung: immer 2D
+    const QString out = m_castEncoder ? QStringLiteral("none") : profile.value("stereoOut", "none").toString();
+    QVariantMap stereoProfile = profile;
+    stereoProfile["stereoOut"] = out;
+    const QString stereoFilter = Stereo3D::filter(m_stereoIn, stereoProfile);
+
+    // Skalierungsstufe und Decoder-Weg nach Maschine und Lage (siehe Tuning.h)
+    Tuning::Context context = tuningContext();
+    context.cpuFilter = !stereoFilter.isEmpty();
+    const QVariantMap resolved = Tuning::resolve(profile, Tuning::hardware(), context);
+    QVariantMap o = ProfileManager::toMpvOptions(resolved);
+    const QVariantMap relief = Tuning::reliefOptions(resolved, context);
+    for (auto it = relief.cbegin(); it != relief.cend(); ++it)
+        o.insert(it.key(), it.value());
+    // Datei mit zwei Ansichten (H.264/MVC): FFmpeg-mvc liefert beide nebeneinander
+    o["vd-lavc-o"] = m_fileMvc ? QStringLiteral("view_ids=-1") : QString();
     if (m_castEncoder) {
         // Geräte-Einstellungen des Profils ruhen, solange übertragen wird
         for (const char *key : {"gpu-api", "border", "ontop", "fullscreen", "audio-device", "icc-profile", "target-lut", "glsl-shaders"})
@@ -1324,13 +1401,11 @@ QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
             o.insert(it.key(), it.value());
     }
 
-    // 3D: Quellformat (Laufzeit) -> Geräteformat (Profil). Ohne 3D-Gerät wird
-    // eine 3D-Quelle auf das linke Auge (2D) reduziert.
-    // Übertragung: immer 2D
-    const QString out = m_castEncoder ? QStringLiteral("none") : profile.value("stereoOut", "none").toString();
-    QVariantMap stereoProfile = profile;
-    stereoProfile["stereoOut"] = out;
-    o["vf"] = Stereo3D::filter(m_stereoIn, stereoProfile);
+    // Eigenes mpv-Fenster: fällt der neue Renderer aus (alter Treiber), nimmt mpv den bewährten
+    if (!m_castEncoder && !wantsEmbedded(profile) && o.value("vo").toString() == QLatin1String("gpu-next"))
+        o["vo"] = QStringLiteral("gpu-next,gpu");
+
+    o["vf"] = stereoFilter;
     if (out == QLatin1String("seq") && m_stereoIn != QLatin1String("none")) {
         // Bildfolge: jedes Bild genau einen Bildwechsel lang, also streng im Takt des Bildschirms
         o["video-sync"] = QStringLiteral("display-resample");
@@ -1348,14 +1423,7 @@ void MpvController::setStereoInput(const QString &format)
     if (format == m_stereoIn)
         return;
     m_stereoIn = format;
-    const QVariantMap opts = buildOptions(m_profile);
-    for (const char *key : {"vf", "video-sync", "interpolation"}) {
-        const QString k = QLatin1String(key);
-        if (!opts.contains(k) || m_appliedOptions.value(k) == opts.value(k))
-            continue;
-        m_appliedOptions[k] = opts.value(k);
-        setOptionRaw(k, opts.value(k), false);
-    }
+    syncOptions(); // Filterkette, Abgleich und Decoder-Weg (kopierend, wenn ein Filter rechnet)
     emit stereoInputChanged();
     m_matchedFps = 0; // Bildfolge braucht ggf. eine andere Bildwiederholrate
     onContentFormatKnown();
@@ -1400,6 +1468,10 @@ void MpvController::applyProfile(const QVariantMap &profile)
     emit outputStatusChanged();
     emit profileApplied();
     onContentFormatKnown();
+    m_governor.setLimits(Tuning::maxRenderLevel(m_profile, Tuning::hardware()), Tuning::kMaxDecodeLevel);
+    // ein anderes Ausgabeformat kann die 3D-Wiedergabe ändern (MVC-Datei: zweite Ansicht nur für 3D)
+    if (m_stereoAuto && !m_idle)
+        startStereoDetection();
 }
 
 void MpvController::onContentFormatKnown()
@@ -1457,6 +1529,358 @@ void MpvController::onContentFormatKnown()
 }
 
 // --------------------------------------------------------------------------
+// Automatik: Optionen nachführen, 3D erkennen, Leistung anpassen
+// --------------------------------------------------------------------------
+
+void MpvController::syncOptions()
+{
+    if (!m_mpv)
+        return;
+    const QVariantMap opts = buildOptions(m_profile);
+    bool changed = false;
+    for (auto it = opts.cbegin(); it != opts.cend(); ++it) {
+        if (kRestartKeys.contains(it.key()) || m_appliedOptions.value(it.key()) == it.value())
+            continue;
+        m_appliedOptions[it.key()] = it.value();
+        setOptionRaw(it.key(), it.value(), false);
+        changed = true;
+    }
+    // Was eine Stufe zusätzlich gesetzt hatte und jetzt nicht mehr vorkommt: zurück auf mpvs Vorgabe
+    for (const QString &key : m_appliedOptions.keys()) {
+        if (opts.contains(key) || kRestartKeys.contains(key))
+            continue;
+        const QVariant def = getProperty(QStringLiteral("option-info/%1/default-value").arg(key));
+        if (def.isValid())
+            setOptionRaw(key, def, false);
+        m_appliedOptions.remove(key);
+        changed = true;
+    }
+    if (changed)
+        holdGovernor(3); // der Umbau selbst kostet Bilder
+}
+
+Tuning::Context MpvController::tuningContext() const
+{
+    Tuning::Context c;
+    c.mvc = m_mvcStream; // auch für eine Ansicht: Hardware-Decoder scheitern an MVC-Strömen
+    if (m_profile.value("adaptive", true).toBool()) {
+        c.renderLevel = m_governor.renderLevel();
+        c.decodeLevel = m_governor.decodeLevel();
+    }
+    return c;
+}
+
+QVariantMap MpvController::hardwareInfo() const
+{
+    const Tuning::Hardware &hw = Tuning::hardware();
+    return {{"renderer", hw.renderer}, {"vendor", hw.vendor}, {"class", Tuning::gpuClassName(hw.gpu)}, {"cores", hw.cores}};
+}
+
+QString MpvController::stereoInLabel(const QString &format)
+{
+    if (format.isEmpty() || format == QLatin1String("none"))
+        return QStringLiteral("2D");
+    const bool rightFirst = format.endsWith(QLatin1Char('r'));
+    const QString layout = format.left(format.size() - 1);
+    QString label = format;
+    if (layout == QLatin1String("sbs2"))
+        label = LTR("Side-by-Side Half");
+    else if (layout == QLatin1String("sbs"))
+        label = LTR("Side-by-Side Full");
+    else if (layout == QLatin1String("ab2"))
+        label = LTR("Top-and-Bottom Half");
+    else if (layout == QLatin1String("ab"))
+        label = LTR("Top-and-Bottom Full");
+    else if (layout == QLatin1String("ir"))
+        label = LTR("Zeilenverschachtelt");
+    else if (layout == QLatin1String("a"))
+        label = LTR("Bildwechsel");
+    return rightFirst ? LTR("%1, rechtes Auge zuerst").arg(label) : label;
+}
+
+QString MpvController::stereoStatus() const
+{
+    if (!m_stereoAuto || m_idle || mvcActive())
+        return {};
+    if (m_stereoSource == QLatin1String("mvc"))
+        return m_fileMvc ? LTR("Erkannt: zwei Ansichten (MVC)") : LTR("Erkannt: zwei Ansichten (MVC) – gezeigt wird eine");
+    if (m_stereoSource.isEmpty() || m_stereoIn == QLatin1String("none"))
+        return m_detectThread ? LTR("Bild wird geprüft …") : LTR("Kein 3D erkannt");
+    const QString by = m_stereoSource == QLatin1String("metadata") ? LTR("Angabe in der Datei")
+                       : m_stereoSource == QLatin1String("name")   ? LTR("Dateiname")
+                       : m_stereoSource == QLatin1String("picture") ? LTR("Bildvergleich")
+                                                                    : LTR("Bildgröße");
+    return LTR("Erkannt: %1 (%2)").arg(stereoInLabel(m_stereoIn), by);
+}
+
+void MpvController::setStereoAuto(bool on)
+{
+    if (on == m_stereoAuto)
+        return;
+    m_stereoAuto = on;
+    QSettings().setValue(QStringLiteral("video/stereoAuto"), on);
+    if (on) {
+        startStereoDetection();
+    } else {
+        cancelStereoDetection();
+        m_stereoSource.clear();
+        if (m_fileMvc) {
+            m_fileMvc = false;
+            syncOptions();
+        }
+    }
+    emit stereoInputChanged();
+}
+
+void MpvController::cancelStereoDetection()
+{
+    ++m_detectGeneration;
+    m_detectPending = false;
+    if (m_detectCancel)
+        m_detectCancel->store(true);
+    m_detectCancel.reset();
+}
+
+void MpvController::startStereoDetection()
+{
+    cancelStereoDetection();
+    if (!m_stereoAuto || !m_mpv)
+        return;
+    // Blu-ray 3D meldet sich selbst; ein Öffner (Plugin, DCP) hat das Format vorgegeben
+    if (mvcActive() || m_autoStereo)
+        return;
+    const bool wasMvc = m_fileMvc;
+    m_fileMvc = false;
+    // direkt gefragt: die Änderungsmeldung für "path" kann nach "Datei geladen" eintreffen
+    m_detectPath = getProperty(QStringLiteral("path")).toString();
+    if (m_sourceKind != QLatin1String("file") || m_detectPath.isEmpty()) {
+        if (wasMvc)
+            syncOptions();
+        applyDetectedStereo(QStringLiteral("none"), {});
+        return;
+    }
+
+    // 1. Zwei Ansichten in einem Strom (H.264/MVC, z. B. MKV von einer Blu-ray 3D): FFmpeg-mvc
+    //    nennt das Profil; die zweite Ansicht wird nur dekodiert, wenn das Profil 3D ausgibt
+    for (const auto &v : getProperty(QStringLiteral("track-list")).toList()) {
+        const QVariantMap t = v.toMap();
+        if (t.value("type").toString() != QLatin1String("video") || !t.value("selected").toBool())
+            continue;
+        const QString profile = t.value("codec-profile").toString();
+        if (profile != QLatin1String("Stereo High") && profile != QLatin1String("Multiview High"))
+            break;
+        m_fileMvc = m_mvcCapable && !m_castEncoder && m_profile.value("stereoOut", "none").toString() != QLatin1String("none");
+        const bool wasStream = m_mvcStream;
+        m_mvcStream = true;
+        if (m_fileMvc != wasMvc || !wasStream)
+            syncOptions();
+        if (m_fileMvc && !m_mvcDemuxer) {
+            // erst jetzt bemerkt (z. B. Profil auf 3D umgestellt): an derselben Stelle neu laden,
+            // diesmal mit dem Matroska-Leser von FFmpeg
+            m_stereoSource = QStringLiteral("mvc");
+            setStereoInput(QStringLiteral("sbsl"));
+            QVariantMap options = m_lastOptions;
+            options["start"] = QString::number(m_position, 'f', 3);
+            options["pause"] = m_paused ? "yes" : "no";
+            loadFileNow(m_lastUrl, options);
+            return;
+        }
+        // FFmpeg-mvc setzt die Basisansicht nach links
+        applyDetectedStereo(m_fileMvc ? QStringLiteral("sbsl") : QStringLiteral("none"), QStringLiteral("mvc"));
+        return;
+    }
+    if (wasMvc)
+        syncOptions();
+    m_detectPending = true;
+    continueStereoDetection();
+}
+
+void MpvController::continueStereoDetection()
+{
+    if (!m_detectPending)
+        return;
+    // Was der Decoder liefert – vor der 3D-Filterkette
+    const QVariantMap dec = getProperty(QStringLiteral("video-dec-params")).toMap();
+    const int w = dec.value("w").toInt(), h = dec.value("h").toInt();
+    if (w <= 0 || h <= 0)
+        return; // noch kein Bild: weiter, sobald video-params kommt
+    m_detectPending = false;
+    if (m_mvcStream) {
+        // vor dem Laden als MVC erkannt, läuft mit einer Ansicht (Profil gibt 2D aus)
+        applyDetectedStereo(QStringLiteral("none"), QStringLiteral("mvc"));
+        return;
+    }
+
+    // 2. Angabe im Container oder Strom
+    const StereoDetect::Hint meta = StereoDetect::fromMetadata(dec.value("stereo-in").toString());
+    if (meta.decided()) {
+        applyDetectedStereo(StereoDetect::format(meta, w, h), QStringLiteral("metadata"));
+        return;
+    }
+
+    // schon vor dem Laden geprüft (Name und Bild)
+    if (m_havePreResult) {
+        m_havePreResult = false;
+        applyDetectedStereo(m_preFormat, m_preSource);
+        return;
+    }
+
+    // 3. Dateiname – sofort, wenn er eindeutig ist; das Bild kann ihn danach noch berichtigen
+    const bool local = QFileInfo(m_detectPath).isFile();
+    const QString fileName = local ? QFileInfo(m_detectPath).fileName() : QUrl(m_detectPath).fileName();
+    const StereoDetect::Hint name = StereoDetect::fromName(fileName);
+    const bool nameLayout = (name.layout == StereoDetect::SideBySide || name.layout == StereoDetect::TopBottom)
+                            && (name.tagged3d || name.half >= 0);
+    if (nameLayout) {
+        applyDetectedStereo(StereoDetect::format(name, w, h), QStringLiteral("name"));
+    } else if (!local && name.tagged3d && StereoDetect::fromSize(w, h).decided()) {
+        applyDetectedStereo(StereoDetect::format(StereoDetect::fromSize(w, h), w, h), QStringLiteral("size"));
+    } else {
+        applyDetectedStereo(QStringLiteral("none"), {});
+    }
+    if (!local)
+        return; // einen Netzwerkstrom ein zweites Mal zu öffnen, lohnt nicht
+
+    // 4. Das Bild selbst
+    runStereoAnalysis(m_detectPath, {}, {});
+}
+
+// Datei in einem eigenen Thread öffnen und Bilder vergleichen (StereoDetect::detectFile).
+// url nicht leer: die Datei wartet auf das Ergebnis und wird danach geladen.
+void MpvController::runStereoAnalysis(const QString &path, const QString &url, const QVariantMap &fileOptions)
+{
+    cancelStereoDetection();
+    auto cancel = std::make_shared<std::atomic_bool>(false);
+    m_detectCancel = cancel;
+    const int generation = m_detectGeneration;
+    QPointer<MpvController> self(this);
+    QThread *thread = QThread::create([self, cancel, generation, path, url, fileOptions] {
+        const StereoDetect::Result r = StereoDetect::detectFile(path, cancel.get());
+        if (cancel->load() || !self)
+            return;
+        QMetaObject::invokeMethod(self.data(), [self, r, generation, url, fileOptions] {
+            if (!self || generation != self->m_detectGeneration || !self->m_stereoAuto)
+                return;
+            self->m_detectThread = nullptr;
+            if (self->m_preloadWaiting && !url.isEmpty()) {
+                // noch nicht geladen: Format setzen, dann starten
+                self->m_preloadWaiting = false;
+                self->m_havePreResult = true;
+                self->m_preFormat = r.format;
+                self->m_preSource = r.source;
+                self->m_stereoSource = r.found() || r.mvc ? r.source : QString();
+                if (qEnvironmentVariableIsSet("LUMEN_STEREO_DEBUG"))
+                    qWarning().noquote() << "Lumen: 3D-Erkennung vor dem Laden" << r.format << r.source << "MVC" << r.mvc;
+                if (r.mvc) {
+                    self->m_mvcStream = true;
+                    // zwei Ansichten: den Decoder gleich mit beiden öffnen, wenn das Profil 3D ausgibt
+                    self->m_fileMvc = self->m_mvcCapable && !self->m_castEncoder
+                                      && self->m_profile.value("stereoOut", "none").toString() != QLatin1String("none");
+                    self->m_havePreResult = false; // nach dem Laden entscheidet die Spurliste
+                    self->setStereoInput(self->m_fileMvc ? QStringLiteral("sbsl") : QStringLiteral("none"));
+                    self->syncOptions();
+                } else {
+                    self->setStereoInput(r.format);
+                }
+                self->loadFileNow(url, fileOptions);
+            } else if (url.isEmpty() && !r.mvc) {
+                self->applyDetectedStereo(r.format, r.source);
+            }
+        }, Qt::QueuedConnection);
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    m_detectThread = thread;
+    thread->start(url.isEmpty() ? QThread::LowPriority : QThread::InheritPriority);
+    emit stereoInputChanged(); // "Bild wird geprüft …"
+}
+
+void MpvController::applyDetectedStereo(const QString &format, const QString &source)
+{
+    const QString newSource = format == QLatin1String("none") && source != QLatin1String("mvc") ? QString() : source;
+    // Entwickler-Hilfe: LUMEN_STEREO_DEBUG=1 nennt jede Entscheidung der 3D-Erkennung
+    if (qEnvironmentVariableIsSet("LUMEN_STEREO_DEBUG"))
+        qWarning().noquote() << "Lumen: 3D-Erkennung" << format << (source.isEmpty() ? QStringLiteral("-") : source) << "MVC" << m_fileMvc;
+    m_stereoSource = newSource;
+    if (format == m_stereoIn) {
+        emit stereoInputChanged(); // Status-Text
+        return;
+    }
+    setStereoInput(format);
+    if (format != QLatin1String("none"))
+        showText(LTR("3D erkannt: %1").arg(source == QLatin1String("mvc") ? QStringLiteral("MVC") : stereoInLabel(format)), 2500);
+}
+
+void MpvController::holdGovernor(double seconds)
+{
+    m_governor.hold(seconds, m_clock.elapsed() / 1000.0);
+}
+
+void MpvController::updateTuningStatus()
+{
+    QStringList parts;
+    if (m_governor.renderLevel() > 0)
+        parts << LTR("Skalierung −%1").arg(m_governor.renderLevel());
+    if (m_governor.decodeLevel() > 0)
+        parts << LTR("Decoder entlastet");
+    const QString status = parts.join(QStringLiteral(" · "));
+    if (status != m_tuningStatus) {
+        m_tuningStatus = status;
+        emit tuningChanged();
+    }
+}
+
+// Einmal je Sekunde: verlorene Bilder zählen und, wenn es zu viele werden, eine Stufe zurücknehmen
+void MpvController::tuneTick()
+{
+    if (!m_mpv || m_idle)
+        return;
+    const bool adaptive = m_profile.value("adaptive", true).toBool();
+    const bool sequential = m_stereoIn != QLatin1String("none") && m_profile.value("stereoOut").toString() == QLatin1String("seq");
+    const bool advancing = m_position != m_tickPosition;
+    m_tickPosition = m_position;
+
+    const QVariantMap dec = adaptive ? getProperty(QStringLiteral("video-dec-params")).toMap() : QVariantMap();
+    const QString learnKey = QStringLiteral("tuning/%1/%2").arg(m_profile.value("id").toString(),
+                                                                 Tuning::loadClass(dec.value("w").toInt(), dec.value("h").toInt(), m_containerFps));
+    // Was diese Maschine bei solchem Material schon einmal nicht geschafft hat, gleich so beginnen
+    if (adaptive && !m_learnedLoaded && dec.value("w").toInt() > 0 && m_containerFps > 1) {
+        m_learnedLoaded = true;
+        const QStringList learned = QSettings().value(learnKey).toString().split(QLatin1Char(';'));
+        const qint64 day = QDateTime::currentSecsSinceEpoch() / 86400;
+        if (learned.size() == 2 && day - learned.at(1).toLongLong() <= 14 && learned.at(0).toInt() > 0) {
+            m_governor.setLevels(learned.at(0).toInt(), 0);
+            syncOptions();
+            updateTuningStatus();
+        }
+    }
+
+    Tuning::Governor::Sample s;
+    s.time = m_clock.elapsed() / 1000.0;
+    s.voDrops = m_vo_drops;
+    s.decoderDrops = m_dec_drops;
+    s.delayed = getProperty(QStringLiteral("vo-delayed-frame-count")).toLongLong();
+    s.fps = m_containerFps;
+    s.software = m_hwdec.isEmpty() || m_hwdec == QLatin1String("no");
+    s.pixelRate = dec.value("w").toDouble() * dec.value("h").toDouble() * m_containerFps;
+    s.steady = adaptive && advancing && !m_paused && !m_buffering && std::abs(m_speed - 1.0) < 0.01 && !m_castEncoder && !sequential;
+    // Der Renderer misst seine Durchgänge selbst (nicht im eingebetteten Fenster)
+    double ns = 0;
+    for (const auto &pass : getProperty(QStringLiteral("vo-passes")).toMap().value("fresh").toList())
+        ns += pass.toMap().value("avg").toDouble();
+    if (ns > 0)
+        s.renderMs = ns / 1e6;
+
+    const Tuning::Governor::Action action = m_governor.feed(s);
+    if (action == Tuning::Governor::None)
+        return;
+    syncOptions();
+    updateTuningStatus();
+    showText(LTR("Leistung angepasst: %1").arg(m_tuningStatus), 2500);
+    if (action == Tuning::Governor::LowerRender)
+        QSettings().setValue(learnKey, QStringLiteral("%1;%2").arg(m_governor.renderLevel()).arg(QDateTime::currentSecsSinceEpoch() / 86400));
+}
+
+// --------------------------------------------------------------------------
 // Events
 // --------------------------------------------------------------------------
 
@@ -1491,7 +1915,8 @@ void MpvController::handleEvent(mpv_event *ev)
         // Einzelne Decoder-Fehler (Einstieg mitten in einem Frame, Sprungstellen) sind
         // vorübergehend und keine Störung der Wiedergabe
         const QByteArray prefix(m->prefix);
-        const bool transient = prefix == "ad" || prefix == "vd" || prefix.startsWith("ffmpeg/");
+        // … ebenso wenig Meldungen von FFmpeg ohne Bezug zu einer Spur (Geräte, die es nicht gibt)
+        const bool transient = prefix == "ad" || prefix == "vd" || prefix == "ffmpeg" || prefix.startsWith("ffmpeg/");
         if (m->log_level <= MPV_LOG_LEVEL_ERROR && !transient)
             setError(text);
         break;
@@ -1529,6 +1954,8 @@ void MpvController::handleEvent(mpv_event *ev)
         // dem Laden des nächsten ankommen – dann stünde es und die Steuerung liefe nie weiter
         if (m_vcd && m_vcd->active())
             setOptionRaw(QStringLiteral("pause"), false, false);
+        holdGovernor(5);
+        startStereoDetection();
         emit fileLoaded();
         break;
     case MPV_EVENT_SHUTDOWN:
@@ -1551,7 +1978,11 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     auto node = [&] { return data && format == MPV_FORMAT_NODE ? nodeToVariant(static_cast<mpv_node *>(data)) : QVariant(); };
 
     switch (PropId(id)) {
-    case P_PAUSE: m_paused = flag(); emit pausedChanged(); break;
+    case P_PAUSE:
+        m_paused = flag();
+        holdGovernor(2);
+        emit pausedChanged();
+        break;
     case P_TIMEPOS: {
         m_position = dbl();
         if (m_snapshotAt >= 0 && m_position >= m_snapshotAt && !m_idle) {
@@ -1589,6 +2020,10 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         break;
     case P_IDLE:
         m_idle = flag();
+        if (m_idle)
+            m_tuneTimer.stop();
+        else
+            m_tuneTimer.start();
         if (m_idle) {
             m_position = 0;
             m_positionBucket = -1;
@@ -1640,6 +2075,7 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         m_videoParams = node().toMap();
         updateVideoInfo();
         onContentFormatKnown();
+        continueStereoDetection();
         break;
     case P_VIDEOFORMAT: m_videoCodec = str(); updateVideoInfo(); break;
     case P_FPS:
@@ -1665,6 +2101,7 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     case P_ABB: m_loopB = toTime(node()); emit loopChanged(); break;
     case P_FULLSCREEN:
         m_fullscreen = flag();
+        holdGovernor(3);
         if (m_window) // vo=libmpv: Vollbild setzt das Qt-Fenster um
             m_window->setFullscreen(m_fullscreen);
         emit fullscreenChanged();

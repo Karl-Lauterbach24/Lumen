@@ -232,6 +232,7 @@ Popup {
                     EnumSelect {
                         key: "quality"
                         options: [
+                            { value: "auto", text: qsTr("Automatisch (nach Grafikhardware)") },
                             { value: "fast", text: qsTr("Schnell (geringe GPU-Last)") },
                             { value: "balanced", text: qsTr("Ausgewogen") },
                             { value: "high", text: qsTr("Hoch (EWA Lanczos, lineares Downscaling)") },
@@ -254,7 +255,8 @@ Popup {
                     EnumSelect {
                         key: "hwdec"
                         options: [
-                            { value: "auto-safe", text: qsTr("Automatisch") },
+                            { value: "smart", text: qsTr("Automatisch") },
+                            { value: "auto-safe", text: "auto-safe (mpv)" },
                             { value: "no", text: qsTr("Aus (Software)") },
                             { value: "d3d11va", text: qsTr("D3D11VA (Windows)") },
                             { value: "nvdec", text: qsTr("NVDEC (NVIDIA)") },
@@ -262,6 +264,21 @@ Popup {
                             { value: "videotoolbox", text: qsTr("VideoToolbox (macOS)") }
                         ]
                     }
+                }
+                Toggle {
+                    label: qsTr("Leistung automatisch anpassen")
+                    hint: qsTr("Gehen Bilder verloren, nimmt Lumen erst die Skalierung, dann den Decoder schrittweise zurück")
+                    checked: editor.draft.adaptive !== false
+                    onToggled: editor.set("adaptive", checked)
+                    Layout.fillWidth: true
+                }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    visible: !!Player.hardware.renderer
+                    color: Theme.textFaint
+                    font.pixelSize: 11
+                    text: qsTr("Grafik: ") + (Player.hardware.renderer || "")
                 }
                 // ---------------- Kalibrierung ----------------
                 SectionLabel { text: qsTr("Kalibrierung"); Layout.columnSpan: 2 }

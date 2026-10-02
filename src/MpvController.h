@@ -1,12 +1,18 @@
 #pragma once
 
 #include "CastOutput.h"
+#include "Tuning.h"
 
+#include <QElapsedTimer>
 #include <QObject>
+#include <QPointer>
+#include <QTimer>
 #include <QUrl>
 #include <QVariant>
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <vector>
 
 struct mpv_handle;
@@ -18,6 +24,7 @@ class DvdNav;
 class VcdNav;
 class QImage;
 class PlayerWindow;
+class QThread;
 
 // Steuert eine libmpv-Instanz. Das Player-Fenster ist entweder mpv's eigenes
 // natives Fenster (gpu-next / d3d11 / vulkan / wayland – volle HDR-Ausgabe) oder
@@ -63,6 +70,17 @@ class MpvController : public QObject, public CastOutput
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QVariantMap profile READ profile NOTIFY profileApplied)
     Q_PROPERTY(QString stereoInput READ stereoInput WRITE setStereoInput NOTIFY stereoInputChanged)
+    // 3D-Quellformat selbst erkennen (Angaben in der Datei, Dateiname, Bildvergleich); eine Wahl
+    // von Hand schaltet das ab
+    Q_PROPERTY(bool stereoAuto READ stereoAuto WRITE setStereoAuto NOTIFY stereoInputChanged)
+    // Ergebnis der Erkennung als Text für die Oberfläche
+    Q_PROPERTY(QString stereoStatus READ stereoStatus NOTIFY stereoInputChanged)
+    // Datei mit zwei Ansichten (H.264/MVC, z. B. MKV von einer Blu-ray 3D) läuft in 3D
+    Q_PROPERTY(bool fileMvc READ fileMvc NOTIFY stereoInputChanged)
+    // Was die Laufzeit-Anpassung zurückgenommen hat (leer: nichts)
+    Q_PROPERTY(QString tuningStatus READ tuningStatus NOTIFY tuningChanged)
+    // Erkannte Grafikhardware: renderer, class (software | integrated | discrete | unknown), cores
+    Q_PROPERTY(QVariantMap hardware READ hardwareInfo CONSTANT)
     Q_PROPERTY(QString outputStatus READ outputStatus NOTIFY outputStatusChanged)
     // FFmpeg mit H.264/MVC-Decoder (FFmpeg-mvc) geladen?
     Q_PROPERTY(bool mvcCapable READ mvcCapable NOTIFY profileApplied)
@@ -215,6 +233,13 @@ public:
     QVariantMap profile() const { return m_profile; }
     QString stereoInput() const { return m_stereoIn; }
     void setStereoInput(const QString &format);
+    bool stereoAuto() const { return m_stereoAuto; }
+    void setStereoAuto(bool on);
+    QString stereoStatus() const;
+    bool fileMvc() const { return m_fileMvc; }
+    static QString stereoInLabel(const QString &format);
+    QString tuningStatus() const { return m_tuningStatus; }
+    QVariantMap hardwareInfo() const;
     QString outputStatus() const { return m_outputStatus; }
     bool mvcCapable() const { return m_mvcCapable; }
     bool mvcActive() const;
@@ -232,6 +257,7 @@ signals:
     void dcpRequested(const QString &path, int cpl);
     void mvcActiveChanged();
     void stereoInputChanged();
+    void tuningChanged();
     void outputStatusChanged();
     void idleChanged();
     void pausedChanged();
@@ -272,6 +298,7 @@ private:
     void handleEvent(mpv_event *ev);
     void handleProperty(quint64 id, int format, void *data);
     void loadFile(const QString &url, const QVariantMap &fileOptions = {});
+    void loadFileNow(const QString &url, const QVariantMap &options);
     QVariantMap buildOptions(const QVariantMap &profile) const;
     void setOptionRaw(const QString &name, const QVariant &value, bool preInit);
     void rebuildTracks(const QVariantList &list);
@@ -285,6 +312,19 @@ private:
     void openNavStream(const QString &device, const QString &mode, int playlist);
     void placeEmbeddedWindow();
     void resetAutoStereo();
+    // laufende mpv-Instanz auf den Stand von buildOptions() bringen (ohne Neustart)
+    void syncOptions();
+    Tuning::Context tuningContext() const;
+    // automatische 3D-Erkennung
+    void startStereoDetection();
+    void runStereoAnalysis(const QString &path, const QString &url, const QVariantMap &fileOptions);
+    void continueStereoDetection();
+    void cancelStereoDetection();
+    void applyDetectedStereo(const QString &format, const QString &source);
+    // Laufzeit-Anpassung
+    void tuneTick();
+    void holdGovernor(double seconds);
+    void updateTuningStatus();
     void advanceQueue();
 
     DisplayManager *m_displays = nullptr;
@@ -366,6 +406,26 @@ private:
     QString m_stereoIn = QStringLiteral("none");
     bool m_autoStereo = false;   // Quellformat automatisch aus MVC gesetzt
     bool m_mvcCapable = false;
+    bool m_stereoAuto = true;
+    QString m_stereoSource;      // woran erkannt: metadata | name | picture | size | mvc
+    bool m_fileMvc = false;      // Datei mit zwei Ansichten wird mit beiden dekodiert
+    bool m_mvcStream = false;    // der Videostrom der Datei ist H.264/MVC (auch wenn nur eine Ansicht läuft)
+    bool m_mvcDemuxer = false;   // die laufende Datei wurde dafür mit FFmpegs Demuxer geladen
+    bool m_detectPending = false; // wartet auf die Bildgröße
+    int m_detectGeneration = 0;
+    QString m_detectPath;        // Datei, für die die Erkennung läuft
+    std::shared_ptr<std::atomic_bool> m_detectCancel;
+    QPointer<QThread> m_detectThread;
+    // Erkennung vor dem Laden (3D-Profil oder "3D" im Namen): die Datei startet gleich im richtigen Format
+    bool m_preloadWaiting = false;
+    bool m_havePreResult = false;
+    QString m_preFormat, m_preSource;
+    Tuning::Governor m_governor;
+    QTimer m_tuneTimer;
+    QElapsedTimer m_clock;
+    QString m_tuningStatus;
+    bool m_learnedLoaded = false;
+    double m_tickPosition = -1;
     QString m_outputStatus;
     double m_matchedFps = 0;
     int m_hdrState = -1; // -1 unbekannt, 0 SDR, 1 HDR
