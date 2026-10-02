@@ -155,13 +155,15 @@ jobs:
                  -t 20 -c:v libx264 -g 30 -pix_fmt yuv420p -c:a aac build/tests/sync.mp4
           # die CI-Maschine hat keine Grafikkarte (OpenGL rechnet die CPU): kleines Bild, beim Zeitverhalten
           # zählt der Mittelwert
-          export LUMEN_CAST_SIZE=640x360 LUMEN_CAST_TEST_SOFTWARE_GL=1 LUMEN_MPV_LOGFILE="$PWD/build/tests/cast-mpv.log"
+          export LUMEN_CAST_SIZE=640x360 LUMEN_CAST_TEST_SOFTWARE_GL=1 LUMEN_CAST_DEBUG=1 LUMEN_MPV_LOGFILE="$PWD/build/tests/cast-mpv.log"
           rc=0
           build/cast_test python3 tools/mock_cast_devices.py "$(brew --prefix openssl@3)/bin/openssl" build/tests/sync.mp4 > build/tests/cast.txt 2>&1 || rc=$?
           if grep -q "^FAIL" build/tests/cast.txt && [ -f build/tests/cast-mpv.log.1 ]; then
             # das Wesentliche aus dem mpv-Protokoll als eine Annotation (ohne Anmeldung per API lesbar)
-            body=$( { grep -E "\\]\\[(e|w|f)\\]|vo/libmpv|\\[vd\\]|\\[vo\\]|VO:|Video:|Disabling|dropp|GL_RENDERER|desync|Starting playback|video-params|first video frame|Dropping|Set property|\\[cplayer\\] (V|A)" build/tests/cast-mpv.log.1 || true; } | grep -v "shader\\|#define\\|Texture formats" | cut -c1-170 | head -70 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            body=$( { grep -E "\\]\\[(e|w|f)\\]|vo/libmpv|\\[vd\\]|\\[vo\\]|VO:|Video:|Disabling|dropp|GL_RENDERER|desync|Starting playback|first video frame|report_swap|\\[cplayer\\] (V|A)" build/tests/cast-mpv.log.1 || true; } | grep -v "shader\\|#define\\|Texture formats" | cut -c1-170 | head -70 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::error title=cast-mpv::$body"
+            body=$( { grep -E "^cast [0-9.]+s:|^(INFO|FAIL) |Blitze|Toene|Lumen:" build/tests/cast.txt || true; } | cut -c1-200 | head -30 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=cast-zaehler::$body"
             echo "--- mpv (Renderer, verworfene Bilder)"
             { grep -iE "GL_RENDERER|software renderer|drop|desync" build/tests/cast-mpv.log.1 || true; } | cut -c1-200 | head -8 || true
           fi
