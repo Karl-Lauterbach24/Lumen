@@ -225,7 +225,9 @@ libbluray bd_open_file_dec() ─ abhängige Ansicht (0x1012) ─┘   (je Bild p
   (Tiefe im Profil bzw. im Tab „Untertitel“ einstellbar).
 - **Frame Packing (HDMI 1.4):** 1920×2205 (1080 + 45 + 1080 Zeilen) @ 23.976 Hz. Der Anzeigemodus muss im
   Grafiktreiber als benutzerdefinierte Auflösung angelegt sein; Lumen schaltet dann automatisch darauf um.
-- MVC kann keine GPU dekodieren; erkannte 3D-Discs werden in Software dekodiert.
+- MVC kann keine GPU dekodieren; erkannte 3D-Discs werden in Software dekodiert. Lumens FFmpeg dekodiert
+  die Slices eines Bildes parallel (eine Blu-ray 3D hat sechs je Bild und Ansicht): 263 statt 68 Bildpaare je
+  Sekunde auf einem Apple M3 Pro bei einer Disc mit 36 Mbit/s, die Bilder sind Bit für Bit dieselben.
 
 - **Bildfolge für Shutterbrillen (experimentell):** Das Ausgabeformat „Bildfolge“ zeigt je Bildwechsel ein
   Auge. Das Muster ist frei: `LR`, `LSRS` (Synchronbild nach jedem Auge – ein Versuch, DLP-Link-Brillen an
@@ -261,10 +263,18 @@ Matroska-Leser von FFmpeg) und behandelt das Ergebnis wie eine Datei in Side-by-
 2D-Profil wird nur die Basisansicht dekodiert.
 
 Gibt das Ausgabeprofil 3D aus oder sagt der Name 3D, läuft die Prüfung **vor** dem Start der Datei (sie
-wartet höchstens 2,5 s) – die Wiedergabe beginnt gleich im richtigen Format. Sonst läuft sie direkt danach;
-eine 3D-Datei auf einem 2D-Profil springt nach etwa einer Sekunde auf ein Auge um. Ein von Hand gewähltes
+wartet höchstens 2,5 s) – die Wiedergabe beginnt gleich im richtigen Format. Sonst läuft sie neben dem Laden
+her, und der Start wartet bis zu einer halben Sekunde auf ihr Ergebnis: Eine 3D-Datei beginnt auf einem
+2D-Profil gleich mit einem Auge, statt nach einer Sekunde umzuspringen. Ein von Hand gewähltes
 Format schaltet die Erkennung ab. Nicht erkannt werden: welches Auge zuerst kommt (angenommen wird links,
 außer der Name sagt `RL`), Anaglyph, Schachbrett. `LUMEN_STEREO_DEBUG=1` gibt jede Entscheidung aus.
+
+**Untertitel einer 3D-Datei.** mpv zeichnet Untertitel einmal über das ganze Ausgabebild. Bei Side-by-Side,
+Top-and-Bottom oder Frame Packing landet der Text damit zur Hälfte in jedem Auge. Text-Untertitel (SRT, ASS,
+WebVTT …) zeichnet Lumen deshalb selbst, einmal je Auge, gestaucht wie das Bild, und holt sie um die
+Untertitel-Tiefe des Profils vor die Leinwand. Stile und Positionen der Untertiteldatei bleiben dabei nicht
+erhalten (schlichter Text, unten in der Mitte). Bild-Untertitel (PGS, VobSub) enthalten keinen Text; dort
+bleibt es bei mpvs Darstellung.
 
 ## Hardware und Leistung
 
@@ -295,8 +305,18 @@ außer der Name sagt `RL`), Anaglyph, Schachbrett. `LUMEN_STEREO_DEBUG=1` gibt j
 - **JPEG 2000 (DCP).** Mit Lumens Änderung an FFmpeg ist der Decoder 20 bis 28 % schneller. Gemessen auf einem
   Apple M3 Pro (12 Threads): 2K mit 183 Mbit/s 50 Bilder je Sekunde (vorher 42), 4K mit 271 Mbit/s 27 (vorher
   etwa 22), 4K mit 293 Mbit/s 26 (vorher 21). 4K mit 24 Bildern je Sekunde läuft dort jetzt in voller Auflösung
-  ohne verworfene Bilder; vorher nicht. Eine langsamere Maschine weicht weiterhin von selbst auf die halbe
-  Auflösung aus.
+  ohne verworfene Bilder; vorher nicht.
+- **JPEG 2000 auf einer langsameren Maschine.** Der Decoder kann die feinsten Bit-Ebenen jedes Codeblocks
+  auslassen (`skip_planes`, Lumens Änderung an FFmpeg). Das Bild behält die volle Auflösung und weicht vom
+  vollständig dekodierten um weniger ab, als eine 8-Bit-Ausgabe zeigt: 51 dB bei zwei ausgelassenen Ebenen,
+  46 dB bei vier, bei 2,0- und 3,5-facher Geschwindigkeit (2K). Die *Automatik* schätzt die Stufe beim Start
+  eines DCP aus Datenrate und Kernzahl, geht weiter, solange Bilder verloren gehen – zwei Ebenen, vier Ebenen,
+  dann halbe und Viertel-Auflösung – und merkt sich zwei Wochen, was die Maschine gebraucht hat. Der Decoder
+  wird an Ort und Stelle neu eingerichtet, ohne die Komposition neu zu starten. Mit einem Decoder-Thread
+  (eines M3 Pro) kam ein 2K-DCP mit 238 Mbit/s nach 7 Sekunden bei halber Auflösung an und verlor danach kein
+  Bild mehr; mit zwei Threads lief es von Anfang an in voller Auflösung.
+- **Rollenwechsel** im DCP verlieren keine Bilder mehr: Der Decoder arbeitet in einem eigenen Thread voraus
+  (mpvs Decoder-Warteschlange); das überbrückt den Moment, in dem er für die nächste Rolle neu beginnt.
 - `LUMEN_PERF_LOG=1` schreibt je Sekunde: Position, verworfene und verspätete Bilder, Decoder-Weg, zurückgenommene Stufen
   und wie oft das eingebettete Fenster gezeichnet wurde. `LUMEN_QUIT_AFTER=<Sekunden>` beendet das Programm von selbst (Testläufe).
 
@@ -330,6 +350,7 @@ src/PlayerWindow    eingebettetes Player-Fenster (mpv-Render-API/OpenGL, eigener
 src/ProfileManager  Vorlagen + eigene Profile
 src/Stereo3D        Filterketten der 3D-Ausgabeformate, auch Bildfolge
 src/StereoDetect    automatische 3D-Erkennung: Dateiname, Container, Bildvergleich, MVC
+src/StereoSubs      Text-Untertitel von 3D-Dateien, einmal je Auge gezeichnet
 src/Tuning          Klasse der Grafikhardware, Skalierungsstufe und Decoder-Weg, Governor zur Laufzeit
 src/CastManager     Übertragen: Sitzung, Einstellungen, Geräteliste (QML „Cast“)
 src/CastRenderer    mpv-Render-API in einen Framebuffer, ausgelesen für den Encoder
@@ -358,10 +379,15 @@ Füllwerte, mit OpenGL auf der CPU ein schwarzes Bild), und seine zeitgesteuerte
 Pipe schreiben, mit dem Zeitpunkt, zu dem jeder Block gespielt wird. Das braucht die Übertragung; ein
 unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt. Die dritte lässt den Ton
 anlaufen, wenn ein Tongerät den Bitstream ablehnt: mpv weicht dann auf das Dekodieren aus, nur fragte niemand
-mehr den Decoder nach Daten, und die Wiedergabe blieb bei 0:00 stehen. FFmpeg bekommt eine
-Änderung: Der JPEG-2000-Decoder (DCP) rechnet die Wavelet-Rücktransformation über benachbarten Speicher statt
-Spalte für Spalte, und der arithmetische Decoder ist in die Kodierdurchgänge eingebettet. Die dekodierten
-Bilder sind Bit für Bit dieselben.
+mehr den Decoder nach Daten, und die Wiedergabe blieb bei 0:00 stehen. FFmpeg bekommt zwei
+Änderungen. Der JPEG-2000-Decoder (DCP) rechnet die Wavelet-Rücktransformation über benachbarten Speicher statt
+Spalte für Spalte, und der arithmetische Decoder ist in die Kodierdurchgänge eingebettet; die dekodierten
+Bilder sind Bit für Bit dieselben. Dazu kommt die Option `skip_planes` (siehe *Hardware und Leistung*). Der
+MVC-Decoder (Blu-ray 3D) behält Slice-Threading, wenn er beide Ansichten liefert, und zwei Fehler darin sind
+behoben: Ein Slice der abhängigen Ansicht, dessen Daten mit einem einzelnen Stopp-Byte enden, verlor dieses
+Byte und wurde durch eine Kopie des anderen Auges ersetzt (ein Streifen des rechten Auges falsch, eine ganze
+Bildgruppe lang), und nach einer kurzen Bildgruppe verließen die beiden Ansichten den Decoder in
+unterschiedlicher Reihenfolge (ein Bildpaar kam als zwei Bilder mit je einem schwarzen Auge).
 
 Alles Übrige (Qt, libass, libplacebo, libbluray …) kommt aus der Paketverwaltung der Plattform. Die genauen
 Paketlisten stehen in den Workflows: [`release.yml`](.github/workflows/release.yml) (Windows, macOS) und
@@ -498,7 +524,7 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
 | 3D-Bildfolge | Experimentell. Die Bildfolgen sind mit FFmpeg getestet. **Nicht getestet mit Shutterbrillen, DLP-Link-Brillen, einem Sensor-Emitter oder einem 120-Hz-Bildschirm.** |
 | Übertragen | Strom, Geräteerkennung und alle vier Protokolle sind gegen Nachbildungen getestet, die Wiedergabe in einem Desktop-Browser. **Nicht mit echten Empfängern getestet.** AirPlay nur ohne Kopplung. SDR, Stereo, 2D; über HLS drei bis vier Sekunden Verzögerung. |
 | DCP | Mit synthetischen SMPTE-DCPs unter Windows und macOS (CI) durchgehend getestet. Die Test-DCPs haben 2 Rollen mit Einstiegspunkten, Marker, Interop-Text- und Bilduntertitel, Closed Captions, eine signierte KDM, 3D und eine Atmos/IAB-Spur. Die gesamte Essenz ist verschlüsselt, entschlüsselte Bilder sind bitgleich zur Quelle. Die Objekt- und Bettpositionen der IAB-Spur werden je Lautsprecher und Layout geprüft. **Noch nicht mit echten Kino-DCPs/KDMs oder echten Atmos-Mischungen getestet.** Nicht unterstützt: forensische Markierung. Atmos-Spuren aus der Zeit vor dem SMPTE-Standard können Elemente enthalten, die der IAB-Renderer ablehnt (ungetestet). |
-| JPEG 2000 | Software-Dekodierung (FFmpeg, Frame- und Slice-Threads). 2K mit 24 fps braucht eine starke Mehrkern-CPU (≈ 24 fps auf 12 Threads bei 130 Mbit/s); automatischer Wechsel der Auflösungsstufe bei verworfenen Bildern. |
+| JPEG 2000 | Software-Dekodierung (FFmpeg, Frame- und Slice-Threads). Ein DCP mit voller Datenrate braucht viele Kerne: Der M3 Pro (12) dekodiert 2K mit 238 Mbit/s mit 38 Bildern je Sekunde, die CI-Maschinen (3–4 Kerne) mit 5 bis 14. Auf langsameren Maschinen lässt Lumen erst Bit-Ebenen aus und senkt danach die Auflösung; **gemessen nur mit einem bis vier Decoder-Threads auf dem M3 Pro, nicht auf einer langsamen Maschine selbst.** |
 | DVD | Menüführung, SPU-Dekodierung und Hervorhebung sind implementiert, aber **noch nicht mit echten DVDs getestet** (in der Build-Umgebung gab es kein DVD-Authoring-Werkzeug). Ohne libdvdnav laufen DVDs über mpv `dvd://` (ohne Menüs). |
 | HD DVD | Mit einer synthetischen HVDVD_TS/XPL-Struktur getestet. HDi-Interaktivität (Menüs) wird nicht unterstützt; Titel/Kapitel kommen aus der Playlist. AACS-geschützte Discs spielen nicht. |
 | Video-CD | Die Wiedergabesteuerung (PBC) ist mit einer VCD 2.0 getestet, erstellt mit `vcdxbuild` (GNU VCDImager), unter Windows und macOS. Geprüft werden Auswahl per Ziffer, Default, Weiter/Zurück/Return, automatisches Weiterschalten, Einsprungpunkte und Segment-Menüs. Nicht unterstützt: erweiterte SVCD-Auswahlflächen (Mausbereiche) und Befehlslisten. **Noch nicht mit einer echten gepressten VCD getestet.** |
