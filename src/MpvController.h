@@ -299,6 +299,7 @@ private:
     void handleProperty(quint64 id, int format, void *data);
     void loadFile(const QString &url, const QVariantMap &fileOptions = {});
     void loadFileNow(const QString &url, const QVariantMap &options);
+    void releaseBdOpenLock();
     QVariantMap buildOptions(const QVariantMap &profile) const;
     void setOptionRaw(const QString &name, const QVariant &value, bool preInit);
     void rebuildTracks(const QVariantList &list);
@@ -415,6 +416,8 @@ private:
     QString m_stereoSource;      // woran erkannt: metadata | name | picture | size | mvc
     bool m_fileMvc = false;      // Datei mit zwei Ansichten wird mit beiden dekodiert
     qint64 m_loadedAt = 0;       // Zeitpunkt von "Datei geladen" (m_clock, ms)
+    bool m_bdOpenStarted = false; // mpv hat mit der bd://-Disc begonnen (Ende der vorigen Datei ist vorbei)
+    bool m_bdOpenLocked = false; // blurayOpenMutex gehalten, solange mpv eine bd://-Disc öffnet
     bool m_primedStart = false;  // Datei wurde angehalten geladen und läuft nach dem ersten Bild los
     bool m_mvcStream = false;    // der Videostrom der Datei ist H.264/MVC (auch wenn nur eine Ansicht läuft)
     bool m_mvcDemuxer = false;   // die laufende Datei wurde dafür mit FFmpegs Demuxer geladen

@@ -79,9 +79,13 @@ QString platformHwdec(bool copy)
 #endif
 }
 
-static QString baseQuality(const QVariantMap &profile, const Hardware &hw)
+static QString baseQuality(const QVariantMap &profile, const Hardware &hw, bool sequential = false)
 {
     const QString q = profile.value("quality", "auto").toString();
+    // Bildfolge: Für jedes Bild bleiben nur wenige Millisekunden – die aufwendigen Skalierer
+    // kosten dort Bildwechsel, und ein fehlendes Bild vertauscht die Augen
+    if (sequential && (q == QLatin1String("auto") || profile.value("adaptive", true).toBool()))
+        return QStringLiteral("fast");
     if (q == QLatin1String("auto") || !qualityTiers().contains(q))
         return qualityFor(hw);
     return q;
@@ -98,7 +102,7 @@ QVariantMap resolve(const QVariantMap &profile, const Hardware &hw, const Contex
 {
     QVariantMap p = profile;
     const QStringList tiers = qualityTiers();
-    const int index = int(tiers.indexOf(baseQuality(profile, hw))) + std::max(0, context.renderLevel);
+    const int index = int(tiers.indexOf(baseQuality(profile, hw, context.sequential))) + std::max(0, context.renderLevel);
     p["quality"] = tiers.at(std::min(index, int(tiers.size()) - 1));
     // unterhalb von "fast": auch Debanding, Dithering und Zwischenbilder weglassen
     p["tuningMinimal"] = index > int(tiers.size()) - 1;

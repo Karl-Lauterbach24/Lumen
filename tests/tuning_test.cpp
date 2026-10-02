@@ -104,6 +104,11 @@ int main(int argc, char **argv)
     check(maxRenderLevel(automatic, soft) == 1, "Software-Renderer: 1 Stufe möglich");
     check(maxRenderLevel({{"quality", "reference"}}, igpu) == 4, "Referenz: 4 Stufen möglich");
 
+    Context seq;
+    seq.sequential = true;
+    check(resolve(automatic, card, seq).value("quality") == "fast", "3D-Bildfolge: schnellste Skalierung, auch mit Grafikkarte");
+    check(resolve({{"quality", "reference"}, {"adaptive", false}}, card, seq).value("quality") == "reference", "… außer die Anpassung ist abgeschaltet und die Stufe fest gewählt");
+
     // Decoder-Weg
     Context filter;
     filter.cpuFilter = true;

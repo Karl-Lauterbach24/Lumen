@@ -396,5 +396,9 @@ int main(int argc, char *argv[])
         QTimer::singleShot(delay > 0 ? delay : 2500, window, [window, snapshot] { window->grabWindow().save(snapshot); });
     }
 
+    // Entwickler-Hilfe: LUMEN_QUIT_AFTER=<sekunden> beendet Lumen auf dem normalen Weg (Test des Abbaus)
+    if (qEnvironmentVariableIntValue("LUMEN_QUIT_AFTER") > 0)
+        QTimer::singleShot(qEnvironmentVariableIntValue("LUMEN_QUIT_AFTER") * 1000, &app, &QCoreApplication::quit);
+
     return app.exec();
 }

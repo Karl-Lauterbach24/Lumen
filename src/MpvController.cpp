@@ -507,8 +507,17 @@ void MpvController::placeEmbeddedWindow()
     m_window->place(target, m_profile.value("fullscreen").toBool());
 }
 
+void MpvController::releaseBdOpenLock()
+{
+    if (m_bdOpenLocked) {
+        m_bdOpenLocked = false;
+        blurayOpenMutex().unlock();
+    }
+}
+
 void MpvController::destroy()
 {
+    releaseBdOpenLock();
     if (!m_mpv)
         return;
     emit mpvDestroying();
@@ -675,6 +684,23 @@ void MpvController::loadFileNow(const QString &url, const QVariantMap &options)
 {
     if (!m_mpv)
         return;
+    // bd://: mpv öffnet die Disc selbst mit libbluray, und das liest dabei die Disc-Metadaten und
+    // räumt libxml2 global auf – wie bd_open() in der Disc-Übersicht (siehe blurayOpenMutex).
+    // Läuft die gerade, kurz warten; die Sperre bleibt, bis mpv die Disc geöffnet hat.
+    if (url.startsWith(QLatin1String("bd://")) && !m_bdOpenLocked) {
+        if (!blurayOpenMutex().tryLock()) {
+            const int generation = m_detectGeneration;
+            QTimer::singleShot(40, this, [this, url, options, generation] {
+                if (generation == m_detectGeneration && m_lastUrl == url)
+                    loadFileNow(url, options);
+            });
+            return;
+        }
+        m_bdOpenLocked = true;
+        m_bdOpenStarted = false;
+        // für den Fall, dass mpv sich nie meldet: die Disc-Übersicht nicht auf Dauer aussperren
+        QTimer::singleShot(15000, this, [this] { releaseBdOpenLock(); });
+    }
     QVariantMap fileOptions = options;
     // Zwei Ansichten (MVC): mpvs eigener Matroska-Leser reicht die zweite nicht vollständig durch,
     // der von FFmpeg schon
@@ -684,9 +710,12 @@ void MpvController::loadFileNow(const QString &url, const QVariantMap &options)
     // Angehalten laden und erst loslaufen, wenn das erste Bild steht (MPV_EVENT_PLAYBACK_RESTART):
     // Decoder, Filter und Shader sind dann eingerichtet. Sonst verwirft mpv die ersten Bilder,
     // weil der Ton schon läuft – bei 60 Bildern je Sekunde ein halbes Dutzend, bei JPEG 2000 mehr.
-    // Nicht für Disc-Menüs und Video-CD: dort führt die Navigation die Pause.
+    // Auch für Blu-ray und DVD (Hauptfilm wie Menü – das erste Bild eines Menüs steht genauso).
+    // Nicht für Video-CD und Audio-CD: dort führt die Wiedergabesteuerung die Pause.
     m_primedStart = false;
-    if ((m_sourceKind == QLatin1String("file") || m_sourceKind == QLatin1String("dcp")) && !fileOptions.contains(QStringLiteral("pause"))
+    static const QStringList primed = {QStringLiteral("file"), QStringLiteral("dcp"), QStringLiteral("bluray"), QStringLiteral("dvd"),
+                                       QStringLiteral("hddvd")};
+    if (primed.contains(m_sourceKind) && !fileOptions.contains(QStringLiteral("pause"))
         && !m_paused && !qEnvironmentVariableIsSet("LUMEN_NO_PRIMED_START")) {
         fileOptions.insert(QStringLiteral("pause"), QStringLiteral("yes"));
         m_primedStart = true;
@@ -1392,6 +1421,7 @@ QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
     // Skalierungsstufe und Decoder-Weg nach Maschine und Lage (siehe Tuning.h)
     Tuning::Context context = tuningContext();
     context.cpuFilter = !stereoFilter.isEmpty();
+    context.sequential = out == QLatin1String("seq") && m_stereoIn != QLatin1String("none");
     const QVariantMap resolved = Tuning::resolve(profile, Tuning::hardware(), context);
     QVariantMap o = ProfileManager::toMpvOptions(resolved);
     const QVariantMap relief = Tuning::reliefOptions(resolved, context);
@@ -1424,10 +1454,16 @@ QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
         o["vo"] = QStringLiteral("gpu-next,gpu");
 
     o["vf"] = stereoFilter;
+    // Im eingebetteten Fenster kennt mpv die Bildwiederholrate nicht (0 = unbekannt)
+    o["display-fps-override"] = QStringLiteral("0");
     if (out == QLatin1String("seq") && m_stereoIn != QLatin1String("none")) {
         // Bildfolge: jedes Bild genau einen Bildwechsel lang, also streng im Takt des Bildschirms
         o["video-sync"] = QStringLiteral("display-resample");
         o["interpolation"] = QStringLiteral("no");
+        // … und der Takt ist die Rate des Profils: Ohne diese Angabe richtet sich mpv im
+        // eingebetteten Fenster nach dem Ton und lässt Bilder aus, sobald eines zu spät kommt
+        if (wantsEmbedded(profile))
+            o["display-fps-override"] = QString::number(qBound(48, profile.value("seqRate", 120).toInt(), 480));
     }
     if (m_nav) {
         m_nav->setStereo(m_mvcCapable && BlurayNav::available() && out != QLatin1String("none"), out);
@@ -1671,15 +1707,19 @@ void MpvController::cancelStereoDetection()
 // eingebetteten Fenster den Renderer auf und kostet beim Start Bilder.)
 void MpvController::tryStereoDetection()
 {
-    if (!m_detectWanted)
-        return;
     for (const auto &v : std::as_const(m_rawTracks)) {
         const QVariantMap t = v.toMap();
-        if (t.value("type").toString() == QLatin1String("video") && t.value("selected").toBool()) {
+        if (t.value("type").toString() != QLatin1String("video") || !t.value("selected").toBool())
+            continue;
+        const QString profile = t.value("codec-profile").toString();
+        const bool mvc = profile == QLatin1String("Stereo High") || profile == QLatin1String("Multiview High");
+        // Das Codec-Profil kann erst mit einer späteren Fassung der Liste kommen (wenn der
+        // Decoder geöffnet ist): dann noch einmal, falls sich damit etwas ändert
+        if (m_detectWanted || (mvc && !m_mvcStream && m_stereoAuto && !m_idle)) {
             m_detectWanted = false;
             startStereoDetection();
-            return;
         }
+        return;
     }
 }
 
@@ -1709,7 +1749,8 @@ void MpvController::startStereoDetection()
         if (t.value("type").toString() != QLatin1String("video") || !t.value("selected").toBool())
             continue;
         const QString profile = t.value("codec-profile").toString();
-        if (profile != QLatin1String("Stereo High") && profile != QLatin1String("Multiview High"))
+        // m_mvcStream: schon vor dem Laden an der Datei selbst erkannt
+        if (profile != QLatin1String("Stereo High") && profile != QLatin1String("Multiview High") && !m_mvcStream)
             break;
         m_fileMvc = m_mvcCapable && !m_castEncoder && m_profile.value("stereoOut", "none").toString() != QLatin1String("none");
         const bool wasStream = m_mvcStream;
@@ -1723,7 +1764,10 @@ void MpvController::startStereoDetection()
             setStereoInput(QStringLiteral("sbsl"));
             QVariantMap options = m_lastOptions;
             options["start"] = QString::number(m_position, 'f', 3);
-            options["pause"] = m_paused ? "yes" : "no";
+            // (läuft der vorbereitete Start noch, ist die Pause seine – dann gilt sie nicht)
+            if (!m_primedStart)
+                options["pause"] = m_paused ? "yes" : "no";
+            m_paused = m_paused && !m_primedStart;
             loadFileNow(m_lastUrl, options);
             return;
         }
@@ -1918,10 +1962,17 @@ void MpvController::tuneTick()
 
     // Entwickler-Hilfe: LUMEN_PERF_LOG=1 schreibt je Sekunde den Stand der Wiedergabe
     if (qEnvironmentVariableIsSet("LUMEN_PERF_LOG")) {
+        if (m_window) {
+            static qint64 lastPaints = 0;
+            const qint64 paints = m_window->paintCount();
+            qWarning().noquote() << "Lumen: perf fenster gezeichnet/s" << paints - lastPaints << "bildschirm"
+                                 << (m_window->screen() ? m_window->screen()->refreshRate() : 0.0) << "Hz";
+            lastPaints = paints;
+        }
         qWarning().noquote() << QStringLiteral("Lumen: perf pos=%1 fps=%2 verworfen=%3 decoder=%4 verspaetet=%5 falscher-takt=%6 hwdec=%7 render=%8ms stufen=%9/%10 %11x%12")
                                     .arg(m_position, 0, 'f', 1)
                                     .arg(m_containerFps, 0, 'f', 2)
-                                    .arg(m_vo_drops - m_dropBase)
+                                    .arg(std::max(0, m_vo_drops + m_dec_drops - m_dropBase))
                                     .arg(m_dec_drops)
                                     .arg(s.delayed)
                                     .arg(m_mistimedFrames)
@@ -1984,8 +2035,14 @@ void MpvController::handleEvent(mpv_event *ev)
             setError(text);
         break;
     }
+    case MPV_EVENT_START_FILE:
+        m_bdOpenStarted = true;
+        break;
     case MPV_EVENT_END_FILE: {
         m_primedStart = false;
+        // das Ende der vorigen Datei kommt vor dem Start der neuen: dann läuft das Öffnen noch
+        if (m_bdOpenStarted)
+            releaseBdOpenLock();
         auto *e = static_cast<mpv_event_end_file *>(ev->data);
         if (e->reason == MPV_END_FILE_REASON_ERROR) {
             QString msg = LTR("Wiedergabe fehlgeschlagen: %1").arg(QString::fromUtf8(mpv_error_string(e->error)));
@@ -2020,6 +2077,7 @@ void MpvController::handleEvent(mpv_event *ev)
         if (m_vcd && m_vcd->active())
             setOptionRaw(QStringLiteral("pause"), false, false);
         holdGovernor(5);
+        releaseBdOpenLock();
         m_loadedAt = m_clock.elapsed();
         // 3D-Erkennung, sobald die Spurliste der neuen Datei da ist (rebuildTracks)
         m_detectWanted = true;

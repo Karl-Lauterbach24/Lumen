@@ -42,6 +42,7 @@ struct Context
 {
     bool cpuFilter = false;  // ein Filter rechnet auf der CPU (stereo3d)
     bool mvc = false;        // beide Ansichten eines MVC-Stroms: nur der Software-Decoder kann das
+    bool sequential = false; // 3D-Bildfolge: ein Bild je Bildwechsel (120 Hz und mehr), keines darf fehlen
     int renderLevel = 0;     // Stufen, die der Governor zurückgenommen hat
     int decodeLevel = 0;
 };
