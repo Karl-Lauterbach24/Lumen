@@ -9,6 +9,7 @@
 #include <mpv/client.h>
 #include <mpv/render_gl.h>
 
+#include <cstdio>
 #include <cstdlib>
 
 CastRenderer::CastRenderer(mpv_handle *mpv, CastEncoder *encoder, QObject *parent)
@@ -105,14 +106,47 @@ void CastRenderer::onMpvUpdate()
         {MPV_RENDER_PARAM_FLIP_Y, &flipY},
         {MPV_RENDER_PARAM_INVALID, nullptr},
     };
-    mpv_render_context_render(m_ctx, params);
+    const int renderResult = mpv_render_context_render(m_ctx, params);
 
     QByteArray rgba(m_size.width() * m_size.height() * 4, Qt::Uninitialized);
     QOpenGLFunctions *f = m_gl.functions();
     f->glBindFramebuffer(GL_FRAMEBUFFER, m_fbo->handle());
     f->glPixelStorei(GL_PACK_ALIGNMENT, 4);
     f->glReadPixels(0, 0, m_size.width(), m_size.height(), GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    if (const GLenum glError = f->glGetError(); glError != GL_NO_ERROR && !m_warned) {
+        m_warned = true;
+        qWarning("Lumen: OpenGL-Fehler 0x%x beim Auslesen des Bildes für die Übertragung", glError);
+    }
+    if (m_debug) {
+        // Zähler für Tests: Hat das Bild überhaupt helle Punkte?
+        const uchar *p = reinterpret_cast<const uchar *>(rgba.constData());
+        bool lit = false;
+        for (int y = 0; y < m_size.height() && !lit; y += 3)
+            for (int x = 0; x < m_size.width() && !lit; x += 3)
+                lit = p[(y * m_size.width() + x) * 4] > 100;
+        ++m_stats.frames;
+        m_stats.lit += lit;
+        m_stats.errors += renderResult < 0;
+    }
     mpv_render_context_report_swap(m_ctx);
     m_gl.doneCurrent();
+    // Entwickler-Hilfe (LUMEN_CAST_DEBUG): Farbe in Bildmitte und oben links, einmal je Sekunde
+    if (m_debug && ++m_count % 30 == 1) {
+        auto px = [&](int x, int y) {
+            const uchar *p = reinterpret_cast<const uchar *>(rgba.constData()) + (y * m_size.width() + x) * 4;
+            return QStringLiteral("%1,%2,%3,%4").arg(p[0]).arg(p[1]).arg(p[2]).arg(p[3]);
+        };
+        auto prop = [&](const char *name) {
+            char *v = mpv_get_property_string(m_mpv, name);
+            const QByteArray text(v ? v : "-");
+            mpv_free(v);
+            return text;
+        };
+        std::fprintf(stderr, "Lumen: Bild %d Mitte rgba=%s oben links rgba=%s | mpv: pos=%s vo=%s out=%sx%s nr=%s drop=%s pause=%s info=%d/%lld\n", m_count,
+                     qPrintable(px(m_size.width() / 2, m_size.height() / 2)), qPrintable(px(m_size.width() / 32, m_size.height() / 32)),
+                     prop("time-pos").constData(), prop("vo-configured").constData(), prop("video-out-params/w").constData(),
+                     prop("video-out-params/h").constData(), prop("estimated-frame-number").constData(),
+                     prop("frame-drop-count").constData(), prop("pause").constData(), int(info.flags), static_cast<long long>(info.target_time));
+    }
     m_encoder->pushFrame(std::move(rgba), pts);
 }

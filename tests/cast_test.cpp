@@ -1,6 +1,7 @@
 // Übertragung an Empfänger im Netz, mit echter mpv-Wiedergabe und Testgeräten:
 //
 //   cast_test <python> <tools/mock_cast_devices.py> <openssl> <sync.mp4>
+//   cast_test --rendercheck <sync.mp4> <runden>     nur der Renderer, viele kurze Sitzungen
 //
 // sync.mp4: jede Sekunde ein weißes Bild und gleichzeitig ein Ton, dazu dauerhaft eine weiße
 // Marke oben links (siehe CI-Schritt).
@@ -100,7 +101,8 @@ private:
         }
         // Entwickler/CI: LUMEN_MPV_LOGFILE=<datei> schreibt das mpv-Protokoll der Übertragung mit
         if (encoder && qEnvironmentVariableIsSet("LUMEN_MPV_LOGFILE")) {
-            opts.insert("log-file", qEnvironmentVariable("LUMEN_MPV_LOGFILE"));
+            // je Übertragung eine Datei: <datei>.1 ist die erste (deren Strom unten ausgewertet wird)
+            opts.insert("log-file", QStringLiteral("%1.%2").arg(qEnvironmentVariable("LUMEN_MPV_LOGFILE")).arg(++m_session));
             opts.insert("msg-level", "all=v");
         }
         for (auto it = opts.cbegin(); it != opts.cend(); ++it)
@@ -125,6 +127,7 @@ private:
     }
 
     QString m_file;
+    int m_session = 0;
     mpv_handle *m_mpv = nullptr;
     CastRenderer *m_renderer = nullptr;
 };
@@ -340,6 +343,50 @@ int main(int argc, char **argv)
     QCoreApplication::setOrganizationName(QStringLiteral("LumenTest"));
     QCoreApplication::setApplicationName(QStringLiteral("cast_test"));
     std::setlocale(LC_NUMERIC, "C");
+    if (argc >= 4 && QByteArray(argv[1]) == "--rendercheck") {
+        // Viele kurze Sitzungen nur mit mpv und dem Renderer (ohne Encoder, ohne Netz): In jedem
+        // Bild der Testdatei ist die Marke zu sehen. Findet Fehler, die nur manchmal auftreten -
+        // so fiel auf, dass mpv die Gewichtstabelle der Skalierer mit uninitialisierten Füllwerten
+        // hochlud (mit OpenGL auf der CPU: jede vierte Sitzung schwarz; tools/patches).
+        //   cast_test --rendercheck <sync.mp4> <runden> [mpv-option=wert ...]
+        qputenv("LUMEN_CAST_DEBUG", "1");
+        const QByteArray file = argv[2];
+        const int rounds = QByteArray(argv[3]).toInt();
+        int bad = 0;
+        for (int r = 1; r <= rounds; ++r) {
+            CastEncoder::Settings s;
+            s.width = 640;
+            s.height = 360;
+            CastEncoder encoder(nullptr, nullptr, s);
+            mpv_handle *mpv = mpv_create();
+            QVariantMap opts{{"terminal", "no"}, {"config", "no"}, {"idle", "yes"}, {"loop-file", "inf"}, {"hwdec", "no"}};
+            const QVariantMap castOpts = castMpvOptions(QString());
+            for (auto it = castOpts.cbegin(); it != castOpts.cend(); ++it)
+                opts.insert(it.key(), it.value());
+            for (int i = 4; i < argc; ++i) {
+                const QByteArray a = argv[i];
+                if (a.contains('='))
+                    opts.insert(QString::fromUtf8(a.left(a.indexOf('='))), QString::fromUtf8(a.mid(a.indexOf('=') + 1)));
+            }
+            for (auto it = opts.cbegin(); it != opts.cend(); ++it)
+                mpv_set_option_string(mpv, it.key().toUtf8().constData(), it.value().toString().toUtf8().constData());
+            mpv_initialize(mpv);
+            auto *renderer = new CastRenderer(mpv, &encoder);
+            const char *cmd[] = {"loadfile", file.constData(), nullptr};
+            mpv_command(mpv, cmd);
+            waitFor([] { return false; }, 2000);
+            const CastRenderer::DebugStats st = renderer->debugStats();
+            const bool ok = st.frames > 10 && st.lit == st.frames && st.errors == 0;
+            bad += !ok;
+            std::printf("     Sitzung %2d: %d Bilder, %d mit Inhalt, %d Fehler%s\n", r, st.frames, st.lit, st.errors, ok ? "" : "  <- FEHLER");
+            std::fflush(stdout);
+            renderer->releaseRenderContext();
+            mpv_terminate_destroy(mpv);
+            delete renderer;
+        }
+        check(bad == 0, QStringLiteral("Renderer: Bildinhalt in allen %1 Sitzungen (%2 ohne)").arg(rounds).arg(bad));
+        return bad ? 1 : 0;
+    }
     if (argc < 5) {
         std::fprintf(stderr, "cast_test <python> <mock_cast_devices.py> <openssl> <sync.mp4>\n");
         return 2;
