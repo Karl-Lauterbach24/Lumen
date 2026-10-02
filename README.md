@@ -294,10 +294,11 @@ libraries. Optional, enabled automatically when found: **OpenSSL ≥ 1.1** (encr
 
 **Media libraries.** `tools/build_deps.sh` builds x264, FFmpeg-mvc and mpv (and libdvdnav 7 where the system
 has an older one) from pinned sources into `3rdparty/prefix`; CMake picks that prefix up by itself. The
-versions are set at the top of the script, once for all platforms. mpv gets one small change
+versions are set at the top of the script, once for all platforms. mpv gets two small changes
 ([`tools/patches`](tools/patches)): its timed null audio output can also write the samples to a pipe, with the
 time each block is played. Casting needs that; a stock libmpv plays everything else, but the cast button is
-disabled.
+disabled. And the weight table of its scalers is zeroed before it is filled: stock mpv leaves part of it
+uninitialised, which can turn the colour planes into NaN and the picture black.
 
 Everything else (Qt, libass, libplacebo, libbluray ...) comes from the platform's package manager. The exact
 package lists are in the workflows: [`release.yml`](.github/workflows/release.yml) (Windows, macOS) and

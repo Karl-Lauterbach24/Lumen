@@ -4,7 +4,8 @@
 #   x264        H.264 encoder (casting)
 #   FFmpeg-mvc  FFmpeg fork with the H.264/MVC decoder (Blu-ray 3D)
 #   mpv         libmpv, linked against that FFmpeg, with Lumen's patches (tools/patches):
-#               audio tap on the timed null output, used for casting
+#               audio tap on the timed null output, used for casting;
+#               scaler weight table zeroed (picture could stay black)
 #   dvdnav      libdvdread + libdvdnav 7 (only where the system has an older one)
 #
 # All other libraries (Qt, libass, libplacebo, libbluray, libcdio, OpenSSL, libxml2 ...) come from

@@ -1,0 +1,15 @@
+--- a/video/out/gpu/video.c
++++ b/video/out/gpu/video.c
+@@ -1849,7 +1849,11 @@
+     mp_assert(size <= stride);
+ 
+     static const int lut_size = 256;
+-    float *weights = talloc_array(NULL, float, lut_size * stride);
++    // Lumen: zeroed. A row holds `stride` values but only `size` are computed;
++    // the texture is sampled with linear filtering, which multiplies the unused
++    // values of the neighbouring texel by 0 - with inf/nan left over from the
++    // heap that turns the weights of the first texel into nan (black picture).
++    float *weights = talloc_zero_array(NULL, float, lut_size * stride);
+     mp_compute_lut(scaler->kernel, lut_size, stride, weights);
+ 
+     bool use_1d = scaler->kernel->polar && (p->ra->caps & RA_CAP_TEX_1D);
