@@ -35,6 +35,7 @@ public:
         double maxMs = 0;    // längster Aufruf
         int fboCheck = -1;   // eigener Probe-Anstrich des Framebuffers: 1 = kam an
         QString first;       // Zustand beim ersten Bild
+        QString boxes;       // helle Bereiche der ersten Bilder
     };
     const DebugStats &debugStats() const { return m_stats; }
 

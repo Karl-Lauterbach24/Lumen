@@ -139,6 +139,8 @@ void CastRenderer::onMpvUpdate()
                 }
         ++m_stats.frames;
         m_stats.lit += x1 >= 0;
+        if (m_stats.frames <= 6)
+            m_stats.boxes += QStringLiteral(" [%1,%2-%3,%4]").arg(x0).arg(y0).arg(x1).arg(y1);
         m_stats.errors += renderResult < 0;
         m_stats.maxMs = qMax(m_stats.maxMs, renderMs);
         if (m_stats.frames == 1) {

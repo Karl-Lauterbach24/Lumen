@@ -15,17 +15,11 @@ variant() {  # <name> <runden> <LUMEN_CAST_EXP> [argumente...]
 }
 WRAP=("$@")
 variant basis 14 ""
-variant noblock 10 noblock
-variant adv 10 adv
-variant bind 10 bind
-variant late 10 "" late
-variant peak 10 "" target-peak=203
-variant nodr 10 "" vd-lavc-dr=no
-variant nosync 10 "" aid=no
+variant threads1 12 "" vd-lavc-threads=1
+variant swscale 12 "" vf=format=rgb24
 # unter Last: alle Kerne beschäftigt
 pids=""
 for i in 1 2 3 4 5 6; do ( while :; do :; done ) & pids="$pids $!"; done
-variant last 12 ""
-variant last-late 10 "" late
+variant last 8 ""
 kill $pids 2>/dev/null
 exit 0

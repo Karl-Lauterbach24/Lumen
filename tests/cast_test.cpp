@@ -16,6 +16,7 @@
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -367,6 +368,9 @@ int main(int argc, char **argv)
                 else if (a.contains('='))
                     opts.insert(QString::fromUtf8(a.left(a.indexOf('='))), QString::fromUtf8(a.mid(a.indexOf('=') + 1)));
             }
+            const QString logFile = QDir::tempPath() + QStringLiteral("/lumen-rc.log");
+            opts.insert("log-file", logFile);
+            opts.insert("msg-level", "all=v");
             for (auto it = opts.cbegin(); it != opts.cend(); ++it)
                 mpv_set_option_string(mpv, it.key().toUtf8().constData(), it.value().toString().toUtf8().constData());
             mpv_initialize(mpv);
@@ -377,16 +381,30 @@ int main(int argc, char **argv)
             mpv_command(mpv, cmd);
             waitFor([] { return false; }, 2500);
             const CastRenderer::DebugStats st = renderer->debugStats();
-            const bool isBlack = st.lit == 0;
+            const bool isBlack = st.lit < st.frames;
             black += isBlack;
             std::printf("RC %2d %s bilder=%d hell=%d fehler=%d erstes=%.0fms max=%.0fms probe=%d\n", r, isBlack ? "SCHWARZ" : "gut", st.frames,
                         st.lit, st.errors, st.firstMs, st.maxMs, st.fboCheck);
-            if ((isBlack && black <= 2) || (!isBlack && shown++ == 0))
-                std::printf("RC    %s\n", qPrintable(st.first));
+            const bool show = (isBlack && black <= 3) || (!isBlack && shown++ == 0);
+            if (show)
+                std::printf("RC   %s\nRC    %s\n", qPrintable(st.boxes), qPrintable(st.first.left(160)));
             std::fflush(stdout);
             renderer->releaseRenderContext();
             mpv_terminate_destroy(mpv);
             delete renderer;
+            QFile lf(logFile);
+            if (show && lf.open(QIODevice::ReadOnly)) {
+                int n = 0;
+                while (!lf.atEnd() && n < 14) {
+                    const QByteArray line = lf.readLine().trimmed();
+                    if (line.contains("Window size") || line.contains("Video source") || line.contains("Video display") || line.contains("Video scale")
+                        || line.contains("OSD borders") || line.contains("reconfig to")) {
+                        std::printf("RC    %s\n", line.left(150).constData());
+                        ++n;
+                    }
+                }
+            }
+            QFile::remove(logFile);
         }
         std::printf("RCSUM %d von %d schwarz\n", black, rounds);
         return 0;
