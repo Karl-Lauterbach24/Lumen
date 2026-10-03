@@ -196,6 +196,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/StereoDetect.h      src/StereoDetect.cpp
     src/StereoSubs.h        src/StereoSubs.cpp
     src/BitmapSubs.h        src/BitmapSubs.cpp
+    src/ZipReader.h         src/ZipReader.cpp
     src/Tuning.h            src/Tuning.cpp          src/HardwareProbe.cpp
     src/AudioTap.h          src/AudioTap.cpp
     src/CastStream.h        src/CastStream.cpp
@@ -255,6 +256,12 @@ qt_add_qml_module(lumen
 )
 
 target_compile_definitions(lumen PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")
+# KDM-Pakete als ZIP (Verleih-E-Mails): zlib zum Entpacken
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    target_compile_definitions(lumen PRIVATE LUMEN_HAVE_ZLIB=1)
+    target_link_libraries(lumen PRIVATE ZLIB::ZLIB)
+endif()
 target_include_directories(lumen PRIVATE include)
 
 target_link_libraries(lumen PRIVATE
@@ -435,9 +442,13 @@ if(LUMEN_BUILD_TESTS AND LUMEN_HAVE_BLURAY)
 endif()
 # Test: DCP lesen, KDM auspacken, Spurdateien entschlüsseln, Untertitel wandeln
 if(LUMEN_BUILD_TESTS)
-    add_executable(dcp_test tests/dcp_test.cpp ${LUMEN_DCP_SOURCES})
+    add_executable(dcp_test tests/dcp_test.cpp ${LUMEN_DCP_SOURCES} src/ZipReader.cpp src/ZipReader.h)
     target_include_directories(dcp_test PRIVATE src)
     target_link_libraries(dcp_test PRIVATE Qt6::Core Qt6::Gui Qt6::Xml lumen_mpv)
+    if(ZLIB_FOUND)
+        target_compile_definitions(dcp_test PRIVATE LUMEN_HAVE_ZLIB=1)
+        target_link_libraries(dcp_test PRIVATE ZLIB::ZLIB)
+    endif()
     lumen_optional_libs(dcp_test)
     # Test: Video-CD-Wiedergabesteuerung (PBC) mit echter mpv-Wiedergabe
     add_executable(vcd_test tests/vcd_test.cpp src/VcdNav.cpp src/VcdNav.h src/OpticalMedia.cpp src/OpticalMedia.h)

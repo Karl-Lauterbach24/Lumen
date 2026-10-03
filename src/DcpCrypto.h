@@ -22,6 +22,8 @@
 namespace DcpCrypto {
 
 bool available();
+// Fehlertext von decryptKdm, wenn der KDM für ein anderes Zertifikat ausgestellt ist
+QString notForThisCertificateText();
 
 struct Identity
 {

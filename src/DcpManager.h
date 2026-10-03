@@ -98,7 +98,10 @@ public:
     // Ende der Sitzung). Nur für Schlüssel, die vorliegen – an einem fehlenden KDM ändert das nichts.
     Q_INVOKABLE void allowOutsideWindow(int index, bool allow);
 
+    // Einen KDM (XML) oder ein ZIP-Paket mit KDMs laden (die für dieses Zertifikat werden übernommen)
     Q_INVOKABLE void loadKdm(const QUrl &file);
+    // Ist das ein KDM oder ein ZIP-Paket (für das Ablegen von Dateien aufs Fenster)?
+    Q_INVOKABLE bool isKdmFile(const QString &path) const;
     Q_INVOKABLE void removeKdm(int index);
     // Schlüssel direkt eintragen (eigene DCPs): "Key-ID-UUID  32-stelliger-Hex-Schlüssel"
     Q_INVOKABLE bool addKey(const QString &keyId, const QString &keyHex);
@@ -156,6 +159,14 @@ private:
     QHash<QString, DcpCrypto::ContentKey> m_keys;       // aus KDMs
     QHash<QString, DcpCrypto::ContentKey> m_manualKeys; // von Hand eingetragen
     QSet<QString> m_outsideWindow; // CPL-IDs: Schlüssel außerhalb des KDM-Zeitraums trotzdem verwenden
+    QHash<QString, QString> m_rejected; // CPL-ID -> warum ein KDM dafür nicht verwendet werden konnte
+    struct KdmLoad
+    {
+        bool ok = false;
+        QString title, error;
+        int keys = 0;
+    };
+    KdmLoad loadKdmFile(const QString &path);
 
     bool m_active = false;
     QVariantMap m_current;

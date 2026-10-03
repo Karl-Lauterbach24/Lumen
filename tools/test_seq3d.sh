@@ -78,6 +78,20 @@ if [ -x "$BUILD/dcp_test" ] && [ -n "$OSSL" ]; then
     echo "expired KDM: $played"
     case "$window" in *"valid=2025-09-01T00:00:00Z..2025-09-30T23:59:59Z error="*) ;; *) echo "FAIL: KDM period not read"; exit 1 ;; esac
     case "$played" in *"loaded=1"*"keyErrors=0 missingKeys=0"*) echo "OK   keys of an expired KDM decrypt the DCP" ;; *) echo "FAIL: expired KDM keys do not decrypt"; exit 1 ;; esac
+    # KDM package as distributors send it: a ZIP with deflated and stored entries
+    "$PY" - "$K/dcp/kdm.xml" "$K/kdms.zip" <<'PYEOF'
+import sys, zipfile
+kdm = open(sys.argv[1], "rb").read()
+with zipfile.ZipFile(sys.argv[2], "w") as z:
+    z.writestr("KDM_screen1.xml", kdm, compress_type=zipfile.ZIP_DEFLATED)
+    z.writestr("KDM_screen2.xml", kdm, compress_type=zipfile.ZIP_STORED)
+    z.writestr("readme.txt", b"not a KDM", compress_type=zipfile.ZIP_DEFLATED)
+PYEOF
+    size=$(wc -c < "$K/dcp/kdm.xml" | tr -d ' ')
+    listed="$("$BUILD/dcp_test" unzip "$K/kdms.zip" .xml)"
+    echo "$listed" | sed 's/^/KDM package: /'
+    [ "$(echo "$listed" | grep -c " $size ")" = 2 ] && echo "OK   KDM package: both KDMs read in full (deflated and stored)" \
+        || { echo "FAIL: KDM package"; exit 1; }
 fi
 # subtitles of 3D files, once per eye: eye areas and line wrapping
 "$BUILD/stereo_test" --subs | grep -vE "^OK" || true

@@ -29,7 +29,7 @@ ScrollView {
     FileDialog {
         id: kdmDialog
         title: qsTr("KDM laden")
-        nameFilters: [qsTr("KDM (*.xml)"), qsTr("Alle Dateien (*)")]
+        nameFilters: [qsTr("KDM oder KDM-Paket (*.xml *.zip)"), qsTr("Alle Dateien (*)")]
         fileMode: FileDialog.OpenFiles
         onAccepted: selectedFiles.forEach(f => Dcp.loadKdm(f))
     }

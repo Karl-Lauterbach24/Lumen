@@ -189,6 +189,9 @@ ASSETMAP ─> PKL ─> CPL (Rollen: Bild | Ton | Untertitel | Marker)
      Verleihs) und das Feld *Ich weiß, was ich tue – trotzdem entschlüsseln*. Angehakt verwendet Lumen die Schlüssel
      für diese Komposition bis zum Programmende; der Status lautet dann „entschlüsselt außerhalb des KDM-Zeitraums“.
      Ohne Schlüssel ändert das nichts – ein fehlender KDM lässt sich nicht ersetzen.
+     KDMs lassen sich auch als ZIP-Paket laden, wie Verleihe sie schicken (ein KDM je Saal bzw. Zertifikat: Lumen
+     übernimmt die für sein Zertifikat und meldet die übrigen), und per Ziehen aufs Fenster. Ein KDM für ein
+     anderes Zertifikat wird an der Komposition als solcher benannt.
   4. Bei der Wiedergabe wird jedes KLV-Triplet (SMPTE ST 429-6, AES-128-CBC) im Lesestrom entschlüsselt und durch
      *Essenz-KLV + gleich großes KLV-Fill* ersetzt – alle Index-Tabellen und Partitions-Offsets bleiben gültig, Spulen
      funktioniert. Ein falscher Schlüssel fällt über den Prüfwert des Triplets auf.

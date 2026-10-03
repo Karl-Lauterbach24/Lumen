@@ -8,6 +8,7 @@
 #include "MpvController.h"
 #include "OpticalMedia.h"
 #include "Tuning.h"
+#include "ZipReader.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -22,6 +23,7 @@
 #include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QThread>
 #include <QThreadPool>
 #include <QtDebug>
@@ -268,7 +270,8 @@ QVariantMap DcpManager::keyStatus(const Dcp::Cpl &cpl) const
     } else {
         m["keyState"] = QStringLiteral("nokdm");
         m["keyText"] = have ? LTR("%1 von %2 Schlüsseln – KDM unvollständig").arg(have).arg(need)
-                            : LTR("Verschlüsselt – KDM erforderlich");
+                       : m_rejected.contains(cpl.id) ? m_rejected.value(cpl.id)
+                                                      : LTR("Verschlüsselt – KDM erforderlich");
     }
     return m;
 }
@@ -354,6 +357,16 @@ void DcpManager::rebuildKeys()
     emit packageChanged(); // Schlüsselstatus der CPLs
 }
 
+bool DcpManager::isKdmFile(const QString &path) const
+{
+    if (path.endsWith(QLatin1String(".zip"), Qt::CaseInsensitive))
+        return true;
+    if (!path.endsWith(QLatin1String(".xml"), Qt::CaseInsensitive))
+        return false;
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) && f.read(4096).contains("DCinemaSecurityMessage");
+}
+
 void DcpManager::loadKdm(const QUrl &file)
 {
     const QString path = file.isLocalFile() ? file.toLocalFile() : file.toString();
@@ -361,16 +374,65 @@ void DcpManager::loadKdm(const QUrl &file)
         setStatus(LTR("Zuerst ein Zertifikat für Lumen erzeugen oder importieren – KDMs werden dafür ausgestellt"));
         return;
     }
-    DcpCrypto::Kdm kdm = DcpCrypto::decryptKdm(path, m_identity.keyFile);
-    if (kdm.keys.isEmpty()) {
-        setStatus(kdm.error);
+    if (!path.endsWith(QLatin1String(".zip"), Qt::CaseInsensitive)) {
+        const KdmLoad r = loadKdmFile(path);
+        setStatus(r.ok ? LTR("KDM geladen: %1 Schlüssel für „%2“%3").arg(r.keys).arg(r.title, r.error.isEmpty() ? QString() : QStringLiteral(" (") + r.error + QLatin1Char(')'))
+                       : r.error);
         return;
     }
-    // Dauerhaft ablegen (bleibt verschlüsselt; beim Start neu ausgepackt)
+    // ZIP-Paket des Verleihs: je Saal bzw. Zertifikat ein KDM – die für dieses Zertifikat übernehmen
+    QString error;
+    const QList<Zip::Entry> entries = Zip::read(path, QStringLiteral(".xml"), &error);
+    if (entries.isEmpty()) {
+        setStatus(error.isEmpty() ? LTR("Keine KDMs im Archiv") : LTR("Archiv lässt sich nicht lesen: %1").arg(error));
+        return;
+    }
+    QTemporaryDir tmp;
+    int loaded = 0, foreign = 0, other = 0;
+    QString lastError;
+    for (const Zip::Entry &e : entries) {
+        const QString target = tmp.filePath(QFileInfo(e.name).fileName());
+        QFile out(target);
+        if (!out.open(QIODevice::WriteOnly) || out.write(e.data) != e.data.size())
+            continue;
+        out.close();
+        if (!e.data.contains("DCinemaSecurityMessage"))
+            continue;
+        const KdmLoad r = loadKdmFile(target);
+        if (r.ok)
+            ++loaded;
+        else if (r.error == DcpCrypto::notForThisCertificateText())
+            ++foreign;
+        else
+            ++other, lastError = r.error;
+    }
+    QString msg = LTR("%1 KDM(s) aus dem Archiv geladen").arg(loaded);
+    if (foreign)
+        msg += LTR(", %1 für andere Zertifikate übersprungen").arg(foreign);
+    if (other)
+        msg += QStringLiteral(", ") + LTR("%1 fehlerhaft (%2)").arg(other).arg(lastError);
+    setStatus(msg);
+}
+
+DcpManager::KdmLoad DcpManager::loadKdmFile(const QString &path)
+{
+    KdmLoad result;
+    DcpCrypto::Kdm kdm = DcpCrypto::decryptKdm(path, m_identity.keyFile);
+    result.title = kdm.title.isEmpty() ? kdm.cplId : kdm.title;
+    if (kdm.keys.isEmpty()) {
+        result.error = kdm.error;
+        // an der Komposition zeigen, warum ihr KDM nicht passt (bis zum Programmende)
+        if (!kdm.cplId.isEmpty()) {
+            m_rejected.insert(kdm.cplId, kdm.error);
+            emit packageChanged();
+        }
+        return result;
+    }
+    m_rejected.remove(kdm.cplId);
+    // Dauerhaft ablegen (bleibt verschlüsselt; beim Start neu ausgepackt). Unter dem eigenen Namen;
+    // ein anderer KDM gleichen Namens (oft schlicht "kdm.xml") bekommt eine Nummer, statt ihn zu ersetzen
     const QString dir = configDir() + QStringLiteral("/kdm");
     QDir().mkpath(dir);
-    // Unter dem eigenen Namen ablegen; ein anderer KDM gleichen Namens (oft schlicht "kdm.xml")
-    // bekommt eine Nummer, statt ihn zu überschreiben
     auto contents = [](const QString &f) {
         QFile file(f);
         return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
@@ -389,11 +451,12 @@ void DcpManager::loadKdm(const QUrl &file)
     for (int i = 0; i < m_kdms.size(); ++i)
         if (QFileInfo(m_kdms[i].file).fileName() == QFileInfo(target).fileName())
             m_kdms.removeAt(i--);
+    result.ok = true;
+    result.keys = int(kdm.keys.size());
+    result.error = kdm.error;
     m_kdms.prepend(kdm);
     rebuildKeys();
-    setStatus(LTR("KDM geladen: %1 Schlüssel für „%2“%3")
-                  .arg(kdm.keys.size()).arg(kdm.title.isEmpty() ? kdm.cplId : kdm.title,
-                                            kdm.error.isEmpty() ? QString() : QStringLiteral(" (") + kdm.error + QLatin1Char(')')));
+    return result;
 }
 
 void DcpManager::removeKdm(int index)

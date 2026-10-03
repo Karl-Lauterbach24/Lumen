@@ -109,9 +109,20 @@ ApplicationWindow {
     // Aus dem Dateimanager oder Browser ins Fenster gezogen
     function openDropped(drop) {
         if (drop.hasUrls && drop.urls.length > 0) {
-            const u = drop.urls[0].toString()
-            if (u.startsWith("file:")) openPath(localPath(u), settings.startWithMenu)
-            else { currentDevice = ""; Disc.clear(); Player.openStream(u) }
+            // KDMs (auch als ZIP-Paket) laden; was sonst dabei ist, öffnen
+            let media = ""
+            for (const url of drop.urls) {
+                const s = url.toString()
+                if (s.startsWith("file:") && Dcp.isKdmFile(localPath(s))) {
+                    Dcp.loadKdm(url)
+                    settings.tab = 5
+                } else if (!media) {
+                    media = s
+                }
+            }
+            if (!media) return true
+            if (media.startsWith("file:")) openPath(localPath(media), settings.startWithMenu)
+            else { currentDevice = ""; Disc.clear(); Player.openStream(media) }
             return true
         }
         const text = drop.hasText ? drop.text.trim() : ""

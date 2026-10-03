@@ -438,7 +438,7 @@ Kdm decryptKdm(const QString &file, const QString &privateKeyFile)
     ERR_clear_error();
     if (kdm.keys.isEmpty())
         kdm.error = ciphers.isEmpty() ? LTR("KDM enthält keine Schlüssel")
-                                      : LTR("KDM ist nicht für dieses Zertifikat ausgestellt (Schlüssel lassen sich nicht auspacken)");
+                                      : notForThisCertificateText();
     else if (failed)
         kdm.error = LTR("%1 von %2 Schlüsseln nicht lesbar").arg(failed).arg(ciphers.size());
     return kdm;
@@ -514,5 +514,10 @@ bool AesCbc::decrypt(uchar *, const uchar *, uchar *, int) { return false; }
 bool AesCbc::encrypt(uchar *, const uchar *, uchar *, int) { return false; }
 
 #endif
+
+QString notForThisCertificateText()
+{
+    return LTR("KDM ist nicht für dieses Zertifikat ausgestellt (Schlüssel lassen sich nicht auspacken)");
+}
 
 } // namespace DcpCrypto

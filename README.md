@@ -198,6 +198,9 @@ ASSETMAP ─> PKL ─> CPL (reels: picture | sound | subtitles | markers)
      e.g. as the rights holder or with the distributor's consent) and a box *I know what I am doing – decrypt
      anyway*. Ticking it lets Lumen use the keys for this composition until the program ends; the status then says
      "decrypted outside the KDM period". Without the keys nothing changes – a missing KDM cannot be replaced.
+     KDMs also load as the ZIP package distributors send (one KDM per screen or certificate: Lumen takes the ones
+     for its certificate and reports the others) and by dropping them onto the window. A KDM issued for another
+     certificate is named as such at the composition.
   4. Playback decrypts each KLV triplet (SMPTE ST 429-6, AES-128-CBC) on the fly. The decrypted triplet is replaced by
      *essence KLV + KLV fill of the same size*, so all index tables and partition offsets stay valid and seeking works.
      A wrong key is detected via the triplet check value.

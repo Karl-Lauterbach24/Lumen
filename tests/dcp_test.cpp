@@ -13,6 +13,7 @@
 #include "DcpSignature.h"
 #include "DcpStream.h"
 #include "DcpSubtitles.h"
+#include "ZipReader.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -61,6 +62,16 @@ int main(int argc, char **argv)
         return usage();
     const QString cmd = a[0];
 
+    // unzip <archiv.zip> [endung]: Einträge, wie Lumen sie aus einem KDM-Paket liest (Name, Größe, Anfang)
+    if (cmd == QLatin1String("unzip") && a.size() >= 2) {
+        QString error;
+        const QList<Zip::Entry> entries = Zip::read(a[1], a.value(2), &error);
+        for (const Zip::Entry &e : entries)
+            print(QStringLiteral("%1 %2 %3").arg(e.name).arg(e.data.size()).arg(QString::fromLatin1(e.data.left(16).toHex())));
+        if (!error.isEmpty())
+            print(QStringLiteral("Fehler: ") + error);
+        return entries.isEmpty() ? 1 : 0;
+    }
     if (cmd == QLatin1String("gencert") && a.size() >= 2) {
         QString err;
         if (!DcpCrypto::createIdentity(a[1], QStringLiteral("Lumen Test"), &err)) {
