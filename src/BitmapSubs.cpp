@@ -1,6 +1,5 @@
 #include "BitmapSubs.h"
 
-#include <QFile>
 #include <QPainter>
 
 #include <algorithm>
@@ -160,7 +159,7 @@ void BitmapSubs::run(QString path, int streamIndex, QString codec)
     AVDictionary *opts = nullptr;
     av_dict_set(&opts, "probesize", "5000000", 0);
     av_dict_set(&opts, "analyzeduration", "2000000", 0);
-    const QByteArray file = QFile::encodeName(path);
+    const QByteArray file = path.toUtf8(); // FFmpeg erwartet UTF-8, auch unter Windows
     const int opened = avformat_open_input(&fmt, file.constData(), nullptr, &opts);
     av_dict_free(&opts);
     if (opened < 0)
