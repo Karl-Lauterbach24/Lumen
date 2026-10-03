@@ -734,6 +734,11 @@ void DcpManager::allowOutsideWindow(int index, bool allow)
         m_outsideWindow.insert(id);
     else
         m_outsideWindow.remove(id);
+    // zurückgenommen, während sie läuft: die Vorführung endet (die Schlüssel stecken schon im Lesestrom)
+    if (!allow && m_active && m_playing == index && !keyStatus(m_package.cpls[index]).value("playable").toBool()) {
+        m_player->stop();
+        setStatus(keyStatus(m_package.cpls[index]).value("keyText").toString());
+    }
     emit packageChanged();
 }
 
