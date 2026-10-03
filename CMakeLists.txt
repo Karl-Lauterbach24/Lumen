@@ -195,6 +195,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/Stereo3D.h          src/Stereo3D.cpp
     src/StereoDetect.h      src/StereoDetect.cpp
     src/StereoSubs.h        src/StereoSubs.cpp
+    src/BitmapSubs.h        src/BitmapSubs.cpp
     src/Tuning.h            src/Tuning.cpp          src/HardwareProbe.cpp
     src/AudioTap.h          src/AudioTap.cpp
     src/CastStream.h        src/CastStream.cpp

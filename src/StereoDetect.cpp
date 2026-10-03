@@ -6,6 +6,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <cstring>
 #include <cmath>
 #include <vector>
 
@@ -417,6 +418,34 @@ Hint fromScores(const QList<Scores> &frames, bool hint3d, double *confidence)
 // Datei auswerten
 // --------------------------------------------------------------------------
 
+// Die ersten Pakete eines H.264-Stroms im Annex-B-Format (MPEG-TS) nach NAL-Einheiten einer
+// zweiten Ansicht durchsuchen: Subset-SPS (15) oder Slice-Erweiterung (20). Liest höchstens
+// 120 Pakete und spult danach an den Anfang zurück.
+static bool hasMvcNalUnits(AVFormatContext *fmt, int index)
+{
+    if (!fmt->iformat || strcmp(fmt->iformat->name, "mpegts") != 0)
+        return false; // Matroska und MP4 nennen das Profil der beiden Ansichten selbst
+    AVPacket *pkt = av_packet_alloc();
+    bool found = false;
+    for (int n = 0, seen = 0; pkt && !found && n < 2000 && seen < 120; ++n) {
+        if (av_read_frame(fmt, pkt) < 0)
+            break;
+        if (pkt->stream_index == index) {
+            ++seen;
+            for (int i = 0; i + 3 < pkt->size && !found; ++i) {
+                if (pkt->data[i] == 0 && pkt->data[i + 1] == 0 && pkt->data[i + 2] == 1) {
+                    const int type = pkt->data[i + 3] & 0x1f;
+                    found = type == 15 || type == 20;
+                }
+            }
+        }
+        av_packet_unref(pkt);
+    }
+    av_packet_free(&pkt);
+    av_seek_frame(fmt, -1, fmt->start_time != AV_NOPTS_VALUE ? fmt->start_time : 0, AVSEEK_FLAG_BACKWARD);
+    return found;
+}
+
 Hint analyzeFile(const QString &path, bool hint3d, const std::atomic_bool *cancel, double *confidence, int *width, int *height,
                  QList<Scores> *scoresOut, bool *mvc)
 {
@@ -463,8 +492,13 @@ Hint analyzeFile(const QString &path, bool hint3d, const std::atomic_bool *cance
             break;
         AVStream *stream = fmt->streams[index];
         // Stereo High (128) / Multiview High (118): zwei Ansichten in einem Strom. Das Bild der
-        // Basisansicht ist gewöhnliches 2D – hier gibt es nichts zu vergleichen.
-        if (stream->codecpar->codec_id == AV_CODEC_ID_H264 && (stream->codecpar->profile == 128 || stream->codecpar->profile == 118)) {
+        // Basisansicht ist gewöhnliches 2D – hier gibt es nichts zu vergleichen. In MPEG-TS
+        // (3D-Camcorder, zusammengeführte Blu-ray-Ströme) nennt FFmpeg nur das Profil der
+        // Basisansicht; dort verraten die NAL-Einheiten der zweiten Ansicht den Strom.
+        const bool mvcStream = stream->codecpar->codec_id == AV_CODEC_ID_H264
+                               && (stream->codecpar->profile == 128 || stream->codecpar->profile == 118
+                                   || hasMvcNalUnits(fmt, index));
+        if (mvcStream) {
             if (mvc)
                 *mvc = true;
             if (width)

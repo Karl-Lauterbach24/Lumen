@@ -17,6 +17,7 @@
 
 struct mpv_handle;
 struct mpv_event;
+class BitmapSubs;
 class BlurayNav;
 class CastRenderer;
 class DisplayManager;
@@ -439,12 +440,18 @@ private:
     bool m_earlyAnalysis = false;
     bool m_detectPassed = false; // der Ablauf nach dem Laden wartet nur noch auf ihr Ergebnis
     void finishPrimedStart(int waitedMs);
-    // Text-Untertitel einer 3D-Datei je Auge (StereoSubs)
+    // Untertitel einer 3D-Datei je Auge (StereoSubs): Text von mpv, Bilder selbst gelesen (BitmapSubs)
     void updateStereoSubs();
+    void drawStereoSubs();
+    void placeEyeOverlays(const QImage &img, const QSizeF &canvas, const QRectF &where);
     QString m_subText;
     bool m_fileReady = false;
     bool m_endFileError = false; // die Meldung zum Abbruch steht; spätere Log-Zeilen überschreiben sie nicht
     bool m_stereoSubs = false;
+    bool m_stereoBitmap = false;
+    bool m_forcedSubsOnly = false;
+    BitmapSubs *m_bitmapSubs = nullptr;
+    double m_bitmapShown = -2; // Anfang des gezeigten Untertitelbilds (-1: keines)
     bool m_havePreResult = false;
     QString m_preFormat, m_preSource;
     Tuning::Governor m_governor;

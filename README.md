@@ -280,7 +280,16 @@ Not detected: which eye comes first (left is assumed unless the name says `RL`),
 top-and-bottom or frame packing output that puts half of the text into each eye. For text subtitles (SRT, ASS,
 WebVTT …) Lumen therefore draws the text itself, once per eye, squeezed like the picture, and moves it in front
 of the screen by the profile's subtitle depth (the slider in the *Subtitles* tab changes it while playing). Styles and positions of the subtitle file are not kept (plain
-text, bottom centre). Picture subtitles (PGS, VobSub) carry no text and stay with mpv's rendering.
+text, bottom centre). Picture subtitles (PGS, VobSub, DVB – in nearly every 3D file made from a Blu-ray)
+come from mpv only as the finished overlay, so Lumen reads the subtitle track of a local file a second time in
+its own thread, decodes it with FFmpeg and draws each subtitle picture once per eye at its authored position.
+The reader stays half a minute ahead of playback and starts over where playback jumps to. Network streams
+keep mpv's rendering.
+
+**H.264/MVC in MPEG-TS** (`.m2ts`, `.ts`, `.mts` with both views in one track, e.g. from a 3D camcorder): FFmpeg
+reports only the base view's profile there, so the detection looks for the second view's NAL units in the
+first packets. Such a stream is then decoded in software – no hardware decoder can handle it, not even its
+base view, and the picture used to stay black.
 
 ## Hardware and performance
 
@@ -352,7 +361,8 @@ src/PlayerWindow    embedded player window (mpv render API/OpenGL, drawn by its 
 src/ProfileManager  presets + user profiles
 src/Stereo3D        filter chains for the 3D output formats, incl. frame sequential
 src/StereoDetect    automatic 3D detection: file name, container, picture comparison, MVC
-src/StereoSubs      text subtitles of 3D files, drawn once per eye
+src/StereoSubs      subtitles of 3D files, drawn once per eye
+src/BitmapSubs      picture subtitles (PGS, VobSub) read and decoded in a thread of its own, for StereoSubs
 src/Tuning          graphics hardware class, scaling tier and decoder path, runtime governor
 src/CastManager     casting: session, settings, device list (QML "Cast")
 src/CastRenderer    mpv render API into a framebuffer, read back for the encoder

@@ -45,8 +45,10 @@ int main(int argc, char **argv)
         for (const auto &s : scores)
             std::printf("     nebeneinander %.2f  übereinander %.2f\n", s.sideBySide, s.topBottom);
         const StereoDetect::Result r = StereoDetect::detectFile(args[0]);
-        check(r.format == args[1], QStringLiteral("%1: %2 (%3, %4) – erwartet %5")
-                                       .arg(args[0], r.format, r.source.isEmpty() ? QStringLiteral("-") : r.source)
+        // "mvc": zwei Ansichten in einem Strom (das Format selbst bleibt dann "none")
+        const QString got = args[1] == QLatin1String("mvc") && r.mvc ? QStringLiteral("mvc") : r.format;
+        check(got == args[1], QStringLiteral("%1: %2 (%3, %4) – erwartet %5")
+                                       .arg(args[0], got, r.source.isEmpty() ? QStringLiteral("-") : r.source)
                                        .arg(r.confidence, 0, 'f', 2)
                                        .arg(args[1]));
         return failures ? 1 : 0;

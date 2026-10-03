@@ -31,6 +31,11 @@ if [ "$result" != " 8 165,36" ]; then
     exit 1
 fi
 echo "Blu-ray 3D: both views decoded"
+# the merged stream is H.264/MVC in MPEG-TS: the 3D detection must recognise it as two views
+if [ -x "$BUILD/stereodetect_test" ] || [ -x "$BUILD/stereodetect_test.exe" ]; then
+    T="$BUILD/stereodetect_test"; [ -x "$T" ] || T="$BUILD/stereodetect_test.exe"
+    "$T" "$WORK/merged.m2ts" mvc
+fi
 
 # Rides along because every CI platform (Windows too) calls this script: how fast the software
 # decoder runs there. Report only. LUMEN_SKIP_BENCH=1 leaves it out.

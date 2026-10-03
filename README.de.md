@@ -273,8 +273,16 @@ außer der Name sagt `RL`), Anaglyph, Schachbrett. `LUMEN_STEREO_DEBUG=1` gibt j
 Top-and-Bottom oder Frame Packing landet der Text damit zur Hälfte in jedem Auge. Text-Untertitel (SRT, ASS,
 WebVTT …) zeichnet Lumen deshalb selbst, einmal je Auge, gestaucht wie das Bild, und holt sie um die
 Untertitel-Tiefe des Profils vor die Leinwand (der Regler im Reiter *Untertitel* ändert sie während der Wiedergabe). Stile und Positionen der Untertiteldatei bleiben dabei nicht
-erhalten (schlichter Text, unten in der Mitte). Bild-Untertitel (PGS, VobSub) enthalten keinen Text; dort
-bleibt es bei mpvs Darstellung.
+erhalten (schlichter Text, unten in der Mitte). Bild-Untertitel (PGS, VobSub, DVB – in fast jeder 3D-Datei
+von einer Blu-ray) liefert mpv nur als fertiges Gesamtbild; Lumen liest deshalb die Untertitelspur einer
+lokalen Datei in einem eigenen Thread ein zweites Mal, dekodiert sie mit FFmpeg und zeichnet jedes
+Untertitelbild einmal je Auge an seiner vorgesehenen Stelle. Der Leser bleibt eine halbe Minute vor der
+Wiedergabe und setzt neu an, wo die Wiedergabe hinspringt. Bei Netzwerkströmen bleibt es bei mpvs Darstellung.
+
+**H.264/MVC in MPEG-TS** (`.m2ts`, `.ts`, `.mts` mit beiden Ansichten in einer Spur, z. B. von einem
+3D-Camcorder): FFmpeg nennt dort nur das Profil der Basisansicht; die Erkennung sucht deshalb in den ersten
+Paketen nach den NAL-Einheiten der zweiten Ansicht. Ein solcher Strom wird dann in Software dekodiert – kein
+Hardware-Decoder kann ihn, auch nicht seine Basisansicht, und das Bild blieb bisher schwarz.
 
 ## Hardware und Leistung
 
@@ -350,7 +358,8 @@ src/PlayerWindow    eingebettetes Player-Fenster (mpv-Render-API/OpenGL, eigener
 src/ProfileManager  Vorlagen + eigene Profile
 src/Stereo3D        Filterketten der 3D-Ausgabeformate, auch Bildfolge
 src/StereoDetect    automatische 3D-Erkennung: Dateiname, Container, Bildvergleich, MVC
-src/StereoSubs      Text-Untertitel von 3D-Dateien, einmal je Auge gezeichnet
+src/StereoSubs      Untertitel von 3D-Dateien, einmal je Auge gezeichnet
+src/BitmapSubs      Bild-Untertitel (PGS, VobSub) in einem eigenen Thread gelesen und dekodiert, für StereoSubs
 src/Tuning          Klasse der Grafikhardware, Skalierungsstufe und Decoder-Weg, Governor zur Laufzeit
 src/CastManager     Übertragen: Sitzung, Einstellungen, Geräteliste (QML „Cast“)
 src/CastRenderer    mpv-Render-API in einen Framebuffer, ausgelesen für den Encoder

@@ -1,6 +1,7 @@
 #include "MpvController.h"
 #include "Tr.h"
 
+#include "BitmapSubs.h"
 #include "BlurayNav.h"
 #include "CastRenderer.h"
 #include "DcpPackage.h"
@@ -620,6 +621,11 @@ void MpvController::setOptionRaw(const QString &name, const QVariant &value, boo
 void MpvController::setOption(const QString &name, const QVariant &value)
 {
     setOptionRaw(name, value, false);
+    if (name == QLatin1String("sub-forced-events-only")) {
+        m_forcedSubsOnly = value.toBool();
+        m_bitmapShown = -2;
+        drawStereoSubs();
+    }
 }
 
 QVariant MpvController::getProperty(const QString &name) const
@@ -1912,6 +1918,13 @@ void MpvController::runStereoAnalysis(const QString &path, const QString &url, c
                     self->m_preSource = r.source;
                 }
                 self->applyDetectedStereo(r.format, r.source);
+            } else if (url.isEmpty() && r.mvc && !self->m_mvcStream) {
+                // Zwei Ansichten, die erst das Lesen der Datei verraten hat (H.264/MVC in MPEG-TS):
+                // Kein Hardware-Decoder kann den Strom, auch nicht seine Basisansicht – auf den
+                // Software-Decoder wechseln, sonst bliebe das Bild schwarz
+                self->m_mvcStream = true;
+                self->syncOptions();
+                self->applyDetectedStereo(QStringLiteral("none"), QStringLiteral("mvc"));
             }
         }, Qt::QueuedConnection);
     });
@@ -1949,13 +1962,28 @@ void MpvController::updateStereoSubs()
     const QString out = m_profile.value("stereoOut", "none").toString();
     bool want = !m_castEncoder && !m_idle && m_stereoIn != QLatin1String("none") && StereoSubs::splitsEyes(out)
                 && !mvcActive() && m_sid > 0;
+    bool bitmap = false;
+    QString codec, subFile;
+    int ffIndex = -1;
     if (want) {
+        want = false;
         for (const auto &v : std::as_const(m_rawTracks)) {
             const QVariantMap t = v.toMap();
-            if (t.value("type").toString() == QLatin1String("sub") && t.value("selected").toBool()) {
-                want = !StereoSubs::isBitmapCodec(t.value("codec").toString());
-                break;
+            if (t.value("type").toString() != QLatin1String("sub") || !t.value("selected").toBool())
+                continue;
+            codec = t.value("codec").toString();
+            bitmap = StereoSubs::isBitmapCodec(codec);
+            // Bilder liest Lumen selbst: aus der Datei oder aus der geladenen Untertiteldatei
+            if (t.value("external").toBool()) {
+                subFile = t.value("external-filename").toString();
+            } else {
+                subFile = m_sourceKind == QLatin1String("file") ? m_lastUrl : QString();
+                ffIndex = t.value("ff-index", -1).toInt();
             }
+            if (subFile.startsWith(QLatin1String("file://")))
+                subFile = QUrl(subFile).toLocalFile();
+            want = !bitmap || QFileInfo(subFile).isFile();
+            break;
         }
     }
     if (want != m_stereoSubs) {
@@ -1963,23 +1991,80 @@ void MpvController::updateStereoSubs()
         setOptionRaw(QStringLiteral("sub-visibility"), want ? "no" : "yes", false);
         emit stereoSubtitlesChanged();
     }
-    const QList<StereoSubs::Eye> eyes = want ? StereoSubs::eyes(out, m_osdDims) : QList<StereoSubs::Eye>();
+    m_stereoBitmap = want && bitmap;
+    if (m_stereoBitmap) {
+        if (!m_bitmapSubs) {
+            m_bitmapSubs = new BitmapSubs(this);
+            connect(m_bitmapSubs, &BitmapSubs::eventsChanged, this, [this] {
+                m_bitmapShown = -2; // neu bewerten: das gerade nötige Bild kann eben erst gelesen sein
+                drawStereoSubs();
+            });
+        }
+        if (!m_bitmapSubs->active(subFile, ffIndex)) {
+            m_bitmapSubs->start(subFile, ffIndex, codec);
+            m_bitmapSubs->setPosition(m_position - m_subDelay);
+        }
+    } else if (m_bitmapSubs) {
+        m_bitmapSubs->stop();
+    }
+    m_bitmapShown = -2;
+    drawStereoSubs();
+}
+
+void MpvController::drawStereoSubs()
+{
+    if (!m_stereoSubs) {
+        if (m_bitmapShown != -1) {
+            removeOverlay(60);
+            removeOverlay(61);
+            m_bitmapShown = -1;
+        }
+        return;
+    }
+    const QString out = m_profile.value("stereoOut", "none").toString();
+    const QList<StereoSubs::Eye> eyes = StereoSubs::eyes(out, m_osdDims);
+    if (m_stereoBitmap) {
+        // mpvs Untertitel-Verzögerung: positiv = später
+        const BitmapSubs::Event e = m_bitmapSubs->at(m_position - m_subDelay, m_forcedSubsOnly);
+        const double key = e.image.isNull() || eyes.isEmpty() ? -1 : e.start;
+        if (key == m_bitmapShown)
+            return;
+        m_bitmapShown = key;
+        if (key < 0) {
+            removeOverlay(60);
+            removeOverlay(61);
+            return;
+        }
+        placeEyeOverlays(e.image, e.canvas, e.rect);
+        return;
+    }
     const QImage img = eyes.isEmpty() || m_subText.trimmed().isEmpty() ? QImage() : StereoSubs::render(m_subText, eyes.first().logical);
     if (img.isNull()) {
         removeOverlay(60);
         removeOverlay(61);
         return;
     }
+    // Text: unten in der Mitte des Auges, 4,5 % über dem Rand
+    const QSizeF logical = eyes.first().logical;
+    const double bottom = logical.height() * (1 - 0.045);
+    placeEyeOverlays(img, logical, QRectF(0, bottom - img.height(), img.width(), img.height()));
+}
+
+// Ein Untertitelbild in jedes Auge setzen. canvas: die Fläche, auf die sich where bezieht (das
+// ganze Bild eines Auges, wie es am Ende gezeigt wird).
+void MpvController::placeEyeOverlays(const QImage &img, const QSizeF &canvas, const QRectF &where)
+{
+    const QString out = m_profile.value("stereoOut", "none").toString();
+    const QList<StereoSubs::Eye> eyes = StereoSubs::eyes(out, m_osdDims);
     // die Tiefe aus dem Profil; der Regler im Reiter „Untertitel" stellt sie während der Wiedergabe
     const double depth = m_nav ? m_nav->subtitleDepth() : m_profile.value("subtitleDepth").toDouble();
     for (int i = 0; i < eyes.size() && i < 2; ++i) {
         const StereoSubs::Eye &e = eyes.at(i);
-        const double sx = e.rect.width() / e.logical.width(), sy = e.rect.height() / e.logical.height();
+        const double sx = e.rect.width() / canvas.width(), sy = e.rect.height() / canvas.height();
         // Tiefe in Bildpunkten eines 1920 breiten Bilds: linkes Auge nach rechts, rechtes nach links
         const double shift = (e.left ? depth : -depth) * e.rect.width() / 1920.0;
-        const double bottom = e.rect.bottom() - e.rect.height() * 0.045;
-        setOverlay(60 + i, img, qRound(e.rect.x() + shift), qRound(bottom - img.height() * sy),
-                   qRound(img.width() * sx), qRound(img.height() * sy));
+        setOverlay(60 + i, img, qRound(e.rect.x() + where.x() * sx + shift), qRound(e.rect.y() + where.y() * sy),
+                   qRound(where.width() * sx), qRound(where.height() * sy));
     }
 }
 
@@ -2253,6 +2338,10 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         break;
     case P_TIMEPOS: {
         m_position = dbl();
+        if (m_stereoBitmap) {
+            m_bitmapSubs->setPosition(m_position - m_subDelay);
+            drawStereoSubs();
+        }
         if (m_snapshotAt >= 0 && m_position >= m_snapshotAt && !m_idle) {
             m_snapshotAt = -1;
             setOptionRaw(QStringLiteral("pause"), true, false);
