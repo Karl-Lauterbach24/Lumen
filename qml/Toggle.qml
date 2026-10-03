@@ -13,6 +13,11 @@ AbstractButton {
     implicitHeight: Math.max(hint ? 44 : 32, texts.implicitHeight + 10)
     implicitWidth: 240
     opacity: enabled ? 1 : 0.45
+    Accessible.role: Accessible.CheckBox
+    Accessible.name: label
+    Accessible.description: hint
+    Accessible.checkable: true
+    Accessible.checked: checked
 
     contentItem: RowLayout {
         spacing: 12

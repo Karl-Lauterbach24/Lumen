@@ -15,6 +15,8 @@ Button {
     padding: 0
     focusPolicy: Qt.NoFocus
     display: AbstractButton.IconOnly
+    // Bildschirmleser: Symbol-Schaltflächen haben keinen Text, nur den Tooltip
+    Accessible.name: tip
     icon.source: iconName ? Theme.icon(iconName) : ""
     icon.width: iconSize
     icon.height: iconSize

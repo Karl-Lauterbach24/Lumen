@@ -7,6 +7,8 @@ Rectangle {
     property bool filled: false
 
     visible: text.length > 0
+    Accessible.role: Accessible.StaticText
+    Accessible.name: text
     implicitWidth: label.implicitWidth + 16
     implicitHeight: 22
     radius: 5

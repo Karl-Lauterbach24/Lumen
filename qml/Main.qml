@@ -556,6 +556,9 @@ ApplicationWindow {
                                 required property var modelData
                                 readonly property bool current: I18n.effective === modelData.code
                                 focusPolicy: Qt.NoFocus
+                                Accessible.name: modelData.name
+                                Accessible.checkable: true
+                                Accessible.checked: current
                                 implicitWidth: langText.implicitWidth + 18
                                 implicitHeight: 26
                                 onClicked: I18n.language = modelData.code
@@ -640,6 +643,9 @@ ApplicationWindow {
                                 clip: true
                                 HoverHandler { id: recentHover; cursorShape: Qt.PointingHandCursor }
                                 TapHandler { onTapped: if (!recentRemove.hovered) win.openRecent(recentTile.modelData) }
+                                Accessible.role: Accessible.Button
+                                Accessible.name: recentTile.modelData.title
+                                Accessible.onPressAction: win.openRecent(recentTile.modelData)
                                 RowLayout {
                                     anchors.fill: parent
                                     anchors.leftMargin: 14
@@ -792,6 +798,7 @@ ApplicationWindow {
                                 IconButton { iconName: Player.muted || Player.volume === 0 ? "mute" : "volume"; tip: qsTr("Stumm (M)"); onClicked: Player.setMuted(!Player.muted) }
                                 Slider {
                                     id: vol
+                                    Accessible.name: qsTr("Lautstärke")
                                     Layout.preferredWidth: 96
                                     from: 0; to: Player.volumeMax
                                     focusPolicy: Qt.NoFocus
@@ -843,6 +850,9 @@ ApplicationWindow {
                                 required property int index
                                 readonly property bool current: settings.tab === index
                                 focusPolicy: Qt.NoFocus
+                                Accessible.role: Accessible.PageTab
+                                Accessible.name: modelData
+                                Accessible.checked: current
                                 implicitWidth: tabLabel.implicitWidth + 20
                                 implicitHeight: 36
                                 onClicked: settings.tab = index

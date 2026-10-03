@@ -37,6 +37,7 @@ ColumnLayout {
         stepSize: root.stepSize
         focusPolicy: Qt.NoFocus
         implicitHeight: 22
+        Accessible.name: root.label
         onMoved: root.moved(value)
 
         Binding on value { value: root.value; when: !s.pressed }
