@@ -88,10 +88,15 @@ BitmapSubs::Event BitmapSubs::at(double t, bool forcedOnly) const
         --it;
         if (forcedOnly && !it->forced && !it->image.isNull())
             continue; // nur erzwungene: ein gewöhnliches Bild zählt nicht, sein Ende schon
-        const double end = it->end >= 0 ? it->end : it->start + kOpenEnd;
-        if (t >= end || it->image.isNull())
+        if (it->image.isNull())
             return {};
-        return *it;
+        if (it->end >= 0)
+            return t < it->end ? *it : Event();
+        // Ohne Ende nur, wenn der Leser im selben Abschnitt schon über t hinaus ist: sonst kann die
+        // Zeile, die das Bild beendet, noch ungelesen dazwischen liegen (gleich nach einem Sprung)
+        if (it->start >= m_coveredFrom - 1 && t <= m_coveredTo && t < it->start + kOpenEnd)
+            return *it;
+        return {};
     }
     return {};
 }

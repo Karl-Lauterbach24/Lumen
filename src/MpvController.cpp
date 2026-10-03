@@ -1995,10 +1995,8 @@ void MpvController::updateStereoSubs()
     if (m_stereoBitmap) {
         if (!m_bitmapSubs) {
             m_bitmapSubs = new BitmapSubs(this);
-            connect(m_bitmapSubs, &BitmapSubs::eventsChanged, this, [this] {
-                m_bitmapShown = -2; // neu bewerten: das gerade nötige Bild kann eben erst gelesen sein
-                drawStereoSubs();
-            });
+            // neu bewerten: das gerade nötige Bild kann eben erst gelesen sein
+            connect(m_bitmapSubs, &BitmapSubs::eventsChanged, this, &MpvController::drawStereoSubs);
         }
         if (!m_bitmapSubs->active(subFile, ffIndex)) {
             m_bitmapSubs->start(subFile, ffIndex, codec);
@@ -2030,6 +2028,9 @@ void MpvController::drawStereoSubs()
         if (key == m_bitmapShown)
             return;
         m_bitmapShown = key;
+        if (qEnvironmentVariableIsSet("LUMEN_STEREO_DEBUG"))
+            qWarning().noquote() << "Lumen: Untertitelbild je Auge" << (key < 0 ? QStringLiteral("aus") : QString::number(key, 'f', 3))
+                                 << "bei" << QString::number(m_position, 'f', 3);
         if (key < 0) {
             removeOverlay(60);
             removeOverlay(61);
@@ -2527,7 +2528,14 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         break;
     }
     case P_AUDIODELAY: m_audioDelay = dbl(); emit delaysChanged(); break;
-    case P_SUBDELAY: m_subDelay = dbl(); emit delaysChanged(); break;
+    case P_SUBDELAY:
+        m_subDelay = dbl();
+        emit delaysChanged();
+        if (m_stereoBitmap) { // Bild-Untertitel je Auge: mit der neuen Verzögerung neu wählen
+            m_bitmapSubs->setPosition(m_position - m_subDelay);
+            drawStereoSubs();
+        }
+        break;
     case P_SUBTEXT: {
         const QString text = str();
         if (text != m_subText) {
