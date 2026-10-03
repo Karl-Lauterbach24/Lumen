@@ -452,6 +452,7 @@ private:
     bool m_forcedSubsOnly = false;
     BitmapSubs *m_bitmapSubs = nullptr;
     double m_bitmapShown = -2; // Anfang des gezeigten Untertitelbilds (-1: keines)
+    double m_demuxStart = -1;  // Anfangszeit der Datei, die mpv von allen Zeitstempeln abzieht
     bool m_havePreResult = false;
     QString m_preFormat, m_preSource;
     Tuning::Governor m_governor;

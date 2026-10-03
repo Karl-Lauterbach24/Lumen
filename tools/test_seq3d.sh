@@ -57,6 +57,13 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 if [ -x "$BUILD/stereodetect_test" ] || [ -x "$BUILD/stereodetect_test.exe" ]; then
     "$HERE/test_stereodetect.sh" "$BUILD" "$WORK/../stereodetect"
 fi
+# picture subtitles read by Lumen itself (for 3D output per eye): a PGS file with three pictures
+if [ -x "$BUILD/bitmapsubs_test" ] || [ -x "$BUILD/bitmapsubs_test.exe" ]; then
+    B="$BUILD/bitmapsubs_test"; [ -x "$B" ] || B="$BUILD/bitmapsubs_test.exe"
+    "$PY" "$(dirname "$0")/make_test_pgs.py" "$WORK/test.sup"
+    "$B" "$WORK/test.sup" | grep -vE "^OK" || true
+    "$B" "$WORK/test.sup" > /dev/null
+fi
 # subtitles of 3D files, once per eye: eye areas and line wrapping
 "$BUILD/stereo_test" --subs | grep -vE "^OK" || true
 "$BUILD/stereo_test" --subs > /dev/null

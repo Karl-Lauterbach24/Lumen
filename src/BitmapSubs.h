@@ -36,8 +36,10 @@ public:
     explicit BitmapSubs(QObject *parent = nullptr);
     ~BitmapSubs() override;
 
-    // Spur streamIndex (FFmpeg-Zählung) der Datei path lesen; ein anderer Aufruf beendet den vorigen
-    void start(const QString &path, int streamIndex, const QString &codec);
+    // Spur streamIndex (FFmpeg-Zählung) der Datei path lesen; ein anderer Aufruf beendet den vorigen.
+    // timeOffset: was mpv von den Zeitstempeln abzieht (Anfangszeit der abgespielten Datei, auch für
+    // eine geladene Untertiteldatei); < 0: die Anfangszeit dieser Datei
+    void start(const QString &path, int streamIndex, const QString &codec, double timeOffset = -1);
     void stop();
     bool active(const QString &path, int streamIndex) const;
     // Wiedergabeposition (Sekunden): der Leser bleibt in ihrer Nähe
@@ -49,7 +51,7 @@ signals:
     void eventsChanged(); // neue Untertitelbilder gelesen (aus dem Lese-Thread)
 
 private:
-    void run(QString path, int streamIndex, QString codec);
+    void run(QString path, int streamIndex, QString codec, double timeOffset);
     void addEvent(Event e);
 
     QThread *m_thread = nullptr;

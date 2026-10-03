@@ -57,7 +57,7 @@ enum PropId : quint64 {
     P_CHAPTER, P_TRACKLIST, P_AID, P_SID, P_VIDEOPARAMS, P_VIDEOFORMAT, P_FPS, P_DECPARAMS, P_DELAYED, P_MISTIMED,
     P_HWDEC, P_DISPLAYFPS, P_AUDIOOUTPARAMS, P_AUDIOCODEC, P_AUDIODEVICES,
     P_ABA, P_ABB, P_FULLSCREEN, P_AUDIODELAY, P_SUBDELAY, P_CACHEPAUSE, P_CACHEDUR,
-    P_OSDDIMS, P_MOUSEPOS, P_VODROPS, P_DECDROPS, P_EOF, P_WINDOWID, P_SUBTEXT,
+    P_OSDDIMS, P_MOUSEPOS, P_VODROPS, P_DECDROPS, P_EOF, P_WINDOWID, P_SUBTEXT, P_DEMUXSTART,
 };
 
 struct Observed
@@ -112,6 +112,7 @@ const Observed kObserved[] = {
     {"eof-reached", MPV_FORMAT_FLAG, P_EOF},
     {"window-id", MPV_FORMAT_INT64, P_WINDOWID},
     {"sub-text", MPV_FORMAT_STRING, P_SUBTEXT},
+    {"demuxer-start-time", MPV_FORMAT_DOUBLE, P_DEMUXSTART},
 };
 
 // Optionen, die ein neues Player-Fenster / einen neuen Renderer erfordern
@@ -1999,7 +2000,8 @@ void MpvController::updateStereoSubs()
             connect(m_bitmapSubs, &BitmapSubs::eventsChanged, this, &MpvController::drawStereoSubs);
         }
         if (!m_bitmapSubs->active(subFile, ffIndex)) {
-            m_bitmapSubs->start(subFile, ffIndex, codec);
+            // eine geladene Untertiteldatei läuft auf der Zeitachse der Filmdatei
+            m_bitmapSubs->start(subFile, ffIndex, codec, ffIndex < 0 ? std::max(0.0, m_demuxStart) : m_demuxStart);
             m_bitmapSubs->setPosition(m_position - m_subDelay);
         }
     } else if (m_bitmapSubs) {
@@ -2536,6 +2538,18 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
             drawStereoSubs();
         }
         break;
+    case P_DEMUXSTART: {
+        const double start = dbl(-1);
+        if (start != m_demuxStart) {
+            m_demuxStart = start;
+            // Die Zeitachse ist erst jetzt bekannt: einen schon laufenden Leser neu ansetzen
+            if (m_stereoBitmap && m_bitmapSubs) {
+                m_bitmapSubs->stop();
+                updateStereoSubs();
+            }
+        }
+        break;
+    }
     case P_SUBTEXT: {
         const QString text = str();
         if (text != m_subText) {

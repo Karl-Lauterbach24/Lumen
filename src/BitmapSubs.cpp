@@ -34,7 +34,7 @@ bool BitmapSubs::active(const QString &path, int streamIndex) const
     return m_thread && m_path == path && m_stream == streamIndex;
 }
 
-void BitmapSubs::start(const QString &path, int streamIndex, const QString &codec)
+void BitmapSubs::start(const QString &path, int streamIndex, const QString &codec, double timeOffset)
 {
     stop();
     {
@@ -47,7 +47,7 @@ void BitmapSubs::start(const QString &path, int streamIndex, const QString &code
     }
     m_stop = false;
     m_seekTo = -1;
-    m_thread = QThread::create([this, path, streamIndex, codec] { run(path, streamIndex, codec); });
+    m_thread = QThread::create([this, path, streamIndex, codec, timeOffset] { run(path, streamIndex, codec, timeOffset); });
     m_thread->setObjectName(QStringLiteral("lumen-bitmapsubs"));
     m_thread->start(QThread::LowPriority);
 }
@@ -153,7 +153,7 @@ static QImage compose(const AVSubtitle &sub, QRect *where, bool *forced)
     return img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 }
 
-void BitmapSubs::run(QString path, int streamIndex, QString codec)
+void BitmapSubs::run(QString path, int streamIndex, QString codec, double timeOffset)
 {
     AVFormatContext *fmt = nullptr;
     AVDictionary *opts = nullptr;
@@ -207,8 +207,8 @@ void BitmapSubs::run(QString path, int streamIndex, QString codec)
         cleanup();
         return;
     }
-    // Zeit wie mpvs time-pos: ab dem Anfang der Datei
-    const double t0 = fmt->start_time != AV_NOPTS_VALUE ? fmt->start_time / double(AV_TIME_BASE) : 0;
+    // Zeit wie mpvs time-pos: ab dem Anfang der abgespielten Datei
+    const double t0 = timeOffset >= 0 ? timeOffset : fmt->start_time != AV_NOPTS_VALUE ? fmt->start_time / double(AV_TIME_BASE) : 0;
     double readPos = 0;
     bool eof = false;
 
