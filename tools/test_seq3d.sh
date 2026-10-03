@@ -66,7 +66,10 @@ if [ -x "$BUILD/bitmapsubs_test" ] || [ -x "$BUILD/bitmapsubs_test.exe" ]; then
 fi
 # DCP with a KDM outside its period: the keys must still unpack and decrypt the essence (Lumen only
 # uses them after the user has confirmed the warning in the Cinema tab)
-OSSL="$(brew --prefix openssl@3 2>/dev/null)/bin/openssl"; [ -x "$OSSL" ] || OSSL="$(command -v openssl || true)"
+# (Homebrew's OpenSSL on macOS – the system one there is LibreSSL; elsewhere the one in PATH)
+OSSL=""
+if command -v brew > /dev/null 2>&1; then OSSL="$(brew --prefix openssl@3 2> /dev/null || true)/bin/openssl"; fi
+[ -x "$OSSL" ] || OSSL="$(command -v openssl || true)"
 if [ -x "$BUILD/dcp_test" ] && [ -n "$OSSL" ]; then
     K="$WORK/kdm-window"; rm -rf "$K"; mkdir -p "$K"
     "$BUILD/dcp_test" gencert "$K/id" > /dev/null
