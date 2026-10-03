@@ -2139,21 +2139,35 @@ void MpvController::handleEvent(mpv_event *ev)
         const QByteArray prefix(m->prefix);
         // … ebenso wenig Meldungen von FFmpeg ohne Bezug zu einer Spur (Geräte, die es nicht gibt)
         const bool transient = prefix == "ad" || prefix == "vd" || prefix == "ffmpeg" || prefix.startsWith("ffmpeg/");
-        if (m->log_level <= MPV_LOG_LEVEL_ERROR && !transient)
+        if (m->log_level <= MPV_LOG_LEVEL_ERROR && !transient && !m_endFileError)
             setError(text);
         break;
     }
     case MPV_EVENT_START_FILE:
         m_bdOpenStarted = true;
+        m_fileReady = false;
+        m_endFileError = false;
         break;
     case MPV_EVENT_END_FILE: {
         m_primedStart = false;
+        m_fileReady = false;
         // das Ende der vorigen Datei kommt vor dem Start der neuen: dann läuft das Öffnen noch
         if (m_bdOpenStarted)
             releaseBdOpenLock();
         auto *e = static_cast<mpv_event_end_file *>(ev->data);
         if (e->reason == MPV_END_FILE_REASON_ERROR) {
-            QString msg = LTR("Wiedergabe fehlgeschlagen: %1").arg(QString::fromUtf8(mpv_error_string(e->error)));
+            // die häufigsten Gründe in der Sprache der Oberfläche, dazu der Name der Datei
+            QString reason;
+            switch (e->error) {
+            case MPV_ERROR_UNKNOWN_FORMAT: reason = LTR("Dateiformat nicht erkannt"); break;
+            case MPV_ERROR_LOADING_FAILED: reason = LTR("Datei ließ sich nicht öffnen"); break;
+            case MPV_ERROR_NOTHING_TO_PLAY: reason = LTR("keine abspielbare Spur"); break;
+            default: reason = QString::fromUtf8(mpv_error_string(e->error)); break;
+            }
+            const QString name = m_sourceKind == QLatin1String("file") && !m_lastUrl.isEmpty()
+                                     ? QFileInfo(QUrl(m_lastUrl).isLocalFile() ? QUrl(m_lastUrl).toLocalFile() : m_lastUrl).fileName()
+                                     : QString();
+            QString msg = LTR("Wiedergabe fehlgeschlagen: %1").arg(name.isEmpty() ? reason : name + QStringLiteral(" – ") + reason);
             if (m_sourceKind == QLatin1String("bluray"))
                 msg += LTR(" – ist die Disc für libbluray lesbar (LibreDrive-Laufwerk + externe AACS-Bibliothek)?");
             else if (m_sourceKind == QLatin1String("dvd"))
@@ -2161,6 +2175,7 @@ void MpvController::handleEvent(mpv_event *ev)
             else if (m_sourceKind == QLatin1String("dcp"))
                 msg += LTR(" – Spurdateien vollständig und Schlüssel (KDM) passend?");
             setError(msg);
+            m_endFileError = true;
         }
         break;
     }
@@ -2176,6 +2191,7 @@ void MpvController::handleEvent(mpv_event *ev)
         break;
     }
     case MPV_EVENT_FILE_LOADED:
+        m_fileReady = true;
         m_vo_drops = m_dec_drops = 0;
         m_dropBase = 0;
         m_matchedFps = 0;

@@ -536,6 +536,15 @@ ApplicationWindow {
                         font.pixelSize: 26
                         font.weight: Font.DemiBold
                     }
+                    // Was zuletzt nicht abgespielt werden konnte (sonst stünde es nur klein in der Statuszeile)
+                    Text {
+                        Layout.fillWidth: true
+                        visible: !!Player.lastError
+                        text: Player.lastError
+                        color: Theme.bad
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                    }
                     // Sprache direkt auf der Startseite wählen
                     Flow {
                         Layout.fillWidth: true

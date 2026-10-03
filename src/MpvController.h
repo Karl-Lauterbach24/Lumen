@@ -197,6 +197,8 @@ public:
     Q_INVOKABLE void showText(const QString &text, int ms = 1500);
 
     bool idle() const { return m_idle; }
+    // die aktuelle Datei ist geladen (zwischen "Datei geladen" und ihrem Ende)
+    bool fileReady() const { return m_fileReady; }
     bool paused() const { return m_paused; }
     double position() const { return m_position; }
     double duration() const { return m_duration; }
@@ -440,6 +442,8 @@ private:
     // Text-Untertitel einer 3D-Datei je Auge (StereoSubs)
     void updateStereoSubs();
     QString m_subText;
+    bool m_fileReady = false;
+    bool m_endFileError = false; // die Meldung zum Abbruch steht; spätere Log-Zeilen überschreiben sie nicht
     bool m_stereoSubs = false;
     bool m_havePreResult = false;
     QString m_preFormat, m_preSource;

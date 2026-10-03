@@ -204,7 +204,8 @@ int main(int argc, char *argv[])
     };
     // mpv meldet "Datei geladen" und den Pfad unabhängig voneinander – beides abwarten
     auto noteCurrent = [&] {
-        if (player.idle())
+        // nur, was sich auch öffnen ließ: eine unlesbare Datei gehört nicht in die Liste
+        if (player.idle() || !player.fileReady())
             return;
         const bool file = player.sourceKind() == QLatin1String("file");
         recent.note(recentKey(), player.sourceKind(), file ? QString() : scanner.info().value("discName").toString());
