@@ -48,8 +48,9 @@ supply DCP keys. Lumen ships and downloads none of these.
   (`LUMEN_DVDCSS_LIBRARY`).
 - **HD DVD:** only unprotected (or already decrypted) discs play; AACS-protected HD DVDs are reported as such.
 - **DCP:** encrypted DCPs are decrypted the way every cinema server does it – with a **KDM issued for this player's
-  certificate** (see below). Without a matching, currently valid KDM (or keys the content owner entered themselves),
-  encrypted content stays unreadable.
+  certificate** (see below). Without a KDM for this player (or keys the content owner entered themselves),
+  encrypted content stays unreadable. Using the keys of a KDM outside its validity period needs an explicit
+  confirmation, next to a notice that this requires the corresponding rights.
 
 ## Downloads
 
@@ -189,8 +190,14 @@ ASSETMAP ─> PKL ─> CPL (reels: picture | sound | subtitles | markers)
      Alternatively *Importieren …* uses an existing leaf certificate + private key (PEM), e.g. from DCP-o-matic.
   2. *Leaf exportieren* – send `lumen-leaf.pem` to the distributor / KDM creator.
   3. *KDM laden …* – the content keys are unwrapped with RSA-OAEP; KDMs are stored (still encrypted) in the
-     configuration folder and unwrapped again on every start. Validity windows are checked; the CPL list shows
-     "KDM gültig bis …", "abgelaufen" or "noch nicht gültig".
+     configuration folder and unwrapped again on every start (a second KDM with the same file name gets a number
+     instead of replacing the first). Validity windows are checked; the CPL list shows "KDM valid until …",
+     "expired" or "not yet valid", and warns when a KDM that is valid now ends before a show started now would end.
+     **Outside the period:** if all keys are there but the period does not match, the composition shows the period,
+     a legal notice (the period is part of the screening rights; decrypt outside it only if you hold the rights,
+     e.g. as the rights holder or with the distributor's consent) and a box *I know what I am doing – decrypt
+     anyway*. Ticking it lets Lumen use the keys for this composition until the program ends; the status then says
+     "decrypted outside the KDM period". Without the keys nothing changes – a missing KDM cannot be replaced.
   4. Playback decrypts each KLV triplet (SMPTE ST 429-6, AES-128-CBC) on the fly. The decrypted triplet is replaced by
      *essence KLV + KLV fill of the same size*, so all index tables and partition offsets stay valid and seeking works.
      A wrong key is detected via the triplet check value.

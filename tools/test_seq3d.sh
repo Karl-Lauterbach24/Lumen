@@ -64,6 +64,21 @@ if [ -x "$BUILD/bitmapsubs_test" ] || [ -x "$BUILD/bitmapsubs_test.exe" ]; then
     "$B" "$WORK/test.sup" | grep -vE "^OK" || true
     "$B" "$WORK/test.sup" > /dev/null
 fi
+# DCP with a KDM outside its period: the keys must still unpack and decrypt the essence (Lumen only
+# uses them after the user has confirmed the warning in the Cinema tab)
+OSSL="$(brew --prefix openssl@3 2>/dev/null)/bin/openssl"; [ -x "$OSSL" ] || OSSL="$(command -v openssl || true)"
+if [ -x "$BUILD/dcp_test" ] && [ -n "$OSSL" ]; then
+    K="$WORK/kdm-window"; rm -rf "$K"; mkdir -p "$K"
+    "$BUILD/dcp_test" gencert "$K/id" > /dev/null
+    "$PY" "$(dirname "$0")/make_test_dcp.py" ffmpeg "$OSSL" "$K/dcp" --encrypt "$K/id/leaf.pem" \
+        --valid-from 2025-09-01T00:00:00+00:00 --valid-until 2025-09-30T23:59:59+00:00 > /dev/null
+    window="$("$BUILD/dcp_test" kdm "$K/dcp/kdm.xml" "$K/id/leaf.key" | head -1)"
+    played="$("$BUILD/dcp_test" play "$K/dcp" "$K/dcp/kdm.xml" "$K/id/leaf.key" 1.5 2>/dev/null | grep "loaded=" || true)"
+    echo "expired KDM: $window"
+    echo "expired KDM: $played"
+    case "$window" in *"valid=2025-09-01T00:00:00Z..2025-09-30T23:59:59Z error="*) ;; *) echo "FAIL: KDM period not read"; exit 1 ;; esac
+    case "$played" in *"loaded=1"*"keyErrors=0 missingKeys=0"*) echo "OK   keys of an expired KDM decrypt the DCP" ;; *) echo "FAIL: expired KDM keys do not decrypt"; exit 1 ;; esac
+fi
 # subtitles of 3D files, once per eye: eye areas and line wrapping
 "$BUILD/stereo_test" --subs | grep -vE "^OK" || true
 "$BUILD/stereo_test" --subs > /dev/null

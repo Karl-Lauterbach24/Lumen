@@ -15,9 +15,10 @@
 //     passende private Schlüssel kann sie auspacken.
 //   Essenz (SMPTE ST 429-6) ─ AES-128-CBC je KLV-Triplet.
 //
-// Es gibt keinen Weg an einem KDM vorbei: ohne gültigen, an dieses Gerät
-// adressierten KDM (oder vom Inhaber selbst eingetragene Schlüssel) bleibt ein
-// verschlüsseltes DCP unlesbar.
+// Es gibt keinen Weg an einem KDM vorbei: ohne einen an dieses Gerät adressierten
+// KDM (oder vom Inhaber selbst eingetragene Schlüssel) bleibt ein verschlüsseltes
+// DCP unlesbar. Den Zeitraum eines vorhandenen KDM kann der Nutzer ausdrücklich
+// übergehen (DcpManager::allowOutsideWindow, mit Warnung und rechtlichem Hinweis).
 namespace DcpCrypto {
 
 bool available();

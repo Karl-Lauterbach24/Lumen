@@ -5,6 +5,7 @@
 #include "DcpSubtitles.h"
 
 #include <QElapsedTimer>
+#include <QSet>
 #include <QHash>
 #include <QImage>
 #include <QTimer>
@@ -93,6 +94,9 @@ public:
     Q_INVOKABLE void open(const QString &path, bool autoplay = false);
     Q_INVOKABLE void close();
     Q_INVOKABLE bool play(int index, double start = 0);
+    // Schlüssel außerhalb ihres KDM-Zeitraums für diese Komposition trotzdem verwenden (bis zum
+    // Ende der Sitzung). Nur für Schlüssel, die vorliegen – an einem fehlenden KDM ändert das nichts.
+    Q_INVOKABLE void allowOutsideWindow(int index, bool allow);
 
     Q_INVOKABLE void loadKdm(const QUrl &file);
     Q_INVOKABLE void removeKdm(int index);
@@ -151,6 +155,7 @@ private:
     QList<DcpCrypto::Kdm> m_kdms;
     QHash<QString, DcpCrypto::ContentKey> m_keys;       // aus KDMs
     QHash<QString, DcpCrypto::ContentKey> m_manualKeys; // von Hand eingetragen
+    QSet<QString> m_outsideWindow; // CPL-IDs: Schlüssel außerhalb des KDM-Zeitraums trotzdem verwenden
 
     bool m_active = false;
     QVariantMap m_current;

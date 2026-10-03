@@ -202,6 +202,7 @@ QVariantMap DcpManager::keyStatus(const Dcp::Cpl &cpl) const
     const QDateTime now = QDateTime::currentDateTimeUtc();
     int have = 0, notYet = 0, expired = 0, fromPlugin = 0;
     QDateTime until;
+    QDateTime windowFrom, windowUntil; // Zeitraum, in dem alle vorhandenen Schlüssel gelten
     for (const QString &id : cpl.keyIds()) {
         auto it = m_manualKeys.constFind(id);
         if (it == m_manualKeys.constEnd()) {
@@ -215,6 +216,10 @@ QVariantMap DcpManager::keyStatus(const Dcp::Cpl &cpl) const
             }
         }
         const DcpCrypto::ContentKey *k = &it.value();
+        if (k->notBefore.isValid() && (!windowFrom.isValid() || k->notBefore > windowFrom))
+            windowFrom = k->notBefore;
+        if (k->notAfter.isValid() && (!windowUntil.isValid() || k->notAfter < windowUntil))
+            windowUntil = k->notAfter;
         if (k->notBefore.isValid() && now < k->notBefore)
             ++notYet;
         else if (k->notAfter.isValid() && now > k->notAfter)
@@ -235,6 +240,25 @@ QVariantMap DcpManager::keyStatus(const Dcp::Cpl &cpl) const
                        : until.isValid() ? LTR("KDM gültig bis %1").arg(QLocale().toString(until.toLocalTime(), QLocale::ShortFormat))
                                          : LTR("Schlüssel vorhanden");
         m["validUntil"] = until;
+        // Gilt jetzt, endet aber vor dem Schluss einer jetzt begonnenen Vorführung
+        if (until.isValid() && fromPlugin != need && now.addSecs(qint64(std::ceil(cpl.seconds()))) > until) {
+            m["endsDuringShow"] = true;
+            m["keyText"] = LTR("KDM endet vor Filmende (%1)").arg(QLocale().toString(until.toLocalTime(), QLocale::ShortFormat));
+        }
+    } else if ((notYet || expired) && have + notYet + expired == need) {
+        // Alle Schlüssel liegen vor, nur der Zeitraum passt nicht. Wer die Rechte dazu hat, kann sie
+        // ausdrücklich trotzdem verwenden lassen (CinemaPane: Warnung mit Häkchen).
+        m["keyState"] = notYet ? QStringLiteral("notyet") : QStringLiteral("expired");
+        m["overridable"] = true;
+        m["windowFrom"] = windowFrom;
+        m["windowUntil"] = windowUntil;
+        const bool allowed = m_outsideWindow.contains(cpl.id);
+        m["overridden"] = allowed;
+        m["playable"] = allowed;
+        if (allowed)
+            m["keyText"] = notYet ? LTR("KDM noch nicht gültig – trotzdem entschlüsselt") : LTR("KDM abgelaufen – trotzdem entschlüsselt");
+        else
+            m["keyText"] = notYet ? LTR("KDM noch nicht gültig") : LTR("KDM abgelaufen");
     } else if (notYet) {
         m["keyState"] = QStringLiteral("notyet");
         m["keyText"] = LTR("KDM noch nicht gültig");
@@ -292,7 +316,7 @@ QVariantList DcpManager::kdms() const
             {"signatureValid", k.signatureValid},
             {"chainValid", k.chainValid},
             {"signer", k.signer},
-            {"signatureText", !k.signed_ ? QStringLiteral("unsigniert")
+            {"signatureText", !k.signed_ ? LTR("unsigniert")
                               : k.signatureValid ? (k.chainValid ? LTR("Signatur geprüft") : LTR("Signatur gültig, Kette unvollständig"))
                                                  : LTR("Signatur ungültig")},
             {"error", k.error},
@@ -345,8 +369,19 @@ void DcpManager::loadKdm(const QUrl &file)
     // Dauerhaft ablegen (bleibt verschlüsselt; beim Start neu ausgepackt)
     const QString dir = configDir() + QStringLiteral("/kdm");
     QDir().mkpath(dir);
-    const QString target = QDir(dir).filePath(QFileInfo(path).fileName());
-    if (QFileInfo(path).absoluteFilePath() != QFileInfo(target).absoluteFilePath()) {
+    // Unter dem eigenen Namen ablegen; ein anderer KDM gleichen Namens (oft schlicht "kdm.xml")
+    // bekommt eine Nummer, statt ihn zu überschreiben
+    auto contents = [](const QString &f) {
+        QFile file(f);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    };
+    const QByteArray data = contents(path);
+    const QFileInfo src(path);
+    QString target = QDir(dir).filePath(src.fileName());
+    for (int n = 2; QFileInfo::exists(target) && QFileInfo(target).absoluteFilePath() != src.absoluteFilePath()
+                    && contents(target) != data; ++n)
+        target = QDir(dir).filePath(QStringLiteral("%1-%2.%3").arg(src.completeBaseName()).arg(n).arg(src.suffix()));
+    if (src.absoluteFilePath() != QFileInfo(target).absoluteFilePath()) {
         QFile::remove(target);
         QFile::copy(path, target);
     }
@@ -625,6 +660,20 @@ void DcpManager::setRelief(int level)
     m_skipPlanes = r.skipPlanes;
 }
 
+void DcpManager::allowOutsideWindow(int index, bool allow)
+{
+    if (index < 0 || index >= m_package.cpls.size())
+        return;
+    const QString id = m_package.cpls[index].id;
+    if (allow == m_outsideWindow.contains(id))
+        return;
+    if (allow)
+        m_outsideWindow.insert(id);
+    else
+        m_outsideWindow.remove(id);
+    emit packageChanged();
+}
+
 bool DcpManager::play(int index, double start)
 {
     if (!m_player || index < 0 || index >= m_package.cpls.size())
@@ -873,7 +922,7 @@ bool DcpManager::play(int index, double start)
     emit packageChanged();
     QStringList parts{cpl.title};
     if (cpl.encrypted())
-        parts << LTR("entschlüsselt");
+        parts << (ks.value("overridden").toBool() ? LTR("entschlüsselt außerhalb des KDM-Zeitraums") : LTR("entschlüsselt"));
     if (m_reduction)
         parts << LTR("J2K 1/%1 Auflösung").arg(1 << m_reduction);
     if (m_skipPlanes)

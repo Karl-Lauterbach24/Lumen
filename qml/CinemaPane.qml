@@ -17,6 +17,9 @@ ScrollView {
     function keyTint(state) {
         return state === "valid" || state === "open" ? Theme.good : state === "notyet" ? Theme.warn : Theme.bad
     }
+    function dateTime(d) {
+        return d ? Qt.formatDateTime(d, qsTr("dd.MM.yyyy HH:mm")) : "–"
+    }
 
     FolderDialog {
         id: dcpDialog
@@ -127,7 +130,75 @@ ScrollView {
                                tint: Dcp.iabAvailable ? Theme.accent : Theme.textDim }
                         Chip { text: modelData.subtitles ? qsTr("UT ") + (modelData.subtitleLanguages || []).join(", ") : "" }
                         Chip { text: modelData.reels + qsTr(" Rolle(n)") }
-                        Chip { text: modelData.keyText; tint: pane.keyTint(modelData.keyState); filled: modelData.keyState === "valid" }
+                        Chip { text: modelData.keyText; tint: modelData.endsDuringShow ? Theme.warn : pane.keyTint(modelData.keyState)
+                               filled: modelData.keyState === "valid" && !modelData.endsDuringShow }
+                    }
+                    // Schlüssel vorhanden, aber außerhalb ihres Zeitraums: Warnung, rechtlicher Hinweis
+                    // und die ausdrückliche Wahl, trotzdem zu entschlüsseln
+                    Rectangle {
+                        Layout.fillWidth: true
+                        visible: !!modelData.overridable
+                        implicitHeight: warnCol.implicitHeight + 16
+                        radius: Theme.radiusSmall
+                        color: Qt.rgba(Theme.warn.r, Theme.warn.g, Theme.warn.b, 0.08)
+                        border.color: Qt.rgba(Theme.warn.r, Theme.warn.g, Theme.warn.b, 0.45)
+                        ColumnLayout {
+                            id: warnCol
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 6
+                            Text {
+                                Layout.fillWidth: true
+                                text: (modelData.keyState === "notyet" ? qsTr("Der KDM gilt erst ab %1.").arg(pane.dateTime(modelData.windowFrom))
+                                                                       : qsTr("Der KDM ist abgelaufen."))
+                                      + " " + qsTr("Die Schlüssel gelten vom %1 bis %2.").arg(pane.dateTime(modelData.windowFrom)).arg(pane.dateTime(modelData.windowUntil))
+                                color: Theme.warn
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: qsTr("Rechtlicher Hinweis: Der Zeitraum im KDM gehört zu den Vorführrechten. Entschlüsseln Sie dieses DCP außerhalb des Zeitraums nur, wenn Sie die Rechte dazu haben – etwa als Rechteinhaber oder mit Zustimmung des Verleihs. Die Verantwortung dafür liegt bei Ihnen.")
+                                color: Theme.textDim
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                            }
+                            CheckBox {
+                                id: overrideBox
+                                Layout.fillWidth: true
+                                text: qsTr("Ich weiß, was ich tue – trotzdem entschlüsseln").replace("&", "&&")
+                                checked: !!modelData.overridden
+                                focusPolicy: Qt.NoFocus
+                                padding: 0
+                                onToggled: Dcp.allowOutsideWindow(modelData.index, checked)
+                                indicator: Rectangle {
+                                    x: 0
+                                    y: (overrideBox.height - height) / 2
+                                    implicitWidth: 16
+                                    implicitHeight: 16
+                                    radius: 3
+                                    color: overrideBox.checked ? Theme.warn : "transparent"
+                                    border.color: overrideBox.checked ? Theme.warn : Theme.textDim
+                                    Text {
+                                        anchors.centerIn: parent
+                                        visible: overrideBox.checked
+                                        text: "✓"
+                                        color: Theme.bg
+                                        font.pixelSize: 12
+                                        font.weight: Font.Bold
+                                    }
+                                }
+                                contentItem: Text {
+                                    leftPadding: 24
+                                    text: overrideBox.text.replace("&&", "&")
+                                    color: Theme.text
+                                    font.pixelSize: 12
+                                    verticalAlignment: Text.AlignVCenter
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
                     }
                     RowLayout {
                         Button {
@@ -300,7 +371,7 @@ ScrollView {
                     Text {
                         Layout.fillWidth: true
                         text: modelData.error ? modelData.error
-                              : modelData.keys + qsTr(" Schlüssel · bis ") + Qt.formatDateTime(modelData.notAfter, qsTr("dd.MM.yyyy HH:mm"))
+                              : modelData.keys + qsTr(" Schlüssel · %1 bis %2").arg(pane.dateTime(modelData.notBefore)).arg(pane.dateTime(modelData.notAfter))
                                 + " · " + modelData.signatureText
                                 + (modelData.cplLoaded ? "" : qsTr(" · CPL nicht geladen"))
                         color: modelData.error ? Theme.bad : Theme.textDim
@@ -308,7 +379,7 @@ ScrollView {
                         elide: Text.ElideRight
                     }
                 }
-                IconButton { iconName: "stop"; size: 26; iconSize: 12; tip: qsTr("KDM entfernen"); onClicked: Dcp.removeKdm(index) }
+                IconButton { iconName: "close"; size: 26; iconSize: 14; tip: qsTr("KDM entfernen"); onClicked: Dcp.removeKdm(index) }
             }
         }
 

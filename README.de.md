@@ -43,8 +43,9 @@ URL-Schemata anmelden oder DCP-Schlüssel liefern. Lumen liefert nichts davon mi
   (`LUMEN_DVDCSS_LIBRARY`).
 - **HD DVD:** nur ungeschützte (bzw. bereits entschlüsselte) Discs; AACS-geschützte HD DVDs werden als solche gemeldet.
 - **DCP:** verschlüsselte DCPs werden entschlüsselt wie auf jedem Kinoserver – mit einem **für das Zertifikat dieses Players
-  ausgestellten KDM** (siehe unten). Ohne passenden, gültigen KDM (oder vom Rechteinhaber selbst eingetragene Schlüssel)
-  bleibt verschlüsselter Inhalt unlesbar.
+  ausgestellten KDM** (siehe unten). Ohne einen KDM für diesen Player (oder vom Rechteinhaber selbst eingetragene
+  Schlüssel) bleibt verschlüsselter Inhalt unlesbar. Die Schlüssel eines KDM außerhalb seines Gültigkeitszeitraums
+  zu verwenden, verlangt eine ausdrückliche Bestätigung, neben dem Hinweis, dass man dafür die Rechte braucht.
 
 ## Downloads
 
@@ -179,8 +180,15 @@ ASSETMAP ─> PKL ─> CPL (Rollen: Bild | Ton | Untertitel | Marker)
      Alternativ übernimmt *Importieren …* ein vorhandenes Leaf-Zertifikat samt privatem Schlüssel (PEM), z. B. aus DCP-o-matic.
   2. *Leaf exportieren* – `lumen-leaf.pem` an den Verleih bzw. KDM-Ersteller senden.
   3. *KDM laden …* – die Inhaltsschlüssel werden per RSA-OAEP ausgepackt; KDMs werden (weiter verschlüsselt) im
-     Konfigurationsordner abgelegt und bei jedem Start neu ausgepackt. Gültigkeitszeiträume werden geprüft; die CPL-Liste
-     zeigt „KDM gültig bis …“, „abgelaufen“ oder „noch nicht gültig“.
+     Konfigurationsordner abgelegt und bei jedem Start neu ausgepackt (ein zweiter KDM gleichen Dateinamens bekommt
+     eine Nummer, statt den ersten zu ersetzen). Gültigkeitszeiträume werden geprüft; die CPL-Liste zeigt „KDM gültig
+     bis …“, „abgelaufen“ oder „noch nicht gültig“ und warnt, wenn ein jetzt gültiger KDM vor dem Ende einer jetzt
+     begonnenen Vorführung abläuft. **Außerhalb des Zeitraums:** Liegen alle Schlüssel vor und passt nur der Zeitraum
+     nicht, zeigt die Komposition den Zeitraum, einen rechtlichen Hinweis (der Zeitraum gehört zu den Vorführrechten;
+     außerhalb davon nur entschlüsseln, wer die Rechte dazu hat, etwa als Rechteinhaber oder mit Zustimmung des
+     Verleihs) und das Feld *Ich weiß, was ich tue – trotzdem entschlüsseln*. Angehakt verwendet Lumen die Schlüssel
+     für diese Komposition bis zum Programmende; der Status lautet dann „entschlüsselt außerhalb des KDM-Zeitraums“.
+     Ohne Schlüssel ändert das nichts – ein fehlender KDM lässt sich nicht ersetzen.
   4. Bei der Wiedergabe wird jedes KLV-Triplet (SMPTE ST 429-6, AES-128-CBC) im Lesestrom entschlüsselt und durch
      *Essenz-KLV + gleich großes KLV-Fill* ersetzt – alle Index-Tabellen und Partitions-Offsets bleiben gültig, Spulen
      funktioniert. Ein falscher Schlüssel fällt über den Prüfwert des Triplets auf.

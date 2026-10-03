@@ -246,7 +246,11 @@ def main():
     ap.add_argument("--encrypt", metavar="LEAF_PEM")
     ap.add_argument("--stereo", action="store_true", help="3D-DCP: linkes Auge Testbild, rechtes Auge rot")
     ap.add_argument("--iab", metavar="FRAMES", help="IAB/Atmos-Spur aus iab_testgen-Frames (48 = 2 Rollen à 24)")
+    ap.add_argument("--valid-from", default="2026-01-01T00:00:00+00:00", help="Beginn des KDM-Zeitraums (ISO 8601 mit Zone)")
+    ap.add_argument("--valid-until", default="2036-01-01T00:00:00+00:00", help="Ende des KDM-Zeitraums (ISO 8601 mit Zone)")
     a = ap.parse_args()
+    if len(a.valid_from) != 25 or len(a.valid_until) != 25:
+        sys.exit("--valid-from/--valid-until: Form 2026-01-01T00:00:00+00:00 (25 Zeichen, wie im KDM-Schlüsselblock)")
     os.makedirs(a.out, exist_ok=True)
     tmp = os.path.join(a.out, "_tmp")
     os.makedirs(tmp, exist_ok=True)
@@ -375,7 +379,7 @@ def main():
         kdm_keys = [("kpic", "MDIK"), ("ksnd", "MDAK")] + ([("kiab", "MDEK")] if a.iab else [])
         for name, ktype in ((n, t.encode()) for n, t in kdm_keys):
             block = (bytes.fromhex("f1dc124460169a0e85bc300642f866ab") + bytes(20) + uuid.UUID(ids["cpl"]).bytes + ktype
-                     + uuid.UUID(ids[name]).bytes + b"2026-01-01T00:00:00+00:00" + b"2036-01-01T00:00:00+00:00" + keys[name])
+                     + uuid.UUID(ids[name]).bytes + a.valid_from.encode() + a.valid_until.encode() + keys[name])
             assert len(block) == 138
             r = subprocess.run([a.openssl, "pkeyutl", "-encrypt", "-certin", "-inkey", a.encrypt,
                                 "-pkeyopt", "rsa_padding_mode:oaep"], input=block, capture_output=True, check=True)
@@ -392,7 +396,7 @@ def main():
 <RequiredExtensions><KDMRequiredExtensions xmlns="http://www.smpte-ra.org/schemas/430-1/2006/KDM">
 <Recipient><X509IssuerSerial><ds:X509IssuerName>test</ds:X509IssuerName><ds:X509SerialNumber>{serial}</ds:X509SerialNumber></X509IssuerSerial><X509SubjectName>test</X509SubjectName></Recipient>
 <CompositionPlaylistId>urn:uuid:{ids['cpl']}</CompositionPlaylistId><ContentTitleText>Lumen Test</ContentTitleText>
-<ContentKeysNotValidBefore>2026-01-01T00:00:00+00:00</ContentKeysNotValidBefore><ContentKeysNotValidAfter>2036-01-01T00:00:00+00:00</ContentKeysNotValidAfter>
+<ContentKeysNotValidBefore>{a.valid_from}</ContentKeysNotValidBefore><ContentKeysNotValidAfter>{a.valid_until}</ContentKeysNotValidAfter>
 <KeyIdList>{typed}</KeyIdList></KDMRequiredExtensions></RequiredExtensions></AuthenticatedPublic>
 <AuthenticatedPrivate Id="ID_AuthenticatedPrivate">{enc}</AuthenticatedPrivate></DCinemaSecurityMessage>
 """)
