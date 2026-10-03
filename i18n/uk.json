@@ -769,7 +769,7 @@
  "Update-Image nicht einhängbar": "Не вдалося змонтувати образ оновлення",
  "Update-Image enthält kein Lumen.app": "Образ оновлення не містить Lumen.app",
  "Desktop / Fenster": "Робочий стіл / вікно",
- "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, ausgewogene Qualität.": "Вікно на основному екрані, автоматичне розпізнавання HDR, збалансована якість.",
+ "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, Qualität nach der Grafikhardware.": "Вікно на основному екрані, автоматичне розпізнавання HDR, якість відповідно до графічного обладнання.",
  "1080p DLP 3D-Beamer": "3D-проєктор DLP 1080p",
  "SDR-Beamer (BT.709, Gamma 2.4 / BT.1886). HDR/UHD-Quellen werden hochwertig auf 1080p skaliert und tone-gemappt. Bildrate wird an die Quelle angepasst (24p). 3D: SBS-Quellen als Half-SBS ausgeben – am Beamer 3D-Modus 'Side-by-Side' wählen.": "SDR-проєктор (BT.709, гама 2.4 / BT.1886). Джерела HDR/UHD якісно масштабуються до 1080p із тональним відображенням. Частота оновлення слідує за джерелом (24p). 3D: джерела SBS виводяться як половинний SBS – виберіть на проєкторі режим 3D «Side-by-Side».",
  "1080p DLP 3D-Beamer (Frame Packing)": "3D-проєктор DLP 1080p (Frame Packing)",

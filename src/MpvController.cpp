@@ -2450,8 +2450,10 @@ void MpvController::rebuildTracks(const QVariantList &list)
         if (type != QLatin1String("audio") && type != QLatin1String("sub"))
             continue;
         QStringList parts;
+        // ohne Sprachangabe nur Format und Titel (statt eines Strichs)
         const QString lang = t.value("lang").toString().toUpper();
-        parts << (lang.isEmpty() ? QStringLiteral("—") : lang);
+        if (!lang.isEmpty())
+            parts << lang;
         parts << prettyCodec(t.value("codec").toString(), t.value("codec-profile").toString());
         if (type == QLatin1String("audio")) {
             const QString ch = channelLabel(t.value("demux-channel-count").toInt());

@@ -769,7 +769,7 @@
  "Update-Image nicht einhängbar": "업데이트 이미지를 마운트하지 못했습니다",
  "Update-Image enthält kein Lumen.app": "업데이트 이미지에 Lumen.app이 없습니다",
  "Desktop / Fenster": "데스크톱 / 창",
- "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, ausgewogene Qualität.": "주 화면에 창으로 표시, HDR 자동 인식, 균형 잡힌 화질.",
+ "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, Qualität nach der Grafikhardware.": "주 화면에 창으로 표시, HDR 자동 인식, 그래픽 하드웨어에 맞춘 화질.",
  "1080p DLP 3D-Beamer": "1080p DLP 3D 프로젝터",
  "SDR-Beamer (BT.709, Gamma 2.4 / BT.1886). HDR/UHD-Quellen werden hochwertig auf 1080p skaliert und tone-gemappt. Bildrate wird an die Quelle angepasst (24p). 3D: SBS-Quellen als Half-SBS ausgeben – am Beamer 3D-Modus 'Side-by-Side' wählen.": "SDR 프로젝터(BT.709, 감마 2.4 / BT.1886). HDR/UHD 소스는 고품질로 1080p로 스케일링하고 톤 매핑합니다. 주사율은 소스를 따릅니다(24p). 3D: SBS 소스를 하프 SBS로 출력 – 프로젝터에서 3D 모드 ‘Side-by-Side’를 선택하세요.",
  "1080p DLP 3D-Beamer (Frame Packing)": "1080p DLP 3D 프로젝터 (Frame Packing)",

@@ -769,7 +769,7 @@
  "Update-Image nicht einhängbar": "无法挂载更新映像",
  "Update-Image enthält kein Lumen.app": "更新映像中没有 Lumen.app",
  "Desktop / Fenster": "桌面 / 窗口",
- "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, ausgewogene Qualität.": "在主屏幕上以窗口显示，自动识别 HDR，画质均衡。",
+ "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, Qualität nach der Grafikhardware.": "在主屏幕上以窗口显示，自动识别 HDR，画质随图形硬件调整。",
  "1080p DLP 3D-Beamer": "1080p DLP 3D 投影机",
  "SDR-Beamer (BT.709, Gamma 2.4 / BT.1886). HDR/UHD-Quellen werden hochwertig auf 1080p skaliert und tone-gemappt. Bildrate wird an die Quelle angepasst (24p). 3D: SBS-Quellen als Half-SBS ausgeben – am Beamer 3D-Modus 'Side-by-Side' wählen.": "SDR 投影机（BT.709，伽马 2.4 / BT.1886）。HDR/UHD 来源以高质量缩放到 1080p 并进行色调映射。刷新率跟随来源 (24p)。3D：SBS 来源以半宽 SBS 输出 – 请在投影机上选择 3D 模式“Side-by-Side”。",
  "1080p DLP 3D-Beamer (Frame Packing)": "1080p DLP 3D 投影机 (Frame Packing)",

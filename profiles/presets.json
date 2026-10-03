@@ -2,7 +2,7 @@
   {
     "id": "desktop",
     "name": "Desktop / Fenster",
-    "description": "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, ausgewogene Qualität.",
+    "description": "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, Qualität nach der Grafikhardware.",
     "fullscreen": false,
     "hdr": "auto",
     "quality": "auto"

@@ -769,7 +769,7 @@
  "Update-Image nicht einhängbar": "Güncelleme kalıbı bağlanamadı",
  "Update-Image enthält kein Lumen.app": "Güncelleme kalıbında Lumen.app yok",
  "Desktop / Fenster": "Masaüstü / pencere",
- "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, ausgewogene Qualität.": "Birincil ekranda pencere, otomatik HDR algılama, dengeli kalite.",
+ "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, Qualität nach der Grafikhardware.": "Birincil ekranda pencere, otomatik HDR algılama, grafik donanımına göre kalite.",
  "1080p DLP 3D-Beamer": "1080p DLP 3D projektör",
  "SDR-Beamer (BT.709, Gamma 2.4 / BT.1886). HDR/UHD-Quellen werden hochwertig auf 1080p skaliert und tone-gemappt. Bildrate wird an die Quelle angepasst (24p). 3D: SBS-Quellen als Half-SBS ausgeben – am Beamer 3D-Modus 'Side-by-Side' wählen.": "SDR projektör (BT.709, gama 2.4 / BT.1886). HDR/UHD kaynaklar yüksek kalitede 1080p'ye ölçeklenir ve ton eşlenir. Yenileme hızı kaynağı izler (24p). 3D: SBS kaynakları yarım SBS olarak verin – projektörde “Side-by-Side” 3D kipini seçin.",
  "1080p DLP 3D-Beamer (Frame Packing)": "1080p DLP 3D projektör (Frame Packing)",

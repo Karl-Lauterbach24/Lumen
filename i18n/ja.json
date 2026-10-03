@@ -769,7 +769,7 @@
  "Update-Image nicht einhängbar": "アップデートのイメージをマウントできませんでした",
  "Update-Image enthält kein Lumen.app": "アップデートのイメージに Lumen.app がありません",
  "Desktop / Fenster": "デスクトップ / ウィンドウ",
- "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, ausgewogene Qualität.": "メイン画面にウィンドウ表示、HDR 自動検出、バランスのよい画質。",
+ "Fenster auf dem Hauptbildschirm, automatische HDR-Erkennung, Qualität nach der Grafikhardware.": "メイン画面にウィンドウ表示、HDR 自動検出、グラフィックハードウェアに合わせた画質。",
  "1080p DLP 3D-Beamer": "1080p DLP 3D プロジェクター",
  "SDR-Beamer (BT.709, Gamma 2.4 / BT.1886). HDR/UHD-Quellen werden hochwertig auf 1080p skaliert und tone-gemappt. Bildrate wird an die Quelle angepasst (24p). 3D: SBS-Quellen als Half-SBS ausgeben – am Beamer 3D-Modus 'Side-by-Side' wählen.": "SDR プロジェクター（BT.709、ガンマ 2.4 / BT.1886）。HDR/UHD ソースは高品質で 1080p にスケーリングし、トーンマッピングします。リフレッシュレートはソースに合わせます (24p)。3D: SBS ソースはハーフ SBS で出力 – プロジェクターで 3D モード「Side-by-Side」を選んでください。",
  "1080p DLP 3D-Beamer (Frame Packing)": "1080p DLP 3D プロジェクター (Frame Packing)",

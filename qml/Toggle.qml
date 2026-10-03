@@ -9,17 +9,19 @@ AbstractButton {
 
     checkable: true
     focusPolicy: Qt.NoFocus
-    implicitHeight: hint ? 44 : 32
+    // Erklärungen umbrechen statt abschneiden (bis zu drei Zeilen)
+    implicitHeight: Math.max(hint ? 44 : 32, texts.implicitHeight + 10)
     implicitWidth: 240
     opacity: enabled ? 1 : 0.45
 
     contentItem: RowLayout {
         spacing: 12
         Column {
+            id: texts
             Layout.fillWidth: true
             spacing: 2
             Text { text: t.label; color: Theme.text; font.pixelSize: 13; width: parent.width; elide: Text.ElideRight }
-            Text { visible: !!t.hint; text: t.hint; color: Theme.textFaint; font.pixelSize: 11; width: parent.width; elide: Text.ElideRight }
+            Text { visible: !!t.hint; text: t.hint; color: Theme.textFaint; font.pixelSize: 11; width: parent.width; wrapMode: Text.WordWrap; maximumLineCount: 3; elide: Text.ElideRight }
         }
         Rectangle {
             implicitWidth: 34
