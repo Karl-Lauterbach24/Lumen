@@ -3,7 +3,8 @@
 // Ergebnis-TS. Prüfung danach mit FFmpeg-mvc:
 //   ffmpeg -view_ids -1 -i merged.m2ts -f rawvideo -pix_fmt gray -
 //
-//   mvcmerge_test <disc> <playlist> <out.m2ts> [seek_sekunden]
+//   mvcmerge_test <disc> <playlist> <out.m2ts> [seek_sekunden] [max_MiB]
+// (max_MiB: nach so vielen gelesenen MiB aufhören – für echte Discs)
 #include "../src/MvcMerger.h"
 
 #include <libbluray/bluray.h>
@@ -15,7 +16,7 @@
 int main(int argc, char **argv)
 {
     if (argc < 4) {
-        std::fprintf(stderr, "usage: %s <disc> <playlist> <out.m2ts> [seek_s]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <disc> <playlist> <out.m2ts> [seek_s] [max_MiB]\n", argv[0]);
         return 2;
     }
     BLURAY *bd = bd_open(argv[1], nullptr);
@@ -35,10 +36,11 @@ int main(int argc, char **argv)
     MvcMerger mvc(bd);
     const bool is3d = mvc.setPlaylist(playlist);
     std::printf("MVC aktiv=%d, Basis rechts=%d\n", is3d, mvc.baseViewIsRight());
-    if (argc > 4) {
+    if (argc > 4 && std::atof(argv[4]) > 0) {
         bd_seek_time(bd, uint64_t(std::atof(argv[4]) * 90000));
         mvc.reset();
     }
+    const int64_t limit = argc > 5 ? int64_t(std::atof(argv[5]) * 1024 * 1024) : 0;
 
     FILE *out = std::fopen(argv[3], "wb");
     QByteArray buf(6144 * 32, Qt::Uninitialized), merged;
@@ -46,14 +48,14 @@ int main(int argc, char **argv)
     for (;;) {
         BD_EVENT ev;
         const int r = bd_read_ext(bd, reinterpret_cast<unsigned char *>(buf.data()), buf.size(), &ev);
-        while (bd_get_event(bd, &ev) && ev.event != BD_EVENT_NONE) {
+        merged.clear();
+        do { // auch das Ereignis, das bd_read_ext() selbst liefert
             if (ev.event == BD_EVENT_PLAYITEM)
-                mvc.setPlayItem(int(ev.param));
-        }
-        if (r <= 0)
+                mvc.setPlayItem(int(ev.param), merged);
+        } while (bd_get_event(bd, &ev) && ev.event != BD_EVENT_NONE);
+        if (r <= 0 || (limit > 0 && in >= limit))
             break;
         in += r;
-        merged.clear();
         mvc.process(reinterpret_cast<const uint8_t *>(buf.constData()), size_t(r), merged);
         std::fwrite(merged.constData(), 1, size_t(merged.size()), out);
     }

@@ -14,7 +14,12 @@
 
 #include <mpv/client.h>
 
+#include <atomic>
+#include <chrono>
 #include <clocale>
+#include <cstdlib>
+#include <functional>
+#include <thread>
 
 #include "BlurayNav.h"
 #include "CastManager.h"
@@ -92,6 +97,25 @@ static int selfTest(const QString &file)
     return 0;
 }
 
+// Führt den Abbau aus, sobald das Programm beendet werden soll – vor dem Schließen der Fenster
+class QuitFilter : public QObject
+{
+public:
+    QuitFilter(std::function<void()> fn, QObject *parent)
+        : QObject(parent), m_fn(std::move(fn))
+    {
+    }
+    bool eventFilter(QObject *, QEvent *e) override
+    {
+        if (e->type() == QEvent::Quit)
+            m_fn();
+        return false;
+    }
+
+private:
+    std::function<void()> m_fn;
+};
+
 int main(int argc, char *argv[])
 {
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
@@ -145,7 +169,8 @@ int main(int argc, char *argv[])
 
     QObject::connect(&profiles, &ProfileManager::currentProfileChanged, &player,
                      [&] { player.applyProfile(profiles.currentProfile()); });
-    QObject::connect(&player, &MpvController::shutdownRequested, &app, &QCoreApplication::quit);
+    // eingereiht: das Player-Fenster meldet es aus seinem eigenen Schließen-Ereignis
+    QObject::connect(&player, &MpvController::shutdownRequested, &app, &QCoreApplication::quit, Qt::QueuedConnection);
     // Ereignisse an Plugins
     QObject::connect(&player, &MpvController::fileLoaded, &plugins, [&] {
         plugins.sendEvent(QStringLiteral("file-loaded"),
@@ -297,13 +322,29 @@ int main(int argc, char *argv[])
         });
     }
 
-    QObject::connect(&app, &QCoreApplication::aboutToQuit, [&] {
+    // Abbau: Wiedergabe beenden (schließt Disc und AACS-Bibliothek), Bildschirmmodus zurückstellen.
+    // Schon beim Quit-Ereignis, bevor Qt die Fenster schließt: Das Player-Fenster meldete sein
+    // Schließen sonst als weiteren Beenden-Wunsch, und AppKit beendet den Prozess bei einem
+    // verschachtelten [NSApp terminate:] sofort – ohne diesen Abbau. Eine AACS-Bibliothek mit
+    // Hilfsprozess (MakeMKV) blieb dann zurück und hielt das Laufwerk besetzt.
+    const auto shutdown = [&, done = false]() mutable {
+        if (done)
+            return;
+        done = true;
+        // Hängt das Öffnen einer Disc in einer fremden Bibliothek, wartet der Abbau darauf: nach
+        // einigen Sekunden trotzdem enden
+        std::thread([] {
+            std::this_thread::sleep_for(std::chrono::seconds(6));
+            std::_Exit(0);
+        }).detach();
         cast.shutdown();
         serverStop();
         plugins.sendEvent(QStringLiteral("shutdown"));
         player.shutdown();
         displays.restoreAll();
-    });
+    };
+    app.installEventFilter(new QuitFilter(shutdown, &app));
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, shutdown);
 
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Player", &player);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Drives", &drives);

@@ -50,9 +50,13 @@ struct BlurayNav::Session
 #ifdef LUMEN_HAVE_BLURAY
     BLURAY *bd = nullptr;
     std::unique_ptr<MvcMerger> mvc;
-    QImage planes[2]; // [BD_OVERLAY_PG], [BD_OVERLAY_IG], ARGB32 (entspricht libbluray-ARGB)
+    // [BD_OVERLAY_PG], [BD_OVERLAY_IG], ARGB32 (entspricht libbluray-ARGB). HDMV-Menüs und Untertitel
+    // kommen komprimiert im Thread des Aufrufers, BD-J-Grafik als ARGB aus einem Thread der Java-VM.
+    QImage planes[2];
+    std::mutex planeMutex;
     int playitem = 0;
     BLURAY_TITLE_INFO *playlistInfo = nullptr;
+    int64_t tsOffset = 0; // 90 kHz: Zeit auf der Playlist minus Zeitstempel des laufenden Clips
 
     ~Session()
     {
@@ -64,9 +68,12 @@ struct BlurayNav::Session
     }
 
     static void overlayProc(void *handle, const BD_ARGB_OVERLAY *const ov);
+    static void yuvOverlayProc(void *handle, const BD_OVERLAY *const ov);
     void flushOverlay();
     void handleEvent(const BD_EVENT &ev);
     void startMvc(uint32_t playlist);
+    void updateOffset();
+    void retime(int from);
     int64_t read(char *buf, uint64_t size);
 #endif
 };
@@ -76,6 +83,7 @@ struct BlurayNav::Session
 void BlurayNav::Session::overlayProc(void *handle, const BD_ARGB_OVERLAY *const ov)
 {
     auto *s = static_cast<Session *>(handle);
+    std::lock_guard<std::mutex> lock(s->planeMutex);
     if (!ov) { // libbluray schließt alle Ebenen
         s->planes[0] = s->planes[1] = QImage();
         s->flushOverlay();
@@ -115,8 +123,78 @@ void BlurayNav::Session::overlayProc(void *handle, const BD_ARGB_OVERLAY *const 
     }
 }
 
+// Komprimierte Grafik: Menüs im HDMV-Modus (IG) und Untertitel (PG). Lauflängen mit Farbnummern,
+// dazu eine Palette aus Y, Cr, Cb und Deckkraft (BT.709, 16–235).
+void BlurayNav::Session::yuvOverlayProc(void *handle, const BD_OVERLAY *const ov)
+{
+    auto *s = static_cast<Session *>(handle);
+    std::lock_guard<std::mutex> lock(s->planeMutex);
+    if (!ov) { // libbluray schließt alle Ebenen
+        s->planes[0] = s->planes[1] = QImage();
+        s->flushOverlay();
+        return;
+    }
+    if (ov->plane > 1)
+        return;
+    QImage &plane = s->planes[ov->plane];
+
+    switch (ov->cmd) {
+    case BD_OVERLAY_INIT:
+        plane = QImage(ov->w, ov->h, QImage::Format_ARGB32);
+        plane.fill(Qt::transparent);
+        break;
+    case BD_OVERLAY_CLOSE:
+        plane = QImage();
+        s->flushOverlay();
+        break;
+    case BD_OVERLAY_CLEAR:
+    case BD_OVERLAY_HIDE:
+        if (!plane.isNull())
+            plane.fill(Qt::transparent);
+        break;
+    case BD_OVERLAY_WIPE: {
+        const QRect r = QRect(ov->x, ov->y, ov->w, ov->h).intersected(plane.rect());
+        for (int y = 0; y < r.height(); ++y)
+            std::memset(plane.scanLine(r.y() + y) + r.x() * 4, 0, size_t(r.width()) * 4);
+        break;
+    }
+    case BD_OVERLAY_DRAW: {
+        if (plane.isNull() || !ov->img || !ov->palette)
+            break;
+        uint32_t argb[256];
+        for (int i = 0; i < 256; ++i) {
+            const BD_PG_PALETTE_ENTRY &e = ov->palette[i];
+            const double y = 1.164 * (e.Y - 16), cb = e.Cb - 128, cr = e.Cr - 128;
+            const auto c = [](double v) { return uint32_t(std::clamp(int(std::lround(v)), 0, 255)); };
+            argb[i] = uint32_t(e.T) << 24 | c(y + 1.793 * cr) << 16 | c(y - 0.213 * cb - 0.533 * cr) << 8 | c(y + 2.112 * cb);
+        }
+        // Jede Zeile besteht aus Läufen, die zusammen die Breite ergeben
+        const BD_PG_RLE_ELEM *run = ov->img;
+        for (int y = 0; y < ov->h; ++y) {
+            const int py = ov->y + y;
+            uint32_t *dst = py < plane.height() ? reinterpret_cast<uint32_t *>(plane.scanLine(py)) : nullptr;
+            for (int x = 0; x < ov->w; ++run) {
+                if (!run->len) // beschädigte Daten: nicht endlos laufen
+                    return;
+                if (dst) {
+                    const int from = ov->x + x, to = std::min(from + int(run->len), plane.width());
+                    std::fill(dst + std::min(from, plane.width()), dst + to, argb[run->color & 0xff]);
+                }
+                x += run->len;
+            }
+        }
+        break;
+    }
+    case BD_OVERLAY_FLUSH:
+        s->flushOverlay();
+        break;
+    default:
+        break;
+    }
+}
+
 // PG (Untertitel, nur im 3D-Modus von libbluray dekodiert) unter IG (Menü) legen,
-// sichtbaren Bereich ausschneiden und an den GUI-Thread geben.
+// sichtbaren Bereich ausschneiden und an den GUI-Thread geben. Aufrufer hält planeMutex.
 void BlurayNav::Session::flushOverlay()
 {
     QSize size;
@@ -169,6 +247,67 @@ void BlurayNav::Session::startMvc(uint32_t playlist)
     }, Qt::QueuedConnection);
 }
 
+// Jeder Clip zählt seine Zeitstempel für sich. Ohne Umrechnung sieht mpv an jeder Clipgrenze
+// einen Zeitsprung, setzt die Wiedergabe zurück und verliert dabei Bilder. Die Playlist nennt
+// für jeden Clip Beginn (in_time) und Platz auf ihrer Zeitachse (start_time).
+void BlurayNav::Session::updateOffset()
+{
+    tsOffset = 0;
+    if (playlistInfo && playitem >= 0 && playitem < int(playlistInfo->clip_count)) {
+        const BLURAY_CLIP_INFO &c = playlistInfo->clips[playitem];
+        tsOffset = int64_t(c.start_time) - int64_t(c.in_time);
+    }
+}
+
+// Zeitstempel (PTS, DTS, PCR) der M2TS-Pakete in out ab der Stelle from auf die Zeitachse der Playlist legen
+void BlurayNav::Session::retime(int from)
+{
+    if (!tsOffset)
+        return;
+    constexpr uint64_t mask = (uint64_t(1) << 33) - 1;
+    const uint64_t offset = uint64_t(tsOffset) & mask;
+    const auto shift = [&](uint8_t *t) { // 5 Byte: 4 Bit Kennung, 3+15+15 Bit Zeit mit Markierungsbits
+        uint64_t v = uint64_t((t[0] >> 1) & 7) << 30 | uint64_t(t[1]) << 22 | uint64_t(t[2] >> 1) << 15 | uint64_t(t[3]) << 7 | t[4] >> 1;
+        v = (v + offset) & mask;
+        t[0] = uint8_t((t[0] & 0xf1) | ((v >> 29) & 0x0e));
+        t[1] = uint8_t(v >> 22);
+        t[2] = uint8_t(((v >> 14) & 0xfe) | 1);
+        t[3] = uint8_t(v >> 7);
+        t[4] = uint8_t(((v << 1) & 0xfe) | 1);
+    };
+    auto *base = reinterpret_cast<uint8_t *>(out.data());
+    for (int pos = from; pos + 192 <= out.size(); pos += 192) {
+        uint8_t *ts = base + pos + 4;
+        if (ts[0] != 0x47)
+            continue;
+        const int afc = (ts[3] >> 4) & 3;
+        int off = 4;
+        if (afc & 2) {
+            const int afLen = ts[4];
+            if (afLen >= 7 && (ts[5] & 0x10)) { // PCR: 33 Bit Basis, 6 Bit Reserve, 9 Bit Erweiterung
+                uint64_t pcr = uint64_t(ts[6]) << 25 | uint64_t(ts[7]) << 17 | uint64_t(ts[8]) << 9 | uint64_t(ts[9]) << 1 | ts[10] >> 7;
+                pcr = (pcr + offset) & mask;
+                ts[6] = uint8_t(pcr >> 25);
+                ts[7] = uint8_t(pcr >> 17);
+                ts[8] = uint8_t(pcr >> 9);
+                ts[9] = uint8_t(pcr >> 1);
+                ts[10] = uint8_t((ts[10] & 0x7f) | ((pcr & 1) << 7));
+            }
+            off += 1 + afLen;
+        }
+        // Beginn eines PES-Pakets mit Kopf (Bild, Ton, Grafik): PTS und DTS
+        if (!(ts[1] & 0x40) || !(afc & 1) || off + 14 > 188)
+            continue;
+        uint8_t *p = ts + off;
+        if (p[0] != 0 || p[1] != 0 || p[2] != 1 || (p[6] & 0xc0) != 0x80)
+            continue;
+        if (p[7] & 0x80)
+            shift(p + 9);
+        if ((p[7] & 0xc0) == 0xc0 && off + 19 <= 188)
+            shift(p + 14);
+    }
+}
+
 void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
 {
     BlurayNav *n = nav;
@@ -190,6 +329,7 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
             bd_free_title_info(playlistInfo);
         playlistInfo = bd_get_playlist_info(bd, ev.param, 0);
         playitem = 0;
+        updateOffset();
         startMvc(ev.param);
         QVariantList chapters;
         double duration = 0;
@@ -208,11 +348,16 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
         });
         break;
     }
-    case BD_EVENT_PLAYITEM:
-        playitem = int(ev.param);
+    case BD_EVENT_PLAYITEM: {
+        // Was der alte Clip noch ausgibt, trägt dessen Zeitstempel
+        const int from = out.size();
         if (mvc)
-            mvc->setPlayItem(playitem);
+            mvc->setPlayItem(int(ev.param), out);
+        retime(from);
+        playitem = int(ev.param);
+        updateOffset();
         break;
+    }
     case BD_EVENT_SEEK:
     case BD_EVENT_DISCONTINUITY:
         if (mvc)
@@ -296,10 +441,12 @@ int64_t BlurayNav::Session::read(char *buf, uint64_t size)
             return -1;
         if (r > 0) {
             timedStill = false;
+            const int from = out.size();
             if (mvc && mvc->active())
                 mvc->process(reinterpret_cast<const uint8_t *>(block.constData()), size_t(r), out);
             else
                 out.append(block.constData(), r);
+            retime(from);
             continue;
         }
         if (timedStill && stillUntil.hasExpired()) {
@@ -311,7 +458,9 @@ int64_t BlurayNav::Session::read(char *buf, uint64_t size)
         if (!menu && !still && !idle) {
             if (mvc && mvc->active() && !flushed) {
                 flushed = true;
+                const int from = out.size();
                 mvc->flush(out);
+                retime(from);
                 continue;
             }
             return 0;
@@ -430,9 +579,12 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
     const BLURAY_DISC_INFO *di = bd_get_disc_info(s->bd);
     if (di && di->aacs_detected && !di->aacs_handled)
         return fail(s, LTR("AACS nicht extern gelöst – Wiedergabe über libbluray nicht möglich"));
-    if (s->menu && di && di->bdj_detected && !di->bdj_handled)
-        return fail(s, di->libjvm_detected ? LTR("BD-J-Menü: libbluray-j2se-JAR fehlt – bitte Titelmodus verwenden")
-                                           : LTR("BD-J-Menü benötigt eine Java-Laufzeit (JRE) – bitte Titelmodus verwenden"));
+    // Menü nicht möglich (BD-J ohne Java oder ohne das JAR von libbluray): statt abzubrechen den
+    // Hauptfilm spielen und sagen, warum
+    QString noMenu;
+    if (s->menu && di && di->bdj_detected && !di->bdj_handled && !di->first_play_supported && !di->top_menu_supported)
+        noMenu = di->libjvm_detected ? LTR("Disc-Menü (BD-J): JAR von libbluray fehlt – Hauptfilm läuft")
+                                     : LTR("Disc-Menü (BD-J) braucht Java – Hauptfilm läuft");
 
     // Spieler-Einstellungen: Sprache (ISO 639-2/T, z. B. "deu") und Region aus dem System
     const QLocale loc;
@@ -464,15 +616,20 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
         s->mvc = std::make_unique<MvcMerger>(s->bd);
     }
 
+    bd_register_overlay_proc(s->bd, s, &Session::yuvOverlayProc);
     bd_register_argb_overlay_proc(s->bd, s, &Session::overlayProc, nullptr);
 
-    if (s->menu) {
-        if (!bd_play(s->bd))
-            return fail(s, LTR("Menüwiedergabe konnte nicht gestartet werden – bitte Titelmodus verwenden"));
-    } else {
+    if (s->menu && noMenu.isEmpty() && !bd_play(s->bd))
+        noMenu = LTR("Disc-Menü ließ sich nicht starten – Hauptfilm läuft");
+    const bool fellBack = !noMenu.isEmpty();
+    if (fellBack) {
+        s->menu = false;
+        post([nav] { nav->m_mode = QStringLiteral("main"); });
+    }
+    if (!s->menu) {
         uint32_t playlist = uint32_t(nav->m_requestedPlaylist);
         bool ok = false;
-        if (nav->m_mode == QLatin1String("playlist")) {
+        if (!fellBack && nav->m_mode == QLatin1String("playlist")) {
             bd_get_titles(s->bd, TITLES_ALL, 0); // Pflicht vor bd_select_playlist()
             ok = bd_select_playlist(s->bd, playlist);
         } else { // "main": Hauptfilm
@@ -499,11 +656,11 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
         std::lock_guard<std::mutex> lock(nav->m_mutex);
         nav->m_session = s;
     }
-    post([nav] {
+    post([nav, noMenu] {
         nav->m_active = true;
         nav->m_position = 0;
         nav->m_poll.start();
-        nav->setStatus(nav->menuMode() ? LTR("Disc-Menü aktiv") : LTR("Titel über libbluray"));
+        nav->setStatus(!noMenu.isEmpty() ? noMenu : nav->menuMode() ? LTR("Disc-Menü aktiv") : LTR("Titel über libbluray"));
         emit nav->stateChanged();
     });
 

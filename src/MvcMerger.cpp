@@ -179,7 +179,8 @@ bool MvcMerger::setPlaylist(uint32_t playlist)
         bd_free_title_info(ti);
     }
     m_active = true;
-    setPlayItem(0);
+    m_playItem = 0;
+    openDependent(0);
     return true;
 }
 
@@ -201,6 +202,47 @@ void MvcMerger::closeDependent()
     m_needSeek = true;
 }
 
+// CPI mit EP-Map ab cpiStart: Länge(4), Reserve/Typ(2), EP-Map
+void MvcMerger::parseEpMap(const uint8_t *d, int64_t size, uint32_t cpiStart)
+{
+    if (!cpiStart || int64_t(cpiStart) + 8 >= size || be32(d + cpiStart) == 0)
+        return;
+    const uint32_t epMap = cpiStart + 6;
+    const int numPid = d[epMap + 1];
+    for (int i = 0; i < numPid && int64_t(epMap) + 2 + (i + 1) * 12 <= size; ++i) {
+        const uint8_t *e = d + epMap + 2 + i * 12;
+        const uint16_t pid = be16(e);
+        const uint32_t bits = be32(e + 2);               // 10 Reserve, 4 Typ, 16 Coarse, 2 Fine-Hi
+        const int numCoarse = int((bits >> 2) & 0xffff);
+        const int numFine = int(((bits & 3) << 16) | be16(e + 6));
+        const uint32_t streamStart = be32(e + 8) + epMap;
+        if (i > 0 && pid != m_depPid)
+            continue;
+        if (int64_t(streamStart) + 4 > size)
+            break;
+        const uint32_t fineStart = streamStart + be32(d + streamStart);
+        if (int64_t(streamStart) + 4 + int64_t(numCoarse) * 8 > size || int64_t(fineStart) + int64_t(numFine) * 4 > size)
+            break;
+        m_depPid = pid;
+        for (int c = 0; c < numCoarse; ++c) {
+            const uint8_t *ce = d + streamStart + 4 + c * 8;
+            const uint32_t w = be32(ce);
+            const int refFine = int(w >> 14);
+            const uint32_t ptsCoarse = w & 0x3fff;
+            const uint32_t spnCoarse = be32(ce + 4);
+            const int end = c + 1 < numCoarse ? int(be32(ce + 8) >> 14) : numFine;
+            for (int f = refFine; f < end && f < numFine; ++f) {
+                const uint32_t fw = be32(d + fineStart + f * 4);
+                const uint32_t ptsFine = (fw >> 17) & 0x7ff;
+                const uint32_t spnFine = fw & 0x1ffff;
+                m_ep.push_back({int64_t((ptsCoarse & ~1u) << 18) + int64_t(ptsFine << 8),
+                                (spnCoarse & ~0x1ffffu) + spnFine});
+            }
+        }
+        break;
+    }
+}
+
 bool MvcMerger::openDependent(int playItem)
 {
     closeDependent();
@@ -208,47 +250,24 @@ bool MvcMerger::openDependent(int playItem)
     if (clip.isEmpty())
         return false;
 
-    // EP-Map aus der CLPI der abhängigen Ansicht (eigene SPN-Zählung dieser Datei)
+    // EP-Map aus der CLPI der abhängigen Ansicht (eigene SPN-Zählung dieser Datei). Bei gepressten
+    // Discs ist deren CPI leer und die Sprungmarken stehen in den Erweiterungsdaten (ID 2/6, "CPI_SS").
     void *data = nullptr;
     int64_t size = 0;
     const QByteArray clpiPath = QStringLiteral("BDMV/CLIPINF/%1.clpi").arg(clip).toLatin1();
     if (bd_read_file(m_bd, clpiPath.constData(), &data, &size) && data) {
         const auto *d = static_cast<const uint8_t *>(data);
-        const uint32_t cpiStart = size >= 20 ? be32(d + 16) : 0;
-        if (cpiStart && cpiStart + 8 < size && be32(d + cpiStart) != 0) {
-            const uint32_t epMap = cpiStart + 6; // nach Länge(4) + Reserve/Typ(2)
-            const int numPid = d[epMap + 1];
-            for (int i = 0; i < numPid && epMap + 2 + (i + 1) * 12 <= size; ++i) {
-                const uint8_t *e = d + epMap + 2 + i * 12;
-                const uint16_t pid = be16(e);
-                const uint32_t bits = be32(e + 2);               // 10 Reserve, 4 Typ, 16 Coarse, 2 Fine-Hi
-                const int numCoarse = int((bits >> 2) & 0xffff);
-                const int numFine = int(((bits & 3) << 16) | be16(e + 6));
-                const uint32_t streamStart = be32(e + 8) + epMap;
-                if (i > 0 && pid != m_depPid)
-                    continue;
-                if (streamStart + 4 > size)
-                    break;
-                const uint32_t fineStart = streamStart + be32(d + streamStart);
-                if (streamStart + 4 + numCoarse * 8 > size || fineStart + numFine * 4 > size)
-                    break;
-                m_depPid = pid;
-                for (int c = 0; c < numCoarse; ++c) {
-                    const uint8_t *ce = d + streamStart + 4 + c * 8;
-                    const uint32_t w = be32(ce);
-                    const int refFine = int(w >> 14);
-                    const uint32_t ptsCoarse = w & 0x3fff;
-                    const uint32_t spnCoarse = be32(ce + 4);
-                    const int end = c + 1 < numCoarse ? int(be32(ce + 8) >> 14) : numFine;
-                    for (int f = refFine; f < end && f < numFine; ++f) {
-                        const uint32_t fw = be32(d + fineStart + f * 4);
-                        const uint32_t ptsFine = (fw >> 17) & 0x7ff;
-                        const uint32_t spnFine = fw & 0x1ffff;
-                        m_ep.push_back({int64_t((ptsCoarse & ~1u) << 18) + int64_t(ptsFine << 8),
-                                        (spnCoarse & ~0x1ffffu) + spnFine});
-                    }
+        if (size >= 28) {
+            parseEpMap(d, size, be32(d + 16));
+            const uint32_t ext = be32(d + 24);
+            if (m_ep.empty() && ext && int64_t(ext) + 12 <= size) {
+                // ExtensionData: Länge, Datenbeginn, 3 Byte Reserve, Anzahl; je Eintrag ID1, ID2, Beginn, Länge
+                const int entries = d[ext + 11];
+                for (int e = 0; e < entries && int64_t(ext) + 12 + (e + 1) * 12 <= size; ++e) {
+                    const uint8_t *ent = d + ext + 12 + e * 12;
+                    if (be16(ent) == 2 && be16(ent + 2) == 6)
+                        parseEpMap(d, size, ext + be32(ent + 4));
                 }
-                break;
             }
         }
         freeBlurayBuffer(data);
@@ -264,10 +283,14 @@ bool MvcMerger::openDependent(int playItem)
     return true;
 }
 
-void MvcMerger::setPlayItem(int index)
+void MvcMerger::setPlayItem(int index, QByteArray &out)
 {
     if (!m_active || index == m_playItem)
         return;
+    // Das letzte Bild des alten Clips wartet noch auf den nächsten Paketstart: jetzt ausgeben,
+    // solange seine abhängige Datei offen ist – sonst bekäme es einen Partner aus dem neuen Clip
+    emitBase(out);
+    m_basePes = PesAssembler();
     m_playItem = index;
     openDependent(index);
 }
@@ -306,8 +329,18 @@ bool MvcMerger::readDependentChunk()
 {
     if (!m_depFile || m_depEof)
         return false;
+    // Je Aufruf genau eine Aligned Unit: Die entschlüsselnde Datei von libbluray (AACS, BD+)
+    // liefert für jede andere Größe nichts ("read size != unit size")
     QByteArray chunk(kChunk, Qt::Uninitialized);
-    const int64_t got = m_depFile->read(m_depFile, reinterpret_cast<uint8_t *>(chunk.data()), kChunk);
+    int got = 0;
+    while (got < kChunk) {
+        const int64_t n = m_depFile->read(m_depFile, reinterpret_cast<uint8_t *>(chunk.data()) + got, kUnit);
+        if (n <= 0)
+            break;
+        got += int(n);
+        if (n < kUnit)
+            break;
+    }
     if (got <= 0) {
         // Dateiende: letzte (nicht mehr durch einen Paketstart beendete) Einheit übernehmen
         m_depEof = true;
@@ -320,7 +353,7 @@ bool MvcMerger::readDependentChunk()
         m_depPes = PesAssembler();
         return !m_depQueue.empty();
     }
-    m_depRaw.append(chunk.constData(), int(got));
+    m_depRaw.append(chunk.constData(), got);
     const int whole = m_depRaw.size() / kPacket * kPacket;
     for (int i = 0; i < whole; i += kPacket)
         feedDependent(reinterpret_cast<const uint8_t *>(m_depRaw.constData()) + i);

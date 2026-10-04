@@ -1657,7 +1657,9 @@ void MpvController::syncOptions()
 Tuning::Context MpvController::tuningContext() const
 {
     Tuning::Context c;
-    c.mvc = m_mvcStream; // auch für eine Ansicht: Hardware-Decoder scheitern an MVC-Strömen
+    // auch für eine Ansicht: Hardware-Decoder scheitern an MVC-Strömen. Bei der Disc mischt Lumen
+    // die zweite Ansicht selbst zu (MvcMerger) – das Profil im Strom nennt sie nicht
+    c.mvc = m_mvcStream || mvcActive();
     if (m_profile.value("adaptive", true).toBool()) {
         c.renderLevel = m_governor.renderLevel();
         c.decodeLevel = m_governor.decodeLevel();

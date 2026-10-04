@@ -21,7 +21,8 @@ struct bd_file_s;
 // Basisansicht angehängt (Annex-B: Basis-NALs + NAL 20 ...) und der Video-PES
 // neu paketiert. Alle anderen PIDs (Ton, PGS, PCR) laufen unverändert durch.
 // Welche Datei die abhängige Ansicht enthält, steht im SS-Subpfad der Playlist;
-// Sprungmarken für die Suche liefert die EP-Map "cpi_ss" der Basis-CLPI.
+// Sprungmarken für die Suche liefert die EP-Map ihrer CLPI (CPI oder, bei gepressten
+// Discs, "CPI_SS" in den Erweiterungsdaten).
 class MvcMerger
 {
 public:
@@ -30,8 +31,9 @@ public:
 
     // Liest den SS-Subpfad der Playlist. false = Playlist ist nicht 3D.
     bool setPlaylist(uint32_t playlist);
-    // Wechsel des PlayItems (Clip) – öffnet die zugehörige abhängige Datei
-    void setPlayItem(int index);
+    // Wechsel des PlayItems (Clip): gibt das letzte Bild des alten Clips mit seinem Partner
+    // nach out und öffnet dann die abhängige Datei des neuen
+    void setPlayItem(int index, QByteArray &out);
     // Nach Sprüngen (Seek, Titelwechsel): Pufferstände verwerfen
     void reset();
 
@@ -61,6 +63,7 @@ private:
 
     bool parsePlaylistSs(const QByteArray &mpls, uint32_t playlist);
     void closeDependent();
+    void parseEpMap(const uint8_t *d, int64_t size, uint32_t cpiStart);
     bool openDependent(int playItem);
     bool seekDependent(int64_t pts);
     bool readDependentChunk();

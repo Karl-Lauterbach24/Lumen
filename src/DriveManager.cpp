@@ -129,7 +129,9 @@ void DriveManager::refresh()
     // Optische Laufwerke können beim Anlaufen Sekunden blockieren -> Worker-Thread
     QPointer<DriveManager> self(this);
     QThreadPool::globalInstance()->start([self] {
-        QVariantList list = scan();
+        // Entwickler-Hilfe: LUMEN_NO_DRIVES=1 lässt die Laufwerke außen vor (Tests mit Abbildern,
+        // während eine Disc im Laufwerk liegt)
+        QVariantList list = qEnvironmentVariableIsSet("LUMEN_NO_DRIVES") ? QVariantList() : scan();
         if (!self)
             return;
         QMetaObject::invokeMethod(self, [self, list] {
