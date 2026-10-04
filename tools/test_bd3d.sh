@@ -37,6 +37,27 @@ if [ -x "$BUILD/stereodetect_test" ] || [ -x "$BUILD/stereodetect_test.exe" ]; t
     "$T" "$WORK/merged.m2ts" mvc
 fi
 
+# Time line of a playlist: every clip of a Blu-ray counts its own time, Lumen moves PTS, DTS and PCR
+# onto the playlist's time line (retimeM2ts). A generated M2TS, moved by 100 s, must carry exactly
+# these time stamps afterwards, for picture and sound.
+if [ -x "$BUILD/tsretime_test" ] || [ -x "$BUILD/tsretime_test.exe" ]; then
+    T="$BUILD/tsretime_test"; [ -x "$T" ] || T="$BUILD/tsretime_test.exe"
+    ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=size=320x180:rate=24 -f lavfi -i sine=frequency=440 -t 2 \
+        -c:v mpeg2video -bf 2 -c:a mp2 -f mpegts -mpegts_m2ts_mode 1 -y "$WORK/time.m2ts"
+    "$T" "$WORK/time.m2ts" "$WORK/time-moved.m2ts" 9000000
+    stamps() { ffprobe -hide_banner -loglevel error -show_entries packet=stream_index,pts,dts -of csv=p=0 "$1" | tr -d '\r'; }
+    stamps "$WORK/time.m2ts" > "$WORK/time.csv"
+    stamps "$WORK/time-moved.m2ts" > "$WORK/time-moved.csv"
+    result="$("$PY" -c "
+import sys
+a = [l.split(',') for l in open(sys.argv[1]) if l.strip()]
+b = [l.split(',') for l in open(sys.argv[2]) if l.strip()]
+ok = len(a) == len(b) and len(a) > 40 and all(x[0] == y[0] and int(y[1]) - int(x[1]) == 9000000 and int(y[2]) - int(x[2]) == 9000000 for x, y in zip(a, b))
+print('%d packets, %s' % (len(a), 'all moved by 100 s' if ok else 'time stamps differ'))" "$WORK/time.csv" "$WORK/time-moved.csv")"
+    echo "playlist time line: $result"
+    case "$result" in *"all moved by 100 s") ;; *) echo "::error::Blu-ray: time stamps not moved onto the playlist's time line"; exit 1 ;; esac
+fi
+
 # Rides along because every CI platform (Windows too) calls this script: how fast the software
 # decoder runs there. Report only. LUMEN_SKIP_BENCH=1 leaves it out.
 if [ -z "${LUMEN_SKIP_BENCH:-}" ]; then

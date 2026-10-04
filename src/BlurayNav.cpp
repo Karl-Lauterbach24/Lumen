@@ -14,6 +14,7 @@
 
 #ifdef LUMEN_HAVE_BLURAY
 #include "MvcMerger.h"
+#include "TsRetime.h"
 #include <libbluray/bluray.h>
 #include <libbluray/keys.h>
 #include <libbluray/overlay.h>
@@ -249,63 +250,23 @@ void BlurayNav::Session::startMvc(uint32_t playlist)
 
 // Jeder Clip zählt seine Zeitstempel für sich. Ohne Umrechnung sieht mpv an jeder Clipgrenze
 // einen Zeitsprung, setzt die Wiedergabe zurück und verliert dabei Bilder. Die Playlist nennt
-// für jeden Clip Beginn (in_time) und Platz auf ihrer Zeitachse (start_time).
+// für jeden Clip Beginn (in_time) und Platz auf ihrer Zeitachse (start_time). Der erste Clip
+// behält seine Zeitstempel (DTS und PCR liegen vor der ersten PTS und dürfen nicht unter null
+// rutschen), die folgenden schließen daran an.
 void BlurayNav::Session::updateOffset()
 {
     tsOffset = 0;
-    if (playlistInfo && playitem >= 0 && playitem < int(playlistInfo->clip_count)) {
+    if (playlistInfo && playitem > 0 && playitem < int(playlistInfo->clip_count)) {
         const BLURAY_CLIP_INFO &c = playlistInfo->clips[playitem];
-        tsOffset = int64_t(c.start_time) - int64_t(c.in_time);
+        tsOffset = int64_t(c.start_time) - int64_t(c.in_time) + int64_t(playlistInfo->clips[0].in_time);
     }
 }
 
-// Zeitstempel (PTS, DTS, PCR) der M2TS-Pakete in out ab der Stelle from auf die Zeitachse der Playlist legen
+// Zeitstempel der M2TS-Pakete in out ab der Stelle from auf die Zeitachse der Playlist legen
 void BlurayNav::Session::retime(int from)
 {
-    if (!tsOffset)
-        return;
-    constexpr uint64_t mask = (uint64_t(1) << 33) - 1;
-    const uint64_t offset = uint64_t(tsOffset) & mask;
-    const auto shift = [&](uint8_t *t) { // 5 Byte: 4 Bit Kennung, 3+15+15 Bit Zeit mit Markierungsbits
-        uint64_t v = uint64_t((t[0] >> 1) & 7) << 30 | uint64_t(t[1]) << 22 | uint64_t(t[2] >> 1) << 15 | uint64_t(t[3]) << 7 | t[4] >> 1;
-        v = (v + offset) & mask;
-        t[0] = uint8_t((t[0] & 0xf1) | ((v >> 29) & 0x0e));
-        t[1] = uint8_t(v >> 22);
-        t[2] = uint8_t(((v >> 14) & 0xfe) | 1);
-        t[3] = uint8_t(v >> 7);
-        t[4] = uint8_t(((v << 1) & 0xfe) | 1);
-    };
-    auto *base = reinterpret_cast<uint8_t *>(out.data());
-    for (int pos = from; pos + 192 <= out.size(); pos += 192) {
-        uint8_t *ts = base + pos + 4;
-        if (ts[0] != 0x47)
-            continue;
-        const int afc = (ts[3] >> 4) & 3;
-        int off = 4;
-        if (afc & 2) {
-            const int afLen = ts[4];
-            if (afLen >= 7 && (ts[5] & 0x10)) { // PCR: 33 Bit Basis, 6 Bit Reserve, 9 Bit Erweiterung
-                uint64_t pcr = uint64_t(ts[6]) << 25 | uint64_t(ts[7]) << 17 | uint64_t(ts[8]) << 9 | uint64_t(ts[9]) << 1 | ts[10] >> 7;
-                pcr = (pcr + offset) & mask;
-                ts[6] = uint8_t(pcr >> 25);
-                ts[7] = uint8_t(pcr >> 17);
-                ts[8] = uint8_t(pcr >> 9);
-                ts[9] = uint8_t(pcr >> 1);
-                ts[10] = uint8_t((ts[10] & 0x7f) | ((pcr & 1) << 7));
-            }
-            off += 1 + afLen;
-        }
-        // Beginn eines PES-Pakets mit Kopf (Bild, Ton, Grafik): PTS und DTS
-        if (!(ts[1] & 0x40) || !(afc & 1) || off + 14 > 188)
-            continue;
-        uint8_t *p = ts + off;
-        if (p[0] != 0 || p[1] != 0 || p[2] != 1 || (p[6] & 0xc0) != 0x80)
-            continue;
-        if (p[7] & 0x80)
-            shift(p + 9);
-        if ((p[7] & 0xc0) == 0xc0 && off + 19 <= 188)
-            shift(p + 14);
-    }
+    if (tsOffset && from < out.size())
+        retimeM2ts(reinterpret_cast<uint8_t *>(out.data()) + from, size_t(out.size() - from), tsOffset);
 }
 
 void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
