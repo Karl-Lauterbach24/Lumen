@@ -13,6 +13,7 @@
 #include <mpv/stream_cb.h>
 
 #ifdef LUMEN_HAVE_BLURAY
+#include "BdOverlay.h"
 #include "MvcMerger.h"
 #include "TsRetime.h"
 #include <libbluray/bluray.h>
@@ -124,8 +125,7 @@ void BlurayNav::Session::overlayProc(void *handle, const BD_ARGB_OVERLAY *const 
     }
 }
 
-// Komprimierte Grafik: Menüs im HDMV-Modus (IG) und Untertitel (PG). Lauflängen mit Farbnummern,
-// dazu eine Palette aus Y, Cr, Cb und Deckkraft (BT.709, 16–235).
+// Komprimierte Grafik: Menüs im HDMV-Modus (IG) und Untertitel (PG), siehe BdOverlay
 void BlurayNav::Session::yuvOverlayProc(void *handle, const BD_OVERLAY *const ov)
 {
     auto *s = static_cast<Session *>(handle);
@@ -135,63 +135,8 @@ void BlurayNav::Session::yuvOverlayProc(void *handle, const BD_OVERLAY *const ov
         s->flushOverlay();
         return;
     }
-    if (ov->plane > 1)
-        return;
-    QImage &plane = s->planes[ov->plane];
-
-    switch (ov->cmd) {
-    case BD_OVERLAY_INIT:
-        plane = QImage(ov->w, ov->h, QImage::Format_ARGB32);
-        plane.fill(Qt::transparent);
-        break;
-    case BD_OVERLAY_CLOSE:
-        plane = QImage();
+    if (ov->plane <= 1 && BdOverlay::apply(s->planes[ov->plane], *ov))
         s->flushOverlay();
-        break;
-    case BD_OVERLAY_CLEAR:
-    case BD_OVERLAY_HIDE:
-        if (!plane.isNull())
-            plane.fill(Qt::transparent);
-        break;
-    case BD_OVERLAY_WIPE: {
-        const QRect r = QRect(ov->x, ov->y, ov->w, ov->h).intersected(plane.rect());
-        for (int y = 0; y < r.height(); ++y)
-            std::memset(plane.scanLine(r.y() + y) + r.x() * 4, 0, size_t(r.width()) * 4);
-        break;
-    }
-    case BD_OVERLAY_DRAW: {
-        if (plane.isNull() || !ov->img || !ov->palette)
-            break;
-        uint32_t argb[256];
-        for (int i = 0; i < 256; ++i) {
-            const BD_PG_PALETTE_ENTRY &e = ov->palette[i];
-            const double y = 1.164 * (e.Y - 16), cb = e.Cb - 128, cr = e.Cr - 128;
-            const auto c = [](double v) { return uint32_t(std::clamp(int(std::lround(v)), 0, 255)); };
-            argb[i] = uint32_t(e.T) << 24 | c(y + 1.793 * cr) << 16 | c(y - 0.213 * cb - 0.533 * cr) << 8 | c(y + 2.112 * cb);
-        }
-        // Jede Zeile besteht aus Läufen, die zusammen die Breite ergeben
-        const BD_PG_RLE_ELEM *run = ov->img;
-        for (int y = 0; y < ov->h; ++y) {
-            const int py = ov->y + y;
-            uint32_t *dst = py < plane.height() ? reinterpret_cast<uint32_t *>(plane.scanLine(py)) : nullptr;
-            for (int x = 0; x < ov->w; ++run) {
-                if (!run->len) // beschädigte Daten: nicht endlos laufen
-                    return;
-                if (dst) {
-                    const int from = ov->x + x, to = std::min(from + int(run->len), plane.width());
-                    std::fill(dst + std::min(from, plane.width()), dst + to, argb[run->color & 0xff]);
-                }
-                x += run->len;
-            }
-        }
-        break;
-    }
-    case BD_OVERLAY_FLUSH:
-        s->flushOverlay();
-        break;
-    default:
-        break;
-    }
 }
 
 // PG (Untertitel, nur im 3D-Modus von libbluray dekodiert) unter IG (Menü) legen,

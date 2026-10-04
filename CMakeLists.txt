@@ -332,7 +332,7 @@ if(LUMEN_HAVE_BLURAY)
     target_link_libraries(lumen PRIVATE lumen_bluray)
     target_compile_definitions(lumen PRIVATE LUMEN_HAVE_BLURAY=1)
     # Blu-ray 3D: MVC-Ansicht zumischen (Decoder: FFmpeg-mvc zur Laufzeit)
-    target_sources(lumen PRIVATE src/MvcMerger.h src/MvcMerger.cpp src/TsRetime.h src/TsRetime.cpp)
+    target_sources(lumen PRIVATE src/MvcMerger.h src/MvcMerger.cpp src/TsRetime.h src/TsRetime.cpp src/BdOverlay.h src/BdOverlay.cpp)
 endif()
 
 if(WIN32)
@@ -442,6 +442,9 @@ if(LUMEN_BUILD_TESTS AND LUMEN_HAVE_BLURAY)
     target_link_libraries(mvcmerge_test PRIVATE Qt6::Core lumen_bluray)
     # Test: Zeitstempel der Clips auf die Zeitachse der Playlist legen (tools/test_bd3d.sh)
     add_executable(tsretime_test tests/tsretime_test.cpp src/TsRetime.cpp src/TsRetime.h)
+    # Test: komprimierte Overlays (Untertitel, HDMV-Menüs) in eine ARGB-Ebene zeichnen
+    add_executable(bdoverlay_test tests/bdoverlay_test.cpp src/BdOverlay.cpp src/BdOverlay.h)
+    target_link_libraries(bdoverlay_test PRIVATE Qt6::Gui lumen_bluray)
 endif()
 # Test: DCP lesen, KDM auspacken, Spurdateien entschlüsseln, Untertitel wandeln
 if(LUMEN_BUILD_TESTS)
