@@ -83,6 +83,7 @@ private:
     struct Action { QString id, label; };
     struct Plugin {
         QString id, name, version, description, author, dir, error, status;
+        QString warning; // z. B. eine optionale Bibliothek, die sich nicht laden ließ
         QVariantMap manifest;
         bool enabled = false; // Einstellung
         bool loaded = false;  // in diesem Programmlauf aktiv

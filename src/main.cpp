@@ -9,6 +9,8 @@
 #include <QQuickWindow>
 #include <QScreen>
 #include <QSet>
+#include <QSettings>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
 
@@ -97,6 +99,27 @@ static int selfTest(const QString &file)
     return 0;
 }
 
+// Disc-Menüs in Java (BD-J): libbluray braucht dafür sein Java-Archiv libbluray-j2se-<Version>.jar
+// (und libbluray-awt-j2se-<Version>.jar) in der Version der Bibliothek. Es sucht neben sich selbst
+// und in /usr/share/java. Liegt es in einem Ordner "bdj" beim Programm oder bei den Daten des
+// Nutzers, zeigt LIBBLURAY_CP dorthin.
+static void findBdjArchive()
+{
+    if (qEnvironmentVariableIsSet("LIBBLURAY_CP"))
+        return;
+    const QString app = QCoreApplication::applicationDirPath();
+    const QStringList dirs{QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/bdj"),
+                           app + QStringLiteral("/bdj"), app + QStringLiteral("/../Resources/bdj"),
+                           app + QStringLiteral("/../share/lumen/bdj")};
+    for (const QString &dir : dirs) {
+        if (QDir(dir).entryList({QStringLiteral("libbluray-j2se-*.jar")}, QDir::Files).isEmpty())
+            continue;
+        // mit Trennzeichen am Ende: ein Ordner, libbluray hängt den Namen seiner Version an
+        qputenv("LIBBLURAY_CP", QDir::toNativeSeparators(QDir(dir).absolutePath() + QLatin1Char('/')).toLocal8Bit());
+        return;
+    }
+}
+
 // Führt den Abbau aus, sobald das Programm beendet werden soll – vor dem Schließen der Fenster
 class QuitFilter : public QObject
 {
@@ -139,6 +162,7 @@ int main(int argc, char *argv[])
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     I18n i18n; // vor allen anderen: Texte der Objekte sind dann schon übersetzt
+    findBdjArchive();
     // Plugins vor libmpv/libbluray laden: Umgebung, Disc-Bibliotheken, mpv-Skripte
     PluginManager plugins;
     plugins.loadEnabled();
@@ -401,9 +425,12 @@ int main(int argc, char *argv[])
     QObject::connect(qApp, &QGuiApplication::screenAdded, &displays, &DisplayManager::refresh);
     QObject::connect(qApp, &QGuiApplication::screenRemoved, &displays, &DisplayManager::refresh);
 
-    // lumen [--menu] [--kdm <datei>] <datei|iso|ordner|laufwerk|dcp|cue>
+    // lumen [--menu|--main] [--kdm <datei>] <datei|iso|ordner|laufwerk|dcp|cue>
+    // Ohne Schalter startet eine Disc wie im Fenster eingestellt: mit ihrem Menü ("Mit Disc-Menü starten")
     QStringList args = app.arguments().mid(1);
-    const bool withMenu = args.removeAll(QStringLiteral("--menu")) > 0;
+    const bool forceMenu = args.removeAll(QStringLiteral("--menu")) > 0;
+    const bool forceMain = args.removeAll(QStringLiteral("--main")) > 0;
+    const bool withMenu = forceMenu || (!forceMain && QSettings().value(QStringLiteral("ui/startWithMenu"), true).toBool());
     for (int i = args.indexOf(QStringLiteral("--kdm")); i >= 0 && i + 1 < args.size(); i = args.indexOf(QStringLiteral("--kdm"))) {
         dcp.loadKdm(QUrl::fromLocalFile(QFileInfo(args.at(i + 1)).absoluteFilePath()));
         args.remove(i, 2);

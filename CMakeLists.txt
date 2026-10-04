@@ -249,6 +249,7 @@ qt_add_qml_module(lumen
         icons/tune.svg icons/loop.svg icons/camera.svg icons/info.svg
         icons/frame-back.svg icons/frame-fwd.svg icons/refresh.svg
         icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg icons/help.svg icons/close.svg icons/cast.svg
+        icons/language.svg icons/warning.svg icons/link.svg icons/film.svg
         profiles/presets.json
         resources/logo/lumen-emblem-small.png resources/logo/lumen-icon-256.png resources/logo/lumen-logo.png
         i18n/en.json i18n/fr.json i18n/es.json i18n/it.json i18n/pt.json i18n/nl.json i18n/pl.json

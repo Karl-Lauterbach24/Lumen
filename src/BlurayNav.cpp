@@ -657,6 +657,7 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
         nav->m_session = s;
     }
     post([nav, noMenu] {
+        nav->m_menuFallback = !noMenu.isEmpty();
         nav->m_active = true;
         nav->m_position = 0;
         nav->m_poll.start();
@@ -690,6 +691,7 @@ void BlurayNav::closeSession(Session *s)
     QMetaObject::invokeMethod(this, [this] {
         m_poll.stop();
         m_active = false;
+        m_menuFallback = false;
         m_menuVisible = false;
         m_popupAvailable = false;
         m_still = false;

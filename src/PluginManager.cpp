@@ -47,6 +47,27 @@ char *copyString(const QByteArray &s)
     return out;
 }
 
+// Warum sich eine Bibliothek nicht laden ließ – ohne die Liste aller Orte, an denen das System gesucht hat
+QString loadErrorReason(const QString &error)
+{
+    // macOS: "… (mach-o file, but is an incompatible architecture (have 'x86_64', need 'arm64'))"
+    static const QRegularExpression arch(QStringLiteral("incompatible architecture \\(have '([^']+)', need '([^']+)'"));
+    const QRegularExpressionMatch m = arch.match(error);
+    if (m.hasMatch())
+        return LTR("für einen anderen Prozessor gebaut (%1, gebraucht wird %2)").arg(m.captured(1), m.captured(2));
+    if (error.contains(QLatin1String("wrong ELF class")) || error.contains(QLatin1String("%1 is not a valid Win32"))
+        || error.contains(QLatin1String("ist keine zulässige Win32")))
+        return LTR("für einen anderen Prozessor gebaut");
+    // macOS nennt eine fehlende Abhängigkeit so: "Library not loaded: /usr/local/opt/…/libgcrypt.20.dylib"
+    static const QRegularExpression missing(QStringLiteral("Library not loaded: ([^\\s]+)"));
+    const QRegularExpressionMatch dep = missing.match(error);
+    if (dep.hasMatch())
+        return LTR("ihr fehlt %1").arg(QFileInfo(dep.captured(1)).fileName());
+    QString reason = error.section(QStringLiteral(": tried:"), 0, 0).section(QStringLiteral(", 0x"), 0, 0);
+    reason.remove(QRegularExpression(QStringLiteral("^Cannot load library [^:]+: ")));
+    return reason.left(200);
+}
+
 const QHash<QString, const char *> &discLibraryInfo()
 {
     // Bibliothek -> Umgebungsvariable von libbluray (libdvdcss lädt libdvdread
@@ -383,7 +404,15 @@ void PluginManager::load(Plugin &p)
         auto lib = std::make_unique<QLibrary>(file);
         lib->setLoadHints(QLibrary::ExportExternalSymbolsHint);
         if (!lib->load()) {
-            p.error = LTR("Bibliothek „%1“ konnte nicht geladen werden: %2").arg(QFileInfo(file).fileName(), lib->errorString());
+            const QString why = LTR("Bibliothek „%1“ konnte nicht geladen werden: %2").arg(QFileInfo(file).fileName(), loadErrorReason(lib->errorString()));
+            // "optional": true – der Rest des Plugins läuft auch ohne sie (z. B. Bibliothek für einen
+            // anderen Prozessor oder mit fehlender Abhängigkeit)
+            if (it.value().toMap().value("optional").toBool()) {
+                p.warning = why;
+                qWarning().noquote() << QStringLiteral("[%1] %2").arg(p.id, why);
+                continue;
+            }
+            p.error = why;
             return;
         }
         p.preloaded.push_back(std::move(lib));
@@ -620,7 +649,7 @@ QVariantList PluginManager::plugins() const
         out << QVariantMap{
             {"id", p->id}, {"name", p->name}, {"version", p->version}, {"description", p->description},
             {"author", p->author}, {"dir", QDir::toNativeSeparators(p->dir)}, {"enabled", p->enabled},
-            {"loaded", p->loaded}, {"error", p->error}, {"status", p->status}, {"kinds", p->kinds},
+            {"loaded", p->loaded}, {"error", p->error}, {"warning", p->warning}, {"status", p->status}, {"kinds", p->kinds},
             {"actions", actions}, {"pending", p->enabled != m_enabledAtStart.contains(p->id)},
         };
     }

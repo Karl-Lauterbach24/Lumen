@@ -115,6 +115,14 @@ ScrollView {
                     }
                     Text {
                         visible: text.length > 0
+                        text: card.modelData.warning || ""
+                        color: Theme.warn
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                    Text {
+                        visible: text.length > 0
                         text: card.modelData.status
                         color: Theme.textDim
                         font.pixelSize: 12

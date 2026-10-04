@@ -38,6 +38,7 @@ ApplicationWindow {
         property bool autoPlay: true
         property bool startWithMenu: true
         property int tab: 0
+        onTabChanged: if (tab <= 4) win.playbackTab = tab
         property alias width: win.width
         property alias height: win.height
     }
@@ -54,6 +55,19 @@ ApplicationWindow {
         : Player.mediaTitle
     // Position, an der eine Datei aus „Zuletzt gespielt“ fortgesetzt wird
     property real pendingResume: 0
+    // Fehlermeldung, die auf der Startseite weggeklickt wurde
+    property string dismissedError: ""
+    // Zuletzt gezeigter Reiter unter „Wiedergabe“ (Titel, Kapitel, Ton, Untertitel, Bild)
+    property int playbackTab: 0
+    // Das Lesen der Disc dauert ungewöhnlich lange: Laufwerk oder AACS-Bibliothek antwortet nicht
+    property bool discWaitLong: false
+    readonly property bool discSlow: Disc.busy && discWaitLong
+    Timer {
+        interval: 20000
+        running: Disc.busy
+        onRunningChanged: if (running) win.discWaitLong = false
+        onTriggered: win.discWaitLong = true
+    }
     readonly property var selectedDrive: driveSelect.currentIndex >= 0 ? Drives.drives[driveSelect.currentIndex] : null
     readonly property var vinfo: Player.videoInfo
     readonly property var ainfo: Player.audioInfo
@@ -273,7 +287,10 @@ ApplicationWindow {
 
                 Select {
                     id: driveSelect
+                    Layout.fillWidth: true
                     Layout.preferredWidth: 300
+                    Layout.minimumWidth: 140
+                    Layout.maximumWidth: 320
                     model: Drives.drives
                     textRole: "title"
                     popupWidth: 380
@@ -313,7 +330,10 @@ ApplicationWindow {
                 Text { text: qsTr("Ausgabe"); color: Theme.textFaint; font.pixelSize: 12 }
                 Select {
                     id: profileSelect
+                    Layout.fillWidth: true
                     Layout.preferredWidth: 300
+                    Layout.minimumWidth: 140
+                    Layout.maximumWidth: 320
                     model: Profiles.profiles
                     textRole: "name"
                     valueRole: "id"
@@ -327,6 +347,25 @@ ApplicationWindow {
                     active: Cast.active
                     tip: Cast.active ? qsTr("Überträgt an „%1“").arg(Cast.deviceName) : qsTr("An Fernseher oder Empfänger übertragen")
                     onClicked: win.showCast()
+                }
+                IconButton {
+                    iconName: "language"
+                    tip: qsTr("Sprache")
+                    onClicked: languageMenu.popup()
+                    Menu {
+                        id: languageMenu
+                        Repeater {
+                            model: I18n.languages
+                            delegate: MenuItem {
+                                required property var modelData
+                                text: modelData.name
+                                checkable: true
+                                checked: I18n.effective === modelData.code
+                                onTriggered: I18n.language = modelData.code
+                            }
+                        }
+                        background: Rectangle { implicitWidth: 180; color: Theme.raised; border.color: Theme.line; radius: Theme.radiusSmall }
+                    }
                 }
                 IconButton { iconName: "help"; tip: qsTr("Hilfe und Tastenkürzel (F1)"); onClicked: win.showHelp() }
             }
@@ -346,380 +385,439 @@ ApplicationWindow {
                 Layout.margins: 28
                 spacing: 18
 
-                // Jetzt läuft
-                ColumnLayout {
+                // Jetzt läuft / Startseite: rollt, wenn das Fenster dafür zu niedrig ist – die
+                // Bedienleiste darunter bleibt immer sichtbar
+                Flickable {
+                    id: leftScroll
                     Layout.fillWidth: true
-                    spacing: 8
-                    visible: !Player.idle
+                    Layout.fillHeight: true
+                    Layout.rightMargin: -16 // Platz für den Rollbalken im Rand, neben dem Inhalt
+                    clip: true
+                    contentWidth: width
+                    contentHeight: leftContent.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { policy: leftScroll.contentHeight > leftScroll.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff }
 
-                    Image {
-                        // Cover der erkannten Audio-CD (von einem Plugin geliefert)
-                        visible: status === Image.Ready
-                        source: (Player.sourceKind === "cdda" && Disc.info.meta && Disc.info.meta.cover) || ""
-                        Layout.preferredWidth: 132; Layout.preferredHeight: 132
-                        Layout.bottomMargin: 6
-                        sourceSize.width: 264; sourceSize.height: 264
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                    }
-                    SectionLabel { text: win.kindLabel(Player.sourceKind) + (Dcp.active && Dcp.current.contentKind ? " · " + Dcp.current.contentKind : "") }
-                    Text {
-                        Layout.fillWidth: true
-                        text: win.nowTitle
-                        color: Theme.text
-                        font.pixelSize: 28
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: {
-                            const parts = []
-                            if (win.navMode) {
-                                parts.push(!win.nav.menuMode ? qsTr("Titel") : win.nav.menuVisible ? qsTr("Disc-Menü") : qsTr("Menümodus"))
-                                if (win.nav.playlist >= 0) parts.push(("0000" + win.nav.playlist).slice(-5) + ".mpls")
-                                if (win.isDvd && DvdNav.title > 0) parts.push(qsTr("Titel ") + DvdNav.title + " / " + DvdNav.titles)
-                            } else if (Player.isDisc && Player.currentTitle >= 0) {
-                                parts.push(qsTr("Titel ") + (Player.currentTitle + 1))
-                            }
-                            if (win.curChapters.length) parts.push(qsTr("Kapitel ") + (win.curChapter + 1) + " / " + win.curChapters.length)
-                            if (Player.sourceKind === "cdda") {
-                                const track = (Disc.info.titles || [])[win.curChapter]
-                                if (track && track.name) parts.push(track.name + (track.artist ? " – " + track.artist : ""))
-                            }
-                            if (Player.sourceKind === "file") parts.push(Player.path)
-                            else if (Dcp.active) parts.push(Dcp.current.standard + " · " + Dcp.current.reels + qsTr(" Rolle(n)"))
-                            return parts.join("   ·   ")
-                        }
-                        color: Theme.textDim
-                        font.pixelSize: 13
-                        elide: Text.ElideMiddle
-                    }
-                    Flow {
-                        Layout.fillWidth: true
-                        Layout.topMargin: 6
-                        spacing: 6
-                        Chip { text: win.vinfo.range || ""; tint: win.vinfo.range === "SDR" ? Theme.textDim : Theme.hdr; filled: !!win.vinfo.range && win.vinfo.range !== "SDR" }
-                        Chip { text: win.vinfo.height >= 2000 ? "4K" : win.vinfo.height >= 1000 ? "1080p" : win.vinfo.height > 0 ? win.vinfo.height + "p" : "" }
-                        Chip { text: win.vinfo.codec || "" }
-                        Chip { text: win.vinfo.fps > 0 ? win.vinfo.fps.toFixed(3) + qsTr(" fps") : "" }
-                        Chip { text: (win.ainfo.codec || "") + (win.ainfo.channels ? " " + win.ainfo.channels : "") }
-                        Chip { text: win.ainfo.passthrough ? qsTr("BITSTREAM") : ""; tint: Theme.good }
-                        Chip {
-                            text: Player.mvcActive ? qsTr("3D MVC → ") + win.stereoLabel(Profiles.current.stereoOut)
-                                : Player.fileMvc ? qsTr("3D MVC → ") + win.stereoLabel(Profiles.current.stereoOut)
-                                : Player.stereoInput !== "none" ? "3D"
-                                : Disc.info.has3d ? qsTr("3D-Disc (2D)") : ""
-                            tint: Theme.accent
-                            filled: Player.mvcActive || Player.fileMvc
-                        }
-                        Chip { text: Player.tuningStatus; tint: Theme.warn }
-                        Chip { text: Player.buffering ? qsTr("Puffert …") : ""; tint: Theme.warn }
-                        Chip { text: Player.speed !== 1 ? Player.speed.toFixed(2) + "×" : ""; tint: Theme.accent }
-                        Chip { text: Player.embedded ? qsTr("Eingebettet · SDR") : ""; tint: Theme.textDim }
-                        Chip { text: Dcp.active && Dcp.current.encrypted ? qsTr("Entschlüsselt (KDM)") : ""; tint: Theme.good }
-                        Chip { text: Dcp.active && Dcp.reduction > 0 ? qsTr("J2K 1/") + Math.pow(2, Dcp.reduction) : ""; tint: Theme.warn }
-                        Chip { text: Dcp.active && Dcp.skipPlanes > 0 ? qsTr("J2K −%1 Bit").arg(Dcp.skipPlanes) : ""; tint: Theme.warn }
-                        Chip { text: Dcp.active && Dcp.fader !== 7 ? qsTr("Fader ") + Dcp.fader.toFixed(1) : ""; tint: Theme.textDim }
-                        Chip { text: Player.droppedFrames > 0 && !Player.idle ? Player.droppedFrames + (Player.droppedFrames === 1 ? qsTr(" Bild verworfen") : qsTr(" Bilder verworfen")) : ""; tint: Theme.warn }
-                        Chip { text: win.isDvd && DvdNav.angles > 1 ? qsTr("Winkel ") + DvdNav.angle + "/" + DvdNav.angles : ""; tint: Theme.accent }
-                    }
-
-                    // Video-CD-Wiedergabesteuerung (PBC): Auswahlnummern und Sprungtasten
                     ColumnLayout {
-                        visible: VcdNav.active
-                        Layout.topMargin: 10
-                        spacing: 6
-                        Text {
-                            text: VcdNav.selection ? qsTr("VCD-Menü – Auswahl per Zifferntaste") : qsTr("VCD-Wiedergabesteuerung")
-                            color: Theme.textDim
-                            font.pixelSize: 12
-                        }
-                        Flow {
-                            Layout.fillWidth: true
-                            visible: VcdNav.selection
-                            spacing: 4
-                            Repeater {
-                                model: VcdNav.state.choices || []
-                                delegate: Button {
-                                    required property var modelData
-                                    width: 36; height: 36
-                                    text: modelData
-                                    focusPolicy: Qt.NoFocus
-                                    font.pixelSize: 12; font.weight: Font.DemiBold
-                                    onClicked: String(modelData).split("").forEach(c => VcdNav.key(c))
-                                    contentItem: Text { text: parent.text; color: Theme.bg; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                    background: Rectangle { radius: 18; color: parent.down ? "#c9ccd6" : Theme.text }
-                                }
-                            }
-                        }
-                        RowLayout {
-                            spacing: 2
-                            Button { text: qsTr("Zurück"); flat: true; enabled: !!VcdNav.state.prev; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("prev") }
-                            Button { text: qsTr("OK"); flat: true; enabled: !!VcdNav.state["default"]; palette.windowText: Theme.accent; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("enter") }
-                            Button { text: qsTr("Weiter"); flat: true; enabled: !!VcdNav.state.next; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("next") }
-                            Button { text: qsTr("Menü"); flat: true; enabled: !!VcdNav.state["return"]; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("return") }
-                        }
-                    }
-
-                    // Fernbedienung für Disc-Menüs
-                    RowLayout {
-                        visible: win.navMode && win.nav.menuMode
-                        Layout.topMargin: 10
+                        id: leftContent
+                        width: leftScroll.width - 16
                         spacing: 18
 
-                        Grid {
-                            columns: 3
-                            spacing: 4
-                            Item { width: 36; height: 36 }
-                            IconButton { iconName: "up"; tip: qsTr("Hoch"); onClicked: win.nav.key("up") }
-                            Item { width: 36; height: 36 }
-                            IconButton { iconName: "left"; tip: qsTr("Links"); onClicked: win.nav.key("left") }
-                            Button {
-                                width: 36; height: 36
-                                text: qsTr("OK")
-                                focusPolicy: Qt.NoFocus
-                                font.pixelSize: 11; font.weight: Font.Bold
-                                onClicked: win.nav.key("enter")
-                                contentItem: Text { text: parent.text; color: Theme.bg; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                background: Rectangle { radius: 18; color: parent.down ? "#c9ccd6" : Theme.text }
-                            }
-                            IconButton { iconName: "right"; tip: qsTr("Rechts"); onClicked: win.nav.key("right") }
-                            Item { width: 36; height: 36 }
-                            IconButton { iconName: "down"; tip: qsTr("Runter"); onClicked: win.nav.key("down") }
-                            Item { width: 36; height: 36 }
-                        }
+                        // Jetzt läuft
                         ColumnLayout {
-                            spacing: 6
-                            Button {
-                                text: qsTr("Hauptmenü")
-                                flat: true
-                                palette.windowText: Theme.text
-                                onClicked: win.nav.key("menu")
+                            Layout.fillWidth: true
+                            spacing: 8
+                            visible: !Player.idle
+
+                            Image {
+                                // Cover der erkannten Audio-CD (von einem Plugin geliefert)
+                                visible: status === Image.Ready
+                                source: (Player.sourceKind === "cdda" && Disc.info.meta && Disc.info.meta.cover) || ""
+                                Layout.preferredWidth: 132; Layout.preferredHeight: 132
+                                Layout.bottomMargin: 6
+                                sourceSize.width: 264; sourceSize.height: 264
+                                fillMode: Image.PreserveAspectCrop
+                                asynchronous: true
                             }
-                            Button {
-                                text: win.isDvd ? qsTr("Titelmenü") : qsTr("Pop-up-Menü")
-                                flat: true
-                                enabled: win.nav.popupAvailable
-                                palette.windowText: Theme.text
-                                onClicked: win.nav.key("popup")
+                            SectionLabel { text: win.kindLabel(Player.sourceKind) + (Dcp.active && Dcp.current.contentKind ? " · " + Dcp.current.contentKind : "") }
+                            Text {
+                                Layout.fillWidth: true
+                                text: win.nowTitle
+                                color: Theme.text
+                                font.pixelSize: 28
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
                             }
+                            Text {
+                                Layout.fillWidth: true
+                                text: {
+                                    const parts = []
+                                    if (win.navMode) {
+                                        parts.push(!win.nav.menuMode ? qsTr("Titel") : win.nav.menuVisible ? qsTr("Disc-Menü") : qsTr("Menümodus"))
+                                        if (win.nav.playlist >= 0) parts.push(("0000" + win.nav.playlist).slice(-5) + ".mpls")
+                                        if (win.isDvd && DvdNav.title > 0) parts.push(qsTr("Titel ") + DvdNav.title + " / " + DvdNav.titles)
+                                    } else if (Player.isDisc && Player.currentTitle >= 0) {
+                                        parts.push(qsTr("Titel ") + (Player.currentTitle + 1))
+                                    }
+                                    if (win.curChapters.length) parts.push(qsTr("Kapitel ") + (win.curChapter + 1) + " / " + win.curChapters.length)
+                                    if (Player.sourceKind === "cdda") {
+                                        const track = (Disc.info.titles || [])[win.curChapter]
+                                        if (track && track.name) parts.push(track.name + (track.artist ? " – " + track.artist : ""))
+                                    }
+                                    if (Player.sourceKind === "file") parts.push(Player.path)
+                                    else if (Dcp.active) parts.push(Dcp.current.standard + " · " + Dcp.current.reels + qsTr(" Rolle(n)"))
+                                    return parts.join("   ·   ")
+                                }
+                                color: Theme.textDim
+                                font.pixelSize: 13
+                                elide: Text.ElideMiddle
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 6
+                                spacing: 6
+                                Chip { text: win.vinfo.range || ""; tint: win.vinfo.range === "SDR" ? Theme.textDim : Theme.hdr; filled: !!win.vinfo.range && win.vinfo.range !== "SDR" }
+                                Chip { text: win.vinfo.height >= 2000 ? "4K" : win.vinfo.height >= 1000 ? "1080p" : win.vinfo.height > 0 ? win.vinfo.height + "p" : "" }
+                                Chip { text: win.vinfo.codec || "" }
+                                Chip { text: win.vinfo.fps > 0 ? win.vinfo.fps.toFixed(3) + qsTr(" fps") : "" }
+                                Chip { text: (win.ainfo.codec || "") + (win.ainfo.channels ? " " + win.ainfo.channels : "") }
+                                Chip { text: win.ainfo.passthrough ? qsTr("BITSTREAM") : ""; tint: Theme.good }
+                                Chip {
+                                    text: Player.mvcActive ? qsTr("3D MVC → ") + win.stereoLabel(Profiles.current.stereoOut)
+                                        : Player.fileMvc ? qsTr("3D MVC → ") + win.stereoLabel(Profiles.current.stereoOut)
+                                        : Player.stereoInput !== "none" ? "3D"
+                                        : Disc.info.has3d ? qsTr("3D-Disc (2D)") : ""
+                                    tint: Theme.accent
+                                    filled: Player.mvcActive || Player.fileMvc
+                                }
+                                Chip { text: Player.tuningStatus; tint: Theme.warn }
+                                Chip { text: Player.buffering ? qsTr("Puffert …") : ""; tint: Theme.warn }
+                                Chip { text: Player.speed !== 1 ? Player.speed.toFixed(2) + "×" : ""; tint: Theme.accent }
+                                Chip { text: Player.embedded ? qsTr("Eingebettet · SDR") : ""; tint: Theme.textDim }
+                                Chip { text: Dcp.active && Dcp.current.encrypted ? qsTr("Entschlüsselt (KDM)") : ""; tint: Theme.good }
+                                Chip { text: Dcp.active && Dcp.reduction > 0 ? qsTr("J2K 1/") + Math.pow(2, Dcp.reduction) : ""; tint: Theme.warn }
+                                Chip { text: Dcp.active && Dcp.skipPlanes > 0 ? qsTr("J2K −%1 Bit").arg(Dcp.skipPlanes) : ""; tint: Theme.warn }
+                                Chip { text: Dcp.active && Dcp.fader !== 7 ? qsTr("Fader ") + Dcp.fader.toFixed(1) : ""; tint: Theme.textDim }
+                                Chip { text: Player.droppedFrames > 0 && !Player.idle ? Player.droppedFrames + (Player.droppedFrames === 1 ? qsTr(" Bild verworfen") : qsTr(" Bilder verworfen")) : ""; tint: Theme.warn }
+                                Chip { text: win.isDvd && DvdNav.angles > 1 ? qsTr("Winkel ") + DvdNav.angle + "/" + DvdNav.angles : ""; tint: Theme.accent }
+                            }
+
+                            // Video-CD-Wiedergabesteuerung (PBC): Auswahlnummern und Sprungtasten
+                            ColumnLayout {
+                                visible: VcdNav.active
+                                Layout.topMargin: 10
+                                spacing: 6
+                                Text {
+                                    text: VcdNav.selection ? qsTr("VCD-Menü – Auswahl per Zifferntaste") : qsTr("VCD-Wiedergabesteuerung")
+                                    color: Theme.textDim
+                                    font.pixelSize: 12
+                                }
+                                Flow {
+                                    Layout.fillWidth: true
+                                    visible: VcdNav.selection
+                                    spacing: 4
+                                    Repeater {
+                                        model: VcdNav.state.choices || []
+                                        delegate: Button {
+                                            required property var modelData
+                                            width: 36; height: 36
+                                            text: modelData
+                                            focusPolicy: Qt.NoFocus
+                                            font.pixelSize: 12; font.weight: Font.DemiBold
+                                            onClicked: String(modelData).split("").forEach(c => VcdNav.key(c))
+                                            contentItem: Text { text: parent.text; color: Theme.bg; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                            background: Rectangle { radius: 18; color: parent.down ? "#c9ccd6" : Theme.text }
+                                        }
+                                    }
+                                }
+                                RowLayout {
+                                    spacing: 2
+                                    Button { text: qsTr("Zurück"); flat: true; enabled: !!VcdNav.state.prev; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("prev") }
+                                    Button { text: qsTr("OK"); flat: true; enabled: !!VcdNav.state["default"]; palette.windowText: Theme.accent; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("enter") }
+                                    Button { text: qsTr("Weiter"); flat: true; enabled: !!VcdNav.state.next; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("next") }
+                                    Button { text: qsTr("Menü"); flat: true; enabled: !!VcdNav.state["return"]; palette.windowText: Theme.text; opacity: enabled ? 1 : 0.35; onClicked: VcdNav.key("return") }
+                                }
+                            }
+
+                            // Fernbedienung für Disc-Menüs
                             RowLayout {
-                                visible: win.isDvd
-                                spacing: 2
-                                Button { text: qsTr("Ton"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("audio") }
-                                Button { text: qsTr("Untertitel"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("subtitle") }
-                                Button { text: qsTr("Zurück"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("back") }
-                                Button {
-                                    text: qsTr("Winkel ") + DvdNav.angle
-                                    visible: DvdNav.angles > 1
-                                    flat: true; palette.windowText: Theme.accent
-                                    onClicked: DvdNav.setAngle(DvdNav.angle % DvdNav.angles + 1)
+                                visible: win.navMode && win.nav.menuMode
+                                Layout.topMargin: 10
+                                spacing: 18
+
+                                Grid {
+                                    columns: 3
+                                    spacing: 4
+                                    Item { width: 36; height: 36 }
+                                    IconButton { iconName: "up"; tip: qsTr("Hoch"); onClicked: win.nav.key("up") }
+                                    Item { width: 36; height: 36 }
+                                    IconButton { iconName: "left"; tip: qsTr("Links"); onClicked: win.nav.key("left") }
+                                    Button {
+                                        width: 36; height: 36
+                                        text: qsTr("OK")
+                                        focusPolicy: Qt.NoFocus
+                                        font.pixelSize: 11; font.weight: Font.Bold
+                                        onClicked: win.nav.key("enter")
+                                        contentItem: Text { text: parent.text; color: Theme.bg; font: parent.font; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                        background: Rectangle { radius: 18; color: parent.down ? "#c9ccd6" : Theme.text }
+                                    }
+                                    IconButton { iconName: "right"; tip: qsTr("Rechts"); onClicked: win.nav.key("right") }
+                                    Item { width: 36; height: 36 }
+                                    IconButton { iconName: "down"; tip: qsTr("Runter"); onClicked: win.nav.key("down") }
+                                    Item { width: 36; height: 36 }
+                                }
+                                ColumnLayout {
+                                    spacing: 6
+                                    Button {
+                                        text: qsTr("Hauptmenü")
+                                        flat: true
+                                        palette.windowText: Theme.text
+                                        onClicked: win.nav.key("menu")
+                                    }
+                                    Button {
+                                        text: win.isDvd ? qsTr("Titelmenü") : qsTr("Pop-up-Menü")
+                                        flat: true
+                                        enabled: win.nav.popupAvailable
+                                        palette.windowText: Theme.text
+                                        onClicked: win.nav.key("popup")
+                                    }
+                                    RowLayout {
+                                        visible: win.isDvd
+                                        spacing: 2
+                                        Button { text: qsTr("Ton"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("audio") }
+                                        Button { text: qsTr("Untertitel"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("subtitle") }
+                                        Button { text: qsTr("Zurück"); flat: true; palette.windowText: Theme.textDim; onClicked: DvdNav.key("back") }
+                                        Button {
+                                            text: qsTr("Winkel ") + DvdNav.angle
+                                            visible: DvdNav.angles > 1
+                                            flat: true; palette.windowText: Theme.accent
+                                            onClicked: DvdNav.setAngle(DvdNav.angle % DvdNav.angles + 1)
+                                        }
+                                    }
+                                    Text {
+                                        text: qsTr("Pfeile/Enter/Maus funktionieren auch im Player-Fenster · Pos1 = Hauptmenü · Ende = ") + (win.isDvd ? qsTr("Titelmenü") : qsTr("Pop-up"))
+                                        color: Theme.textFaint
+                                        font.pixelSize: 11
+                                    }
                                 }
                             }
                             Text {
-                                text: qsTr("Pfeile/Enter/Maus funktionieren auch im Player-Fenster · Pos1 = Hauptmenü · Ende = ") + (win.isDvd ? qsTr("Titelmenü") : qsTr("Pop-up"))
+                                Layout.fillWidth: true
+                                text: win.vinfo.summary || ""
                                 color: Theme.textFaint
+                                font.family: Theme.mono
                                 font.pixelSize: 11
+                                elide: Text.ElideRight
                             }
                         }
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: win.vinfo.summary || ""
-                        color: Theme.textFaint
-                        font.family: Theme.mono
-                        font.pixelSize: 11
-                        elide: Text.ElideRight
-                    }
-                }
 
-                // Leerlauf: Discs direkt anbieten
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    visible: Player.idle
-                    spacing: 14
-                    SectionLabel { text: qsTr("Bereit") }
-                    Text {
-                        text: Drives.drives.some(d => d.kind === "dcp") && !Drives.drives.some(d => d.kind && d.kind !== "dcp") ? qsTr("DCP gefunden – bereit zur Vorführung")
-                            : Drives.drives.some(d => !!d.kind) ? qsTr("Disc erkannt – bereit zur Wiedergabe") : qsTr("Disc einlegen oder Datei öffnen")
-                        color: Theme.text
-                        font.pixelSize: 26
-                        font.weight: Font.DemiBold
-                    }
-                    // Was zuletzt nicht abgespielt werden konnte (sonst stünde es nur klein in der Statuszeile)
-                    Text {
-                        Layout.fillWidth: true
-                        visible: !!Player.lastError
-                        text: Player.lastError
-                        color: Theme.bad
-                        font.pixelSize: 13
-                        wrapMode: Text.WordWrap
-                    }
-                    // Sprache direkt auf der Startseite wählen
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Repeater {
-                            model: I18n.languages
-                            delegate: AbstractButton {
-                                id: langBtn
-                                required property var modelData
-                                readonly property bool current: I18n.effective === modelData.code
-                                focusPolicy: Qt.NoFocus
-                                Accessible.name: modelData.name
-                                Accessible.checkable: true
-                                Accessible.checked: current
-                                implicitWidth: langText.implicitWidth + 18
-                                implicitHeight: 26
-                                onClicked: I18n.language = modelData.code
-                                HoverHandler { cursorShape: Qt.PointingHandCursor }
-                                contentItem: Text {
-                                    id: langText
-                                    text: langBtn.modelData.name
-                                    color: langBtn.current ? Theme.bg : langBtn.hovered ? Theme.text : Theme.textDim
-                                    font.pixelSize: 12
-                                    font.weight: langBtn.current ? Font.DemiBold : Font.Normal
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    radius: 13
-                                    color: langBtn.current ? Theme.text : "transparent"
-                                    border.color: langBtn.current ? "transparent" : Theme.line
-                                }
+                        // Leerlauf: Discs direkt anbieten
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            visible: Player.idle
+                            spacing: 14
+                            SectionLabel { text: qsTr("Bereit") }
+                            Text {
+                                text: Drives.drives.some(d => d.kind === "dcp") && !Drives.drives.some(d => d.kind && d.kind !== "dcp") ? qsTr("DCP gefunden – bereit zur Vorführung")
+                                    : Drives.drives.some(d => !!d.kind) ? qsTr("Disc erkannt – bereit zur Wiedergabe") : qsTr("Disc einlegen oder Datei öffnen")
+                                color: Theme.text
+                                font.pixelSize: 26
+                                font.weight: Font.DemiBold
                             }
-                        }
-                    }
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: 10
-                        Repeater {
-                            model: Drives.drives.filter(d => d.hasDisc)
-                            delegate: Rectangle {
-                                required property var modelData
-                                width: 260; height: 76
-                                radius: Theme.radius
-                                color: tile.hovered ? Theme.hover : Theme.raised
-                                border.color: Theme.line
-                                HoverHandler { id: tile; cursorShape: Qt.PointingHandCursor }
-                                TapHandler { onTapped: win.playDrive(parent.modelData) }
+                            // Was zuletzt nicht abgespielt werden konnte (sonst stünde es nur klein in der Statuszeile)
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: 720
+                                visible: !!Player.lastError && Player.lastError !== win.dismissedError
+                                implicitHeight: errorRow.implicitHeight + 20
+                                radius: Theme.radiusSmall
+                                color: Qt.rgba(Theme.bad.r, Theme.bad.g, Theme.bad.b, 0.10)
+                                border.color: Qt.rgba(Theme.bad.r, Theme.bad.g, Theme.bad.b, 0.35)
                                 RowLayout {
+                                    id: errorRow
                                     anchors.fill: parent
-                                    anchors.margins: 14
-                                    spacing: 12
-                                    Image { source: Theme.icon(modelData.kind === "dcp" ? "folder" : "disc"); sourceSize: Qt.size(28, 28); opacity: 0.8 }
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 2
-                                        Text { Layout.fillWidth: true; text: modelData.label || modelData.device; color: Theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: (modelData.kindLabel || qsTr("Disc")) + (modelData.is3d ? qsTr(" · 3D") : "") + (modelData.hardware ? " · " + modelData.hardware : "")
-                                            color: Theme.textDim; font.pixelSize: 11; elide: Text.ElideRight
-                                        }
+                                    anchors.margins: 10
+                                    spacing: 10
+                                    IconButton {
+                                        iconName: "warning"
+                                        size: 22; iconSize: 18
+                                        enabled: false
+                                        icon.color: Theme.bad
+                                        Layout.alignment: Qt.AlignTop
                                     }
-                                }
-                            }
-                        }
-                    }
-                    RowLayout {
-                        visible: Recent.items.length > 0
-                        Layout.fillWidth: true
-                        SectionLabel { text: qsTr("Zuletzt gespielt"); Layout.fillWidth: true }
-                        Button {
-                            text: qsTr("Liste leeren")
-                            flat: true
-                            focusPolicy: Qt.NoFocus
-                            font.pixelSize: 11
-                            palette.windowText: Theme.textFaint
-                            onClicked: Recent.clear()
-                        }
-                    }
-                    Flow {
-                        id: recentFlow
-                        visible: Recent.items.length > 0
-                        Layout.fillWidth: true
-                        spacing: 10
-                        Repeater {
-                            model: Recent.items.slice(0, 4)
-                            delegate: Rectangle {
-                                id: recentTile
-                                required property var modelData
-                                width: Math.max(220, Math.min(360, (recentFlow.width - 10) / 2))
-                                height: 60
-                                radius: Theme.radius
-                                color: recentHover.hovered ? Theme.hover : Theme.raised
-                                border.color: Theme.line
-                                clip: true
-                                HoverHandler { id: recentHover; cursorShape: Qt.PointingHandCursor }
-                                TapHandler { onTapped: if (!recentRemove.hovered) win.openRecent(recentTile.modelData) }
-                                Accessible.role: Accessible.Button
-                                Accessible.name: recentTile.modelData.title
-                                Accessible.onPressAction: win.openRecent(recentTile.modelData)
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 14
-                                    anchors.rightMargin: 8
-                                    spacing: 12
-                                    Image {
-                                        source: Theme.icon(recentTile.modelData.kind === "file" ? "play" : recentTile.modelData.kind === "dcp" ? "folder" : "disc")
-                                        sourceSize: Qt.size(22, 22)
-                                        opacity: 0.7
-                                    }
-                                    ColumnLayout {
+                                    Text {
                                         Layout.fillWidth: true
-                                        spacing: 2
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: recentTile.modelData.title || recentTile.modelData.path
-                                            color: Theme.text; font.pixelSize: 13; font.weight: Font.DemiBold
-                                            elide: Text.ElideRight
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: win.kindLabel(recentTile.modelData.kind)
-                                                  + (recentTile.modelData.position > 5 ? "  ·  " + qsTr("Weiter bei %1").arg(Theme.time(recentTile.modelData.position)) : "")
-                                            color: Theme.textDim; font.pixelSize: 11
-                                            elide: Text.ElideRight
-                                        }
+                                        text: Player.lastError
+                                        color: Theme.text
+                                        font.pixelSize: 13
+                                        wrapMode: Text.WordWrap
                                     }
                                     IconButton {
-                                        id: recentRemove
                                         iconName: "close"
-                                        size: 26; iconSize: 14
-                                        opacity: recentHover.hovered ? 1 : 0
-                                        tip: qsTr("Aus der Liste entfernen")
-                                        onClicked: Recent.remove(recentTile.modelData.path)
+                                        size: 22; iconSize: 14
+                                        tip: qsTr("Schließen")
+                                        Layout.alignment: Qt.AlignTop
+                                        onClicked: win.dismissedError = Player.lastError
                                     }
                                 }
-                                Rectangle {
-                                    // Fortschritt der zuletzt erreichten Position
-                                    visible: recentTile.modelData.position > 5 && recentTile.modelData.duration > 0
-                                    anchors.bottom: parent.bottom
-                                    height: 2
-                                    width: parent.width * Math.min(1, recentTile.modelData.position / Math.max(1, recentTile.modelData.duration))
-                                    color: Theme.accent
+                            }
+                            // Schnellzugriff: was sich außer einer Disc öffnen lässt
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Repeater {
+                                    model: [
+                                        { icon: "film", label: qsTr("Datei oder Abbild …"), run: () => fileDialog.open() },
+                                        { icon: "folder", label: qsTr("Disc-Ordner …"), run: () => folderDialog.open() },
+                                        { icon: "link", label: qsTr("Stream-Link …"), run: () => settings.tab = 6 }
+                                    ]
+                                    delegate: AbstractButton {
+                                        id: quick
+                                        required property var modelData
+                                        focusPolicy: Qt.NoFocus
+                                        Accessible.name: modelData.label
+                                        implicitWidth: quickRow.implicitWidth + 26
+                                        implicitHeight: 34
+                                        onClicked: modelData.run()
+                                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                        contentItem: Row {
+                                            id: quickRow
+                                            spacing: 8
+                                            leftPadding: 12
+                                            Image {
+                                                source: Theme.icon(quick.modelData.icon)
+                                                sourceSize: Qt.size(16, 16)
+                                                opacity: quick.hovered ? 0.95 : 0.6
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+                                            Text {
+                                                text: quick.modelData.label
+                                                color: quick.hovered ? Theme.text : Theme.textDim
+                                                font.pixelSize: 12
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+                                        }
+                                        background: Rectangle {
+                                            radius: 17
+                                            color: quick.down ? Theme.hover : quick.hovered ? Theme.raised : "transparent"
+                                            border.color: Theme.line
+                                        }
+                                    }
+                                }
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Repeater {
+                                    model: Drives.drives.filter(d => d.hasDisc)
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: 260; height: 76
+                                        radius: Theme.radius
+                                        color: tile.hovered ? Theme.hover : Theme.raised
+                                        border.color: Theme.line
+                                        HoverHandler { id: tile; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler { onTapped: win.playDrive(parent.modelData) }
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 14
+                                            spacing: 12
+                                            Image { source: Theme.icon(modelData.kind === "dcp" ? "folder" : "disc"); sourceSize: Qt.size(28, 28); opacity: 0.8 }
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 2
+                                                Text { Layout.fillWidth: true; text: modelData.label || modelData.device; color: Theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: (modelData.kindLabel || qsTr("Disc")) + (modelData.is3d ? qsTr(" · 3D") : "") + (modelData.hardware ? " · " + modelData.hardware : "")
+                                                    color: Theme.textDim; font.pixelSize: 11; elide: Text.ElideRight
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            RowLayout {
+                                visible: Recent.items.length > 0
+                                Layout.fillWidth: true
+                                SectionLabel { text: qsTr("Zuletzt gespielt"); Layout.fillWidth: true }
+                                Button {
+                                    text: qsTr("Liste leeren")
+                                    flat: true
+                                    focusPolicy: Qt.NoFocus
+                                    font.pixelSize: 11
+                                    palette.windowText: Theme.textFaint
+                                    onClicked: Recent.clear()
+                                }
+                            }
+                            Flow {
+                                id: recentFlow
+                                visible: Recent.items.length > 0
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Repeater {
+                                    model: Recent.items.slice(0, 4)
+                                    delegate: Rectangle {
+                                        id: recentTile
+                                        required property var modelData
+                                        width: Math.max(220, Math.min(360, (recentFlow.width - 10) / 2))
+                                        height: 60
+                                        radius: Theme.radius
+                                        color: recentHover.hovered ? Theme.hover : Theme.raised
+                                        border.color: Theme.line
+                                        clip: true
+                                        HoverHandler { id: recentHover; cursorShape: Qt.PointingHandCursor }
+                                        TapHandler { onTapped: if (!recentRemove.hovered) win.openRecent(recentTile.modelData) }
+                                        Accessible.role: Accessible.Button
+                                        Accessible.name: recentTile.modelData.title
+                                        Accessible.onPressAction: win.openRecent(recentTile.modelData)
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 14
+                                            anchors.rightMargin: 8
+                                            spacing: 12
+                                            Image {
+                                                source: Theme.icon(recentTile.modelData.kind === "file" ? "play" : recentTile.modelData.kind === "dcp" ? "folder" : "disc")
+                                                sourceSize: Qt.size(22, 22)
+                                                opacity: 0.7
+                                            }
+                                            ColumnLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 2
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: recentTile.modelData.title || recentTile.modelData.path
+                                                    color: Theme.text; font.pixelSize: 13; font.weight: Font.DemiBold
+                                                    elide: Text.ElideRight
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: win.kindLabel(recentTile.modelData.kind)
+                                                          + (recentTile.modelData.position > 5 ? "  ·  " + qsTr("Weiter bei %1").arg(Theme.time(recentTile.modelData.position)) : "")
+                                                    color: Theme.textDim; font.pixelSize: 11
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+                                            IconButton {
+                                                id: recentRemove
+                                                iconName: "close"
+                                                size: 26; iconSize: 14
+                                                opacity: recentHover.hovered ? 1 : 0
+                                                tip: qsTr("Aus der Liste entfernen")
+                                                onClicked: Recent.remove(recentTile.modelData.path)
+                                            }
+                                        }
+                                        Rectangle {
+                                            // Fortschritt der zuletzt erreichten Position
+                                            visible: recentTile.modelData.position > 5 && recentTile.modelData.duration > 0
+                                            anchors.bottom: parent.bottom
+                                            height: 2
+                                            width: parent.width * Math.min(1, recentTile.modelData.position / Math.max(1, recentTile.modelData.duration))
+                                            color: Theme.accent
+                                        }
+                                    }
+                                }
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 28
+                                Toggle {
+                                    label: qsTr("Discs beim Einlegen automatisch abspielen")
+                                    checked: settings.autoPlay
+                                    onToggled: settings.autoPlay = checked
+                                    width: 310
+                                }
+                                Toggle {
+                                    label: qsTr("Mit Disc-Menü starten")
+                                    hint: qsTr("Aus: Hauptfilm direkt abspielen")
+                                    checked: settings.startWithMenu
+                                    onToggled: settings.startWithMenu = checked
+                                    width: 310
                                 }
                             }
                         }
                     }
-                    Toggle {
-                        label: qsTr("Discs beim Einlegen automatisch abspielen")
-                        checked: settings.autoPlay
-                        onToggled: settings.autoPlay = checked
-                        implicitWidth: 360
-                    }
-                    Toggle {
-                        label: qsTr("Mit Disc-Menü starten")
-                        hint: qsTr("Aus: Hauptfilm direkt abspielen")
-                        checked: settings.startWithMenu
-                        onToggled: settings.startWithMenu = checked
-                        implicitWidth: 360
-                    }
                 }
-
-                Item { Layout.fillHeight: true }
 
                 // Transport
                 Rectangle {
@@ -846,30 +944,31 @@ ApplicationWindow {
                     anchors.leftMargin: 1
                     spacing: 0
 
-                    // Tabs
-                    Flow {
+                    // Bereiche: Wiedergabe (mit ihren Seiten darunter), Kino, Streaming, Ausgabe, Plugins.
+                    // settings.tab zählt weiter die Seiten 0–8 durch.
+                    Row {
                         Layout.fillWidth: true
                         Layout.leftMargin: 12
                         Layout.rightMargin: 12
                         Layout.topMargin: 10
                         spacing: 2
                         Repeater {
-                            model: [qsTr("Titel"), qsTr("Kapitel"), qsTr("Ton"), qsTr("Untertitel"), qsTr("Bild"), qsTr("Kino"), qsTr("Streaming"), qsTr("Ausgabe"), qsTr("Plugins")]
+                            model: [{ label: qsTr("Wiedergabe"), tab: -1 }, { label: qsTr("Kino"), tab: 5 }, { label: qsTr("Streaming"), tab: 6 },
+                                    { label: qsTr("Ausgabe"), tab: 7 }, { label: qsTr("Plugins"), tab: 8 }]
                             delegate: AbstractButton {
                                 id: tabBtn
-                                required property string modelData
-                                required property int index
-                                readonly property bool current: settings.tab === index
+                                required property var modelData
+                                readonly property bool current: modelData.tab < 0 ? settings.tab <= 4 : settings.tab === modelData.tab
                                 focusPolicy: Qt.NoFocus
                                 Accessible.role: Accessible.PageTab
-                                Accessible.name: modelData
+                                Accessible.name: modelData.label
                                 Accessible.checked: current
-                                implicitWidth: tabLabel.implicitWidth + 20
+                                implicitWidth: tabLabel.implicitWidth + 24
                                 implicitHeight: 36
-                                onClicked: settings.tab = index
+                                onClicked: settings.tab = modelData.tab < 0 ? win.playbackTab : modelData.tab
                                 contentItem: Text {
                                     id: tabLabel
-                                    text: tabBtn.modelData
+                                    text: tabBtn.modelData.label
                                     color: tabBtn.current ? Theme.text : tabBtn.hovered ? Theme.textDim : Theme.textFaint
                                     font.pixelSize: 13
                                     font.weight: tabBtn.current ? Font.DemiBold : Font.Normal
@@ -886,6 +985,44 @@ ApplicationWindow {
                         }
                     }
                     Rectangle { Layout.fillWidth: true; height: 1; color: Theme.line }
+                    Row {
+                        visible: settings.tab <= 4
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        Layout.topMargin: 10
+                        spacing: 4
+                        Repeater {
+                            model: [qsTr("Titel"), qsTr("Kapitel"), qsTr("Ton"), qsTr("Untertitel"), qsTr("Bild")]
+                            delegate: AbstractButton {
+                                id: pageBtn
+                                required property string modelData
+                                required property int index
+                                readonly property bool current: settings.tab === index
+                                focusPolicy: Qt.NoFocus
+                                Accessible.role: Accessible.PageTab
+                                Accessible.name: modelData
+                                Accessible.checked: current
+                                implicitWidth: pageLabel.implicitWidth + 22
+                                implicitHeight: 28
+                                onClicked: settings.tab = index
+                                contentItem: Text {
+                                    id: pageLabel
+                                    text: pageBtn.modelData
+                                    color: pageBtn.current ? Theme.text : pageBtn.hovered ? Theme.text : Theme.textDim
+                                    font.pixelSize: 12
+                                    font.weight: pageBtn.current ? Font.DemiBold : Font.Normal
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    radius: 14
+                                    color: pageBtn.current ? Theme.hover : pageBtn.hovered ? Theme.raised : "transparent"
+                                    border.color: pageBtn.current ? Theme.line : "transparent"
+                                }
+                            }
+                        }
+                    }
 
                     StackLayout {
                         Layout.fillWidth: true
@@ -944,6 +1081,13 @@ ApplicationWindow {
                                         visible: Disc.busy
                                         text: qsTr("Lese Disc-Struktur …")
                                         color: Theme.textDim; font.pixelSize: 12
+                                    }
+                                    Text {
+                                        visible: win.discSlow
+                                        Layout.fillWidth: true
+                                        text: qsTr("Das Laufwerk antwortet nicht. Benutzt gerade ein anderes Programm die Disc (z. B. MakeMKV)?")
+                                        color: Theme.warn; font.pixelSize: 12
+                                        wrapMode: Text.WordWrap
                                     }
                                     Text {
                                         visible: !Disc.busy && !!discStatus.i.error
@@ -1013,7 +1157,7 @@ ApplicationWindow {
                                 visible: win.nav.status.length > 0
                                 text: win.nav.status
                                 wrapMode: Text.WordWrap
-                                color: win.nav.active ? Theme.good : Theme.warn
+                                color: win.nav.active && !win.nav.menuFallback ? Theme.good : Theme.warn
                                 font.pixelSize: 12
                             }
                             SelectList {

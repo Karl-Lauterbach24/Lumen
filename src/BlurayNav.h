@@ -37,6 +37,8 @@ class BlurayNav : public QObject
     Q_PROPERTY(double position READ position NOTIFY positionChanged)
     Q_PROPERTY(double duration READ duration NOTIFY stateChanged)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+    // Das Menü ließ sich nicht starten, es läuft der Hauptfilm (status nennt den Grund)
+    Q_PROPERTY(bool menuFallback READ menuFallback NOTIFY stateChanged)
     Q_PROPERTY(bool mvcActive READ mvcActive NOTIFY mvcChanged)
     Q_PROPERTY(bool baseViewRight READ baseViewRight NOTIFY mvcChanged)
     Q_PROPERTY(int subtitleDepth READ subtitleDepth WRITE setSubtitleDepth NOTIFY subtitleDepthChanged)
@@ -67,6 +69,7 @@ public:
     double position() const { return m_position; }
     double duration() const { return m_duration; }
     QString status() const { return m_status; }
+    bool menuFallback() const { return m_menuFallback; }
     bool mvcActive() const { return m_mvcActive; }
     bool baseViewRight() const { return m_baseRight; }
     int subtitleDepth() const { return m_subtitleDepth; }
@@ -134,6 +137,7 @@ private:
     double m_position = 0;
     double m_duration = 0;
     QString m_status;
+    bool m_menuFallback = false;
 
     // 3D
     std::atomic_bool m_want3d{false};
