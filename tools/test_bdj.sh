@@ -21,7 +21,10 @@ if [ ! -x "$T" ]; then
     exit 0
 fi
 if [ -n "${JAVA_HOME:-}" ] && ! command -v javac > /dev/null 2>&1; then
-    PATH="$PATH:$JAVA_HOME/bin"
+    # MSYS2 does not take over the Windows PATH; JAVA_HOME is a Windows path there
+    home="$JAVA_HOME"
+    if command -v cygpath > /dev/null 2>&1; then home="$(cygpath -u "$JAVA_HOME")"; fi
+    PATH="$PATH:$home/bin"
 fi
 if ! command -v javac > /dev/null 2>&1 || ! command -v jar > /dev/null 2>&1; then
     echo "BD-J menu: no JDK (javac, jar) - skipped"
