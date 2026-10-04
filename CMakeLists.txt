@@ -475,6 +475,8 @@ if(LUMEN_BUILD_TESTS AND LUMEN_HAVE_BLURAY)
     add_executable(bdj_test tests/bdj_test.cpp src/BdjSetup.cpp src/BdjSetup.h)
     target_compile_definitions(bdj_test PRIVATE LUMEN_HAVE_BLURAY=1)
     target_link_libraries(bdj_test PRIVATE Qt6::Gui lumen_bluray)
+    # Die Paket-Builds bauen nur "lumen mvcmerge_test": was tools/test_bd3d.sh außerdem aufruft, fährt mit
+    add_dependencies(mvcmerge_test tsretime_test bdj_test)
 endif()
 # Test: DCP lesen, KDM auspacken, Spurdateien entschlüsseln, Untertitel wandeln
 if(LUMEN_BUILD_TESTS)
