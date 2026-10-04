@@ -9,6 +9,7 @@ Qt-Plugins und QML-Module erledigt vorher windeployqt.
 """
 import argparse
 import os
+import re
 import shutil
 import struct
 import sys
@@ -65,6 +66,33 @@ def pe_imports(path):
     return names
 
 
+def deploy_bdj(target):
+    """Legt libblurays Java-Archiv (BD-J-Menüs) in den Ordner "bdj" neben die exe.
+
+    libbluray lädt nur das Archiv der eigenen Version; dessen Name steht in der DLL. Die Archive
+    liegen in resources/bdj (tools/build_bdj.sh).
+    """
+    dlls = [f for f in os.listdir(lp(target)) if re.match(r"libbluray(-\d+)?\.dll$", f.lower())]
+    if not dlls:
+        return
+    with open(lp(os.path.join(target, dlls[0])), "rb") as f:
+        m = re.search(rb"libbluray-j2se-(\d+\.\d+\.\d+)\.jar", f.read())
+    if not m:
+        print("BD-J: diese libbluray lädt kein Java-Archiv")
+        return
+    version = m.group(1).decode("ascii")
+    source = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "bdj")
+    jars = [os.path.join(source, f"libbluray-{part}j2se-{version}.jar") for part in ("", "awt-")]
+    if not all(os.path.exists(j) for j in jars):
+        print(f"BD-J: kein Archiv für libbluray {version} in resources/bdj (tools/build_bdj.sh) - "
+              "BD-J-Menüs fehlen im Paket", file=sys.stderr)
+        return
+    os.makedirs(lp(os.path.join(target, "bdj")), exist_ok=True)
+    for j in jars:
+        shutil.copy2(j, lp(os.path.join(target, "bdj", os.path.basename(j))))
+    print(f"BD-J: Archiv für libbluray {version} kopiert")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("exe")
@@ -111,6 +139,7 @@ def main():
         with open(lp(qtconf), "w", encoding="ascii") as f:
             f.write("[Paths]\nPrefix = .\nPlugins = .\nQmlImports = qml\n")
     print(f"{copied} DLLs kopiert, {len(seen)} Abhängigkeiten geprüft")
+    deploy_bdj(target)
 
 
 if __name__ == "__main__":

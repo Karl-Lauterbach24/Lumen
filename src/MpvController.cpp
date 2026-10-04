@@ -227,7 +227,18 @@ MpvController::MpvController(DisplayManager *displays, BlurayNav *nav, QObject *
     const QString snap = qEnvironmentVariable("LUMEN_PLAYER_SNAPSHOT");
     if (snap.contains(QLatin1Char('@'))) {
         m_snapshotFile = snap.section(QLatin1Char('@'), 0, -2);
-        m_snapshotAt = snap.section(QLatin1Char('@'), -1).toDouble();
+        const QString when = snap.section(QLatin1Char('@'), -1);
+        if (when.startsWith(QLatin1Char('+'))) {
+            // <datei>@+<sekunden>: so lange nach dem Start, ohne anzuhalten (Disc-Menüs: dort zählt
+            // jede Playlist ihre Zeit von vorn)
+            m_snapshotAt = -1;
+            QTimer::singleShot(int(when.mid(1).toDouble() * 1000), this, [this] {
+                if (m_window)
+                    m_window->grabFramebuffer().save(m_snapshotFile);
+            });
+        } else {
+            m_snapshotAt = when.toDouble();
+        }
     }
     if (m_nav) {
         connect(m_nav, &BlurayNav::audioPidSelected, this, [this](int pid) { selectTrackByPid(QStringLiteral("audio"), pid); });

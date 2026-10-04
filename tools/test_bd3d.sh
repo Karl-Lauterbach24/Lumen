@@ -58,6 +58,12 @@ print('%d packets, %s' % (len(a), 'all moved by 100 s' if ok else 'time stamps d
     case "$result" in *"all moved by 100 s") ;; *) echo "::error::Blu-ray: time stamps not moved onto the playlist's time line"; exit 1 ;; esac
 fi
 
+# BD-J menus: rides along because every CI platform calls this script. Report only, the packages are
+# built either way: where no Java is at hand the test skips itself, and a failure shows as a warning.
+if [ -z "${LUMEN_SKIP_BDJ:-}" ]; then
+    bash "$HERE/tools/test_bdj.sh" "$BUILD" "$WORK/bdj" || echo "::warning::BD-J menu test failed on this platform"
+fi
+
 # Rides along because every CI platform (Windows too) calls this script: how fast the software
 # decoder runs there. Report only. LUMEN_SKIP_BENCH=1 leaves it out.
 if [ -z "${LUMEN_SKIP_BENCH:-}" ]; then

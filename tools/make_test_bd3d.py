@@ -165,7 +165,7 @@ def clpi(num_packets, pid, coding, first_pts, end_pts, eps):
     return head + clipinfo + sequence + program + cpi + mark
 
 
-def mpls(in45, out45):
+def mpls(in45, out45, ss=True):
     uo = b"\x00" * 8
     appinfo_body = bytes([0, 1]) + b"\x00\x00" + uo + b"\x00\x00"  # playback_type 1 (sequentiell)
     appinfo = struct.pack(">I", len(appinfo_body)) + appinfo_body
@@ -193,6 +193,8 @@ def mpls(in45, out45):
     list_pos = 40 + len(appinfo)
     mark_pos = list_pos + len(playlist)
     ext_pos = mark_pos + len(marks)
+    if not ss:
+        ext_block, ext_pos = b"", 0  # 2D: ohne Erweiterungsdaten
     head = b"MPLS0200" + struct.pack(">III", list_pos, mark_pos, ext_pos) + b"\x00" * 20
     return head + appinfo + playlist + marks + ext_block
 

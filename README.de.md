@@ -144,7 +144,7 @@ Doku und Beispiele: [plugins/README.md](plugins/README.md) (englisch).
 | Bereich | Umfang |
 |---|---|
 | Quellen | Optische Laufwerke (Auto-Erkennung, Hersteller/Modell/Firmware, Auswerfen, Autostart beim Einlegen), ISO (Blu-ray/DVD/HD DVD automatisch erkannt), CUE/BIN/NRG-Abbilder, Disc-Ordner (BDMV, VIDEO_TS, HVDVD_TS, MPEGAV/MPEG2), DCP-Ordner und Kino-Festplatten, alle Formate, die mpv abspielt |
-| Blu-ray | Disc-Menüs (HDMV; BD-J mit Java und dem JAR von libbluray, sonst läuft der Hauptfilm), Hauptfilm, Titel/Playlists mit Laufzeit, Video-/Tonformat, UHD- und 3D-Erkennung |
+| Blu-ray | Disc-Menüs (HDMV; BD-J mit einer Java-Laufzeit, sonst läuft der Hauptfilm), Hauptfilm, Titel/Playlists mit Laufzeit, Video-/Tonformat, UHD- und 3D-Erkennung |
 | **Blu-ray 3D** | **Beide Ansichten (MVC)**, Ausgabe als HDMI Frame Packing 1080p, Side-by-Side/Top-and-Bottom (Half/Full), Zeilenverschachtelt, Anaglyph oder 2D; Untertitel und Menüs je Auge mit einstellbarer Tiefe |
 | **DVD-Video** | **Disc-Menüs** über libdvdnav (Haupt-/Titel-/Ton-/Untertitelmenü, Buttons per Tastatur, Fernbedienung und Maus), Standbilder, eigener Subpicture-Dekoder mit Disc-Palette und Button-Hervorhebung, erzwungene Untertitel, Mehrfachwinkel, Sprachen aus der IFO, Region/Sprache aus den Systemeinstellungen, Titel- und Kapitelwahl |
 | **DCP** | SMPTE und Interop, OV/VF (Ergänzungspakete in Nachbarordnern), mehrrollige CPLs mit Einstiegspunkten, **JPEG 2000 (XYZ → Anzeigefarbraum)**, 24-Bit-PCM bis 16 Kanäle, **verschlüsselte DCPs (KDM, AES-128)**, Untertitel (Interop-XML und SMPTE Timed Text inkl. verschlüsseltem MXF und eingebetteten Schriften → positioniertes ASS), **CPL-Marker als Kapitel** (FFOC, LFOC, FFEC, FFMC …), **3D-DCPs**, Prüfsummen-Kontrolle gegen die PKL |
@@ -469,6 +469,8 @@ cmake -DLUMEN_BUILD_TESTS=ON …        # baut mvcmerge_test und dcp_test
 # Blu-ray 3D: synthetische 3D-Disc aus dem MVC-Teststrom tests/data/mvc8.h264 -> beide Ansichten zusammenführen ->
 # mit dem FFmpeg im PATH dekodieren -> jedes Bild muss links Luma 165 und rechts 36 haben
 tools/test_bd3d.sh build build/tests/bd3d
+# BD-J: erzeugte Disc mit einem Java-Menü über libbluray starten und bedienen (braucht ein JDK)
+tools/test_bdj.sh build build/tests/bdj
 
 # 3D-Bildfolge: die Filterketten der Muster (L R, L S R S, Messfeld …) mit FFmpeg angewandt
 tools/test_seq3d.sh build build/tests/seq3d
@@ -502,7 +504,9 @@ python tools/make_test_vcd.py ffmpeg vcd && lumen vcd/vcd.cue
 Entwickler-Hilfen: `LUMEN_SNAPSHOT=shot.png` (optional `LUMEN_SNAPSHOT_DELAY=ms`) speichert das Steuerfenster als Bild;
 `LUMEN_MPV_LOG=warn|info|v` gibt mpvs Log aus (unter Windows zusammen mit `QT_FORCE_STDERR_LOGGING=1`);
 `LUMEN_APP_NAME=LumenDev` hält Einstellungen, Profile und Verlauf eines Testlaufs vom installierten Lumen getrennt;
-`LUMEN_GPU="llvmpipe"` gibt einen Grafiktreiber vor; `LUMEN_STEREO_DEBUG=1` nennt die Entscheidungen der 3D-Erkennung.
+`LUMEN_GPU="llvmpipe"` gibt einen Grafiktreiber vor; `LUMEN_STEREO_DEBUG=1` nennt die Entscheidungen der 3D-Erkennung;
+`LUMEN_PLAYER_SNAPSHOT=shot.png@+8` speichert das Player-Fenster 8 Sekunden nach dem Programmstart (ohne `+`: an
+dieser Stelle der Wiedergabe, angehalten); `LUMEN_NO_DRIVES=1` lässt die Laufwerke außer Acht.
 
 ## Kommandozeile
 
@@ -542,11 +546,17 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
 - Menügrafik wird auf die Bildfläche skaliert (im 3D-Modus je Auge). HDMV-Menüs und von libbluray dekodierte
   Untertitel kommen als komprimierte Overlays (Lauflängen mit Palette, `BdOverlay`), BD-J-Grafik als ARGB.
 - Im Disc-Menü gewählte Ton-/Untertitelspuren werden über die Stream-PID der passenden Spur zugeordnet.
-- **BD-J-Menüs** (die meisten neueren Filmdiscs) brauchen eine Java-Laufzeit (JRE ≥ 8) und das Java-Archiv von
-  libbluray in der Version der verwendeten libbluray: `libbluray-j2se-<Version>.jar` und
-  `libbluray-awt-j2se-<Version>.jar`. libbluray sucht neben sich selbst und in `/usr/share/java` (Linux: Paket
-  `libbluray-bdj` der Distribution); Lumen reicht außerdem einen Ordner `bdj` beim Programm oder in seinem
-  Datenordner (`…/Lumen/Lumen/bdj`) weiter. Lumens eigene Pakete enthalten das Archiv noch nicht.
+- **BD-J-Menüs** (die meisten neueren Filmdiscs) sind Java-Programme. Sie brauchen eine **Java-Laufzeit** auf
+  dem Rechner (JRE oder JDK ab Version 8, für denselben Prozessortyp wie Lumen) und das Java-Archiv von
+  libbluray in der Version der verwendeten libbluray (`libbluray-j2se-<Version>.jar`,
+  `libbluray-awt-j2se-<Version>.jar`).
+  - Das Archiv ist Teil der macOS- und Windows-Pakete ([`resources/bdj/`](resources/bdj)). Unter Linux bringt
+    es das Paket `libbluray-bdj` der Distribution mit, das die Lumen-Pakete empfehlen. Ein Ordner `bdj` in
+    Lumens Datenordner (`…/Lumen/Lumen/bdj`) mit dem passenden Archiv geht vor.
+  - Java: libbluray nimmt `JAVA_HOME`, wenn es gesetzt ist. Sonst sucht Lumen selbst eine Laufzeit – macOS:
+    `/usr/libexec/java_home`, dann `openjdk` von Homebrew; Windows: ein Ordner `jre` neben `lumen.exe`, die
+    Registry-Einträge der Java-Installer, dann die üblichen Ordner unter `Programme` (Eclipse Adoptium, Java,
+    Microsoft, Zulu, BellSoft, Amazon Corretto, OpenJDK). Linux: libbluray kennt die Ordner der Distributionen.
 - Lässt sich ein Menü nicht starten (kein Java, kein Archiv), läuft stattdessen der Hauptfilm; die Seite
   *Titel* nennt den Grund.
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 1.3.0 LANGUAGES CXX)
+project(Lumen VERSION 1.3.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -180,6 +180,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/ProfileManager.h    src/ProfileManager.cpp
     src/DiscScanner.h       src/DiscScanner.cpp
     src/BlurayNav.h         src/BlurayNav.cpp
+    src/BdjSetup.h          src/BdjSetup.cpp
     src/PlayerWindow.h      src/PlayerWindow.cpp
     src/PathUtil.h
     src/DvdNav.h            src/DvdNav.cpp
@@ -333,6 +334,31 @@ if(LUMEN_HAVE_BLURAY)
     target_compile_definitions(lumen PRIVATE LUMEN_HAVE_BLURAY=1)
     # Blu-ray 3D: MVC-Ansicht zumischen (Decoder: FFmpeg-mvc zur Laufzeit)
     target_sources(lumen PRIVATE src/MvcMerger.h src/MvcMerger.cpp src/TsRetime.h src/TsRetime.cpp src/BdOverlay.h src/BdOverlay.cpp)
+
+    # BD-J-Menüs: libbluray lädt sein Java-Archiv nur in der eigenen Version. resources/bdj enthält
+    # die mit tools/build_bdj.sh gebauten Archive. macOS nimmt das passende Paar ins Bundle
+    # (Resources/bdj), Windows legt es neben lumen.exe (tools/deploy_windows.py). Linux nutzt die
+    # libbluray der Distribution, deren Paket libbluray-bdj das Archiv mitbringt.
+    set(LUMEN_BLURAY_VERSION "${BLURAY_VERSION}")
+    if(NOT LUMEN_BLURAY_VERSION AND BLURAY_INCLUDE_DIR AND EXISTS "${BLURAY_INCLUDE_DIR}/libbluray/bluray-version.h")
+        file(STRINGS "${BLURAY_INCLUDE_DIR}/libbluray/bluray-version.h" _bd_version REGEX "define +BLURAY_VERSION_STRING")
+        string(REGEX REPLACE ".*\"([0-9.]+)\".*" "\\1" LUMEN_BLURAY_VERSION "${_bd_version}")
+    endif()
+    set(_bdj "${CMAKE_CURRENT_SOURCE_DIR}/resources/bdj")
+    set(LUMEN_BDJ_JARS "")
+    if(LUMEN_BLURAY_VERSION AND EXISTS "${_bdj}/libbluray-j2se-${LUMEN_BLURAY_VERSION}.jar"
+            AND EXISTS "${_bdj}/libbluray-awt-j2se-${LUMEN_BLURAY_VERSION}.jar")
+        set(LUMEN_BDJ_JARS "${_bdj}/libbluray-j2se-${LUMEN_BLURAY_VERSION}.jar"
+                           "${_bdj}/libbluray-awt-j2se-${LUMEN_BLURAY_VERSION}.jar")
+        message(STATUS "Lumen: BD-J-Archiv für libbluray ${LUMEN_BLURAY_VERSION}")
+    elseif(APPLE OR WIN32)
+        message(WARNING "Lumen: kein BD-J-Archiv für libbluray ${LUMEN_BLURAY_VERSION} in resources/bdj – "
+                        "BD-J-Menüs fehlen im Paket (tools/build_bdj.sh)")
+    endif()
+    if(APPLE AND LUMEN_BDJ_JARS)
+        target_sources(lumen PRIVATE ${LUMEN_BDJ_JARS})
+        set_source_files_properties(${LUMEN_BDJ_JARS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/bdj)
+    endif()
 endif()
 
 if(WIN32)
@@ -445,6 +471,10 @@ if(LUMEN_BUILD_TESTS AND LUMEN_HAVE_BLURAY)
     # Test: komprimierte Overlays (Untertitel, HDMV-Menüs) in eine ARGB-Ebene zeichnen
     add_executable(bdoverlay_test tests/bdoverlay_test.cpp src/BdOverlay.cpp src/BdOverlay.h)
     target_link_libraries(bdoverlay_test PRIVATE Qt6::Gui lumen_bluray)
+    # Test: BD-J-Menü der Testdisc (tools/make_test_bdj.py) starten und bedienen (tools/test_bdj.sh)
+    add_executable(bdj_test tests/bdj_test.cpp src/BdjSetup.cpp src/BdjSetup.h)
+    target_compile_definitions(bdj_test PRIVATE LUMEN_HAVE_BLURAY=1)
+    target_link_libraries(bdj_test PRIVATE Qt6::Gui lumen_bluray)
 endif()
 # Test: DCP lesen, KDM auspacken, Spurdateien entschlüsseln, Untertitel wandeln
 if(LUMEN_BUILD_TESTS)
@@ -612,13 +642,14 @@ if(UNIX AND NOT APPLE)
         set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS "${LUMEN_DEPS_PREFIX}/lib")
     endif()
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtquick-dialogs, qml6-module-qtcore, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qt-labs-folderlistmodel, qt6-svg-plugins")
-    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "yt-dlp")
+    # libbluray-bdj: Java-Archiv der libbluray der Distribution (BD-J-Menüs)
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "yt-dlp, libbluray-bdj")
 
     set(CPACK_RPM_FILE_NAME "Lumen-${PROJECT_VERSION}-linux-${_rpm_arch}.rpm")
     set(CPACK_RPM_PACKAGE_LICENSE "AGPL-3.0-or-later")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
     set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtdeclarative, qt6-qtsvg")
-    set(CPACK_RPM_PACKAGE_SUGGESTS "yt-dlp")
+    set(CPACK_RPM_PACKAGE_SUGGESTS "yt-dlp, libbluray-bdj")
     # Ordner, die anderen Paketen gehören, nicht in die Dateiliste aufnehmen
     set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
         /usr/share/applications /usr/share/doc /usr/share/icons /usr/share/icons/hicolor

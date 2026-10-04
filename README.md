@@ -152,7 +152,7 @@ Documentation and examples: [plugins/README.md](plugins/README.md).
 | Area | Scope |
 |---|---|
 | Sources | Optical drives (auto-detection, vendor/model/firmware, eject, autoplay on insert), ISO (Blu-ray/DVD/HD DVD detected automatically), CUE/BIN/NRG images, disc folders (BDMV, VIDEO_TS, HVDVD_TS, MPEGAV/MPEG2), DCP folders and cinema drives, every format mpv can play |
-| Blu-ray | Disc menus (HDMV; BD-J with Java and libbluray's JAR, otherwise the main feature plays), main feature, titles/playlists with duration, video/audio format, UHD and 3D detection |
+| Blu-ray | Disc menus (HDMV; BD-J with a Java runtime, otherwise the main feature plays), main feature, titles/playlists with duration, video/audio format, UHD and 3D detection |
 | **Blu-ray 3D** | **Both views (MVC)**, output as HDMI Frame Packing 1080p, side-by-side / top-and-bottom (half/full), row-interleaved, anaglyph or 2D; subtitles and menus per eye with adjustable depth |
 | **DVD-Video** | **Disc menus** via libdvdnav (root/title/audio/subtitle menus, buttons with keyboard, remote and mouse), stills, own subpicture decoder with the disc palette and button highlights, forced subtitles, multi-angle, languages from the IFO, region/language from system settings, title & chapter selection |
 | **DCP** | SMPTE and Interop, OV/VF (supplemental packages in neighbouring folders), multi-reel CPLs with entry points, **JPEG 2000 (XYZ → display colour space)**, 24-bit PCM up to 16 channels, **encrypted DCPs (KDM, AES-128)**, subtitles (Interop XML and SMPTE Timed Text incl. encrypted MXF and embedded fonts → positioned ASS), **CPL markers as chapters** (FFOC, LFOC, FFEC, FFMC …), **3D DCPs**, hash verification against the PKL |
@@ -471,6 +471,7 @@ cmake -DLUMEN_BUILD_TESTS=ON …        # builds mvcmerge_test and dcp_test
 tools/test_bd3d.sh build build/tests/bd3d
 mvcmerge_test /Volumes/DISC 803 out.m2ts 0 500        # a real disc: playlist 00803, stop after 500 MiB
 bdoverlay_test disc.iso subtitle.png                  # compressed overlays (subtitles, HDMV menus) -> picture
+tools/test_bdj.sh build build/tests/bdj               # BD-J: a generated disc with a Java menu (needs a JDK)
 
 # Frame-sequential 3D: the filter chains for the patterns (L R, L S R S, trigger box ...) applied with FFmpeg
 tools/test_seq3d.sh build build/tests/seq3d
@@ -516,7 +517,9 @@ python tools/make_test_vcd.py ffmpeg vcd && lumen vcd/vcd.cue
 Developer aids: `LUMEN_SNAPSHOT=shot.png` (optionally `LUMEN_SNAPSHOT_DELAY=ms`) saves the control window as an image;
 `LUMEN_MPV_LOG=warn|info|v` forwards mpv's log (with `QT_FORCE_STDERR_LOGGING=1` on Windows);
 `LUMEN_APP_NAME=LumenDev` keeps settings, profiles and history of a test run apart from the installed Lumen;
-`LUMEN_GPU="llvmpipe"` pretends a graphics driver; `LUMEN_STEREO_DEBUG=1` prints the 3D detection's decisions.
+`LUMEN_GPU="llvmpipe"` pretends a graphics driver; `LUMEN_STEREO_DEBUG=1` prints the 3D detection's decisions;
+`LUMEN_PLAYER_SNAPSHOT=shot.png@+8` saves the player window 8 seconds after the program started (without the `+`: at
+that playback position, paused); `LUMEN_NO_DRIVES=1` ignores the physical drives.
 
 ## Command line
 
@@ -556,11 +559,16 @@ lumen movie.mkv                # any file mpv can play
 - Menu graphics are scaled to the video area (per eye in 3D mode). HDMV menus and subtitles decoded by
   libbluray arrive as compressed overlays (run lengths with a palette, `BdOverlay`), BD-J graphics as ARGB.
 - Audio/subtitle choices made in the disc menu are mapped via the stream PID to the matching track.
-- **BD-J menus** (most recent film discs) need a Java runtime (JRE ≥ 8) and libbluray's Java archive in the
-  version of the libbluray in use: `libbluray-j2se-<version>.jar` and `libbluray-awt-j2se-<version>.jar`.
-  libbluray looks next to itself and in `/usr/share/java` (Linux: the distribution's `libbluray-bdj` package);
-  Lumen also passes a folder `bdj` next to the program or in its data folder (`…/Lumen/Lumen/bdj`). Lumen's
-  own packages do not contain the archive yet.
+- **BD-J menus** (most recent film discs) are Java programs. They need a **Java runtime** on the computer
+  (JRE or JDK from version 8 on, built for the same processor type as Lumen) and libbluray's Java archive in
+  the version of the libbluray in use (`libbluray-j2se-<version>.jar`, `libbluray-awt-j2se-<version>.jar`).
+  - The archive is part of the macOS and Windows packages ([`resources/bdj/`](resources/bdj)). On Linux it
+    comes with the distribution's `libbluray-bdj` package, which the Lumen packages recommend. A folder `bdj`
+    in Lumen's data folder (`…/Lumen/Lumen/bdj`) with the matching archive takes precedence.
+  - Java: libbluray uses `JAVA_HOME` if it is set. Otherwise Lumen looks for a runtime itself – macOS:
+    `/usr/libexec/java_home`, then Homebrew's `openjdk`; Windows: a folder `jre` next to `lumen.exe`, the
+    registry entries of the Java installers, then the usual folders under `Program Files` (Eclipse Adoptium,
+    Java, Microsoft, Zulu, BellSoft, Amazon Corretto, OpenJDK). Linux: libbluray knows the distributions' folders.
 - A menu that cannot start (no Java, no archive) is replaced by the main feature; the *Titles* page says why.
 
 ## Limitations / status
