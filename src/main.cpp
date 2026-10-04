@@ -351,10 +351,11 @@ int main(int argc, char *argv[])
     // Schließen sonst als weiteren Beenden-Wunsch, und AppKit beendet den Prozess bei einem
     // verschachtelten [NSApp terminate:] sofort – ohne diesen Abbau. Eine AACS-Bibliothek mit
     // Hilfsprozess (MakeMKV) blieb dann zurück und hielt das Laufwerk besetzt.
-    const auto shutdown = [&, done = false]() mutable {
-        if (done)
+    bool shutDown = false; // der Filter und aboutToQuit teilen sich den Merker
+    const auto shutdown = [&] {
+        if (shutDown)
             return;
-        done = true;
+        shutDown = true;
         // Hängt das Öffnen einer Disc in einer fremden Bibliothek, wartet der Abbau darauf: nach
         // einigen Sekunden trotzdem enden
         std::thread([] {
