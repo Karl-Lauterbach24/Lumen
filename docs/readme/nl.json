@@ -24,7 +24,7 @@
 "f_audio": "**Audio:** bitstream naar een AV-receiver (TrueHD/Atmos, DTS-HD), nachtmodus, vertraging en snelheid.",
 "f_cd": "**Audio-cd:** tracknamen uit cd-tekst of, met de plug-in *Disc identification*, van MusicBrainz.",
 "f_comfort": "**Dagelijks gebruik:** lijst met onlangs afgespeelde items met hervatten, slepen en neerzetten, externe ondertitelbestanden, sneltoetsen (F1).",
-"f_languages": "**Interface in 16 talen**, te kiezen op de startpagina.",
+"f_languages": "**Interface in 16 talen**, te kiezen in de kopbalk van het venster (wereldbol).",
 "h_protection": "Kopieerbeveiliging",
 "protection_text": "Lumen bevat **geen** omzeiling van kopieerbeveiliging. Beveiligde schijven (AACS, BD+, CSS) spelen alleen af als je de benodigde bibliotheken zelf via een plug-in toevoegt; je bent er zelf verantwoordelijk voor dat dit in jouw land is toegestaan.",
 "h_plugins": "Plug-ins",

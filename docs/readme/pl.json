@@ -24,7 +24,7 @@
 "f_audio": "**Dźwięk:** bitstream do amplitunera AV (TrueHD/Atmos, DTS-HD), tryb nocny, opóźnienie i prędkość.",
 "f_cd": "**Audio CD:** nazwy utworów z CD-Text lub, dzięki wtyczce *Disc identification*, z MusicBrainz.",
 "f_comfort": "**Na co dzień:** lista ostatnio odtwarzanych ze wznawianiem, przeciąganie i upuszczanie, zewnętrzne pliki napisów, skróty klawiszowe (F1).",
-"f_languages": "**Interfejs w 16 językach**, do wyboru na stronie startowej.",
+"f_languages": "**Interfejs w 16 językach**, do wyboru w nagłówku okna (symbol globusa).",
 "h_protection": "Zabezpieczenia przed kopiowaniem",
 "protection_text": "Lumen **nie** zawiera żadnych mechanizmów obchodzenia zabezpieczeń przed kopiowaniem. Zabezpieczone płyty (AACS, BD+, CSS) są odtwarzane tylko wtedy, gdy samodzielnie dodasz potrzebne biblioteki za pomocą wtyczki; odpowiadasz za to, czy jest to zgodne z prawem w Twoim kraju.",
 "h_plugins": "Wtyczki",

@@ -21,7 +21,7 @@ There is no announcement on the network. A receiver
 
 ```
 GET /api/info
--> {"name": "Lumen", "host": "<computer name>", "version": "1.2.0", "api": 1, "casting": false}
+-> {"name": "Lumen", "host": "<computer name>", "version": "1.3.0", "api": 1, "casting": false}
 ```
 
 A server is Lumen if `name` is `"Lumen"`.
@@ -30,7 +30,7 @@ A server is Lumen if `name` is `"Lumen"`.
 
 ```
 POST /api/hello?id=<id>&name=<name>&platform=<platform>
--> {"id": "<id>", "server": "<computer name>", "version": "1.2.0", "api": 1}
+-> {"id": "<id>", "server": "<computer name>", "version": "1.3.0", "api": 1}
 ```
 
 * `id`: chosen by the receiver and kept across starts (any string up to 64 characters). Without it

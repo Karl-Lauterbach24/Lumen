@@ -40,7 +40,7 @@ Tous les paquets contiennent les mêmes bibliothèques multimédias (FFmpeg avec
 - **Audio :** bitstream vers un ampli AV (TrueHD/Atmos, DTS-HD), mode nuit, décalage et vitesse.
 - **CD audio :** noms des pistes depuis le CD-Text ou, avec le plugin *Disc identification*, depuis MusicBrainz.
 - **Au quotidien :** liste des lectures récentes avec reprise, glisser-déposer, fichiers de sous-titres externes, raccourcis clavier (F1).
-- **Interface en 16 langues**, à choisir sur la page d'accueil.
+- **Interface en 16 langues**, à choisir dans l'en-tête de la fenêtre (symbole du globe).
 
 ## Protection contre la copie
 

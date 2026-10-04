@@ -329,14 +329,15 @@ QString PluginManager::resolveLibrary(const Plugin &p, const QString &base) cons
     return {};
 }
 
-// libbluray hängt Endung (und Version) selbst an: LIBAACS_PATH=/x/libaacs -> /x/libaacs.so.0
+// libbluray hängt Endung (und Version) selbst an: LIBAACS_PATH=/x/libaacs -> /x/libaacs.so.0.
+// Auf dem Mac nur die Endung: /x/libaacs.0 -> /x/libaacs.0.dylib – die Version bleibt also im Namen.
 QByteArray PluginManager::libbluraySpec(const QString &file)
 {
     QString s = QDir::toNativeSeparators(file);
 #if defined(Q_OS_WIN)
     s.remove(QRegularExpression(QStringLiteral("\\.dll$"), QRegularExpression::CaseInsensitiveOption));
 #elif defined(Q_OS_MACOS)
-    s.remove(QRegularExpression(QStringLiteral("(\\.\\d+)?\\.dylib$")));
+    s.remove(QRegularExpression(QStringLiteral("\\.dylib$")));
 #else
     s.remove(QRegularExpression(QStringLiteral("\\.so(\\.\\d+)*$")));
 #endif

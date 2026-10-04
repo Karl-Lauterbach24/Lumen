@@ -24,7 +24,7 @@
 "f_audio": "**Ses:** AV alıcısına bitstream (TrueHD/Atmos, DTS-HD), gece kipi, gecikme ve hız.",
 "f_cd": "**Ses CD'si:** parça adları CD-Text'ten veya *Disc identification* eklentisiyle MusicBrainz'den.",
 "f_comfort": "**Günlük kullanım:** kaldığı yerden sürdürmeli son oynatılanlar listesi, sürükle-bırak, harici altyazı dosyaları, klavye kısayolları (F1).",
-"f_languages": "**16 dilde arayüz**, başlangıç sayfasından seçilir.",
+"f_languages": "**16 dilde arayüz**, pencerenin üst kısmındaki küre simgesinden seçilir.",
 "h_protection": "Kopya koruması",
 "protection_text": "Lumen kopya korumasını aşan **hiçbir** şey içermez. Korumalı diskler (AACS, BD+, CSS) yalnızca gerekli kitaplıkları bir eklentiyle kendiniz eklerseniz oynar; bunun ülkenizde yasal olmasından siz sorumlusunuz.",
 "h_plugins": "Eklentiler",

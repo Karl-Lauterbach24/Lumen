@@ -24,7 +24,7 @@
 "f_audio": "**音频：**向 AV 功放输出码流（TrueHD/Atmos、DTS-HD）、夜间模式、延迟和速度调节。",
 "f_cd": "**音乐 CD：**曲目名称来自 CD-Text，或通过 *Disc identification* 插件从 MusicBrainz 获取。",
 "f_comfort": "**日常使用：**可续播的“最近播放”列表、拖放、外挂字幕文件、键盘快捷键 (F1)。",
-"f_languages": "**16 种界面语言**，可在起始页选择。",
+"f_languages": "**16 种界面语言**，可在窗口顶部的地球图标处选择。",
 "h_protection": "复制保护",
 "protection_text": "Lumen **不包含**任何规避复制保护的功能。受保护的光盘（AACS、BD+、CSS）只有在您自行通过插件添加所需的库之后才能播放；请自行确认这在您所在的国家或地区是否合法。",
 "h_plugins": "插件",

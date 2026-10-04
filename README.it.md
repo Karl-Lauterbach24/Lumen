@@ -40,7 +40,7 @@ Tutti i pacchetti contengono le stesse librerie multimediali (FFmpeg con decodif
 - **Audio:** bitstream verso un ricevitore AV (TrueHD/Atmos, DTS-HD), modalità notte, ritardo e velocità.
 - **CD audio:** nomi delle tracce dal CD-Text oppure, con il plugin *Disc identification*, da MusicBrainz.
 - **Uso quotidiano:** elenco dei contenuti riprodotti di recente con ripresa, trascinamento, file di sottotitoli esterni, scorciatoie da tastiera (F1).
-- **Interfaccia in 16 lingue**, selezionabile nella pagina iniziale.
+- **Interfaccia in 16 lingue**, selezionabile nell'intestazione della finestra (simbolo del globo).
 
 ## Protezione anticopia
 

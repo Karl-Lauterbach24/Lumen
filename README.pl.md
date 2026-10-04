@@ -40,7 +40,7 @@ Wszystkie pakiety zawierają te same biblioteki multimedialne (FFmpeg z dekodere
 - **Dźwięk:** bitstream do amplitunera AV (TrueHD/Atmos, DTS-HD), tryb nocny, opóźnienie i prędkość.
 - **Audio CD:** nazwy utworów z CD-Text lub, dzięki wtyczce *Disc identification*, z MusicBrainz.
 - **Na co dzień:** lista ostatnio odtwarzanych ze wznawianiem, przeciąganie i upuszczanie, zewnętrzne pliki napisów, skróty klawiszowe (F1).
-- **Interfejs w 16 językach**, do wyboru na stronie startowej.
+- **Interfejs w 16 językach**, do wyboru w nagłówku okna (symbol globusa).
 
 ## Zabezpieczenia przed kopiowaniem
 

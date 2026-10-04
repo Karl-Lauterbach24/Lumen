@@ -24,7 +24,7 @@
 "f_audio": "**Ljud:** bitström till en AV-förstärkare (TrueHD/Atmos, DTS-HD), nattläge, fördröjning och hastighet.",
 "f_cd": "**Ljud-cd:** spårnamn från CD-Text eller, med pluginet *Disc identification*, från MusicBrainz.",
 "f_comfort": "**I vardagen:** lista över senast spelade med återupptagning, dra och släpp, externa undertextfiler, kortkommandon (F1).",
-"f_languages": "**Gränssnitt på 16 språk**, väljs på startsidan.",
+"f_languages": "**Gränssnitt på 16 språk**, väljs i fönstrets rubrikrad (jordglobssymbolen).",
 "h_protection": "Kopieringsskydd",
 "protection_text": "Lumen innehåller **ingen** kringgående av kopieringsskydd. Skyddade skivor (AACS, BD+, CSS) spelas bara om du själv lägger till de bibliotek som behövs via ett plugin; du ansvarar för att det är lagligt i ditt land.",
 "h_plugins": "Plugins",

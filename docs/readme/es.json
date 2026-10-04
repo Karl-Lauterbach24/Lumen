@@ -24,7 +24,7 @@
 "f_audio": "**Audio:** bitstream a un receptor AV (TrueHD/Atmos, DTS-HD), modo nocturno, retardo y velocidad.",
 "f_cd": "**CD de audio:** nombres de las pistas desde CD-Text o, con el plugin *Disc identification*, desde MusicBrainz.",
 "f_comfort": "**Uso diario:** lista de reproducidos recientemente con reanudación, arrastrar y soltar, archivos de subtítulos externos, atajos de teclado (F1).",
-"f_languages": "**Interfaz en 16 idiomas**, seleccionable en la página de inicio.",
+"f_languages": "**Interfaz en 16 idiomas**, seleccionable en la cabecera de la ventana (símbolo del globo).",
 "h_protection": "Protección anticopia",
 "protection_text": "Lumen **no** contiene ningún mecanismo para eludir la protección anticopia. Los discos protegidos (AACS, BD+, CSS) solo se reproducen si añades tú mismo las bibliotecas necesarias mediante un plugin; eres responsable de comprobar que sea legal en tu país.",
 "h_plugins": "Plugins",

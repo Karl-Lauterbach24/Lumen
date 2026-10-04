@@ -40,7 +40,7 @@ Alle pakketten bevatten dezelfde mediabibliotheken (FFmpeg met Blu-ray 3D-decode
 - **Audio:** bitstream naar een AV-receiver (TrueHD/Atmos, DTS-HD), nachtmodus, vertraging en snelheid.
 - **Audio-cd:** tracknamen uit cd-tekst of, met de plug-in *Disc identification*, van MusicBrainz.
 - **Dagelijks gebruik:** lijst met onlangs afgespeelde items met hervatten, slepen en neerzetten, externe ondertitelbestanden, sneltoetsen (F1).
-- **Interface in 16 talen**, te kiezen op de startpagina.
+- **Interface in 16 talen**, te kiezen in de kopbalk van het venster (wereldbol).
 
 ## Kopieerbeveiliging
 

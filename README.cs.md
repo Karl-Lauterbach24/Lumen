@@ -40,7 +40,7 @@ Všechny balíčky obsahují stejné multimediální knihovny (FFmpeg s dekodér
 - **Zvuk:** bitstream do AV receiveru (TrueHD/Atmos, DTS-HD), noční režim, zpoždění a rychlost.
 - **Zvukové CD:** názvy stop z CD-Textu nebo, s pluginem *Disc identification*, z MusicBrainz.
 - **Každodenní používání:** seznam naposledy přehraných s pokračováním, přetažení myší, externí soubory s titulky, klávesové zkratky (F1).
-- **Rozhraní v 16 jazycích**, volitelné na úvodní stránce.
+- **Rozhraní v 16 jazycích**, volitelné v záhlaví okna (symbol zeměkoule).
 
 ## Ochrana proti kopírování
 

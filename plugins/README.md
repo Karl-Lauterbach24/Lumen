@@ -66,6 +66,10 @@ platform; ARM64 builds of Lumen for Windows and Linux install `bin/windows-arm64
 | `env` | Environment variables, set before any library starts. |
 | `discLibraries` | Libraries for libbluray (`aacs` → `LIBAACS_PATH`, `bdplus` → `LIBBDPLUS_PATH`) and libdvdread (`dvdcss`). Lumen preloads them. On Windows and macOS, Lumen's own libdvdcss stand-in (no CSS code) forwards to the `dvdcss` library (`LUMEN_DVDCSS_LIBRARY`). On Linux, libdvdread finds it by its standard name (`libdvdcss.so.2`). On Windows the library's folder is added to `PATH` so that dependencies next to it are found. |
 
+An entry with `"optional": true` may be missing: the rest of the plugin still loads, and the card says
+where to copy the library. Since Lumen 1.3 the same holds for an optional library that is there but
+cannot be loaded (built for another processor, a dependency missing): the card shows the reason.
+
 With the disc libraries in place, libbluray/libdvdread and mpv use them for Blu-ray, UHD Blu-ray
 and DVD, both in the title list and in the disc menus. The **Titles** tab shows what libbluray
 reports (for example "AACS · decrypted").

@@ -65,7 +65,7 @@ Fertige Builds gibt es auf der [Release-Seite](https://github.com/Karl-Lauterbac
 - Jedes Paket enthält dieselben Medienbibliotheken, aus denselben festgelegten Quellen gebaut: FFmpeg-mvc
   (mit dem Blu-ray-3D-Decoder), libmpv und x264. Blu-ray 3D und das Übertragen arbeiten deshalb auf allen
   Plattformen gleich.
-- Die Oberfläche gibt es in 16 Sprachen (Startseite). Deutsch und Englisch sind von Hand gepflegt, die
+- Die Oberfläche gibt es in 16 Sprachen (Globus-Symbol in der Kopfzeile). Deutsch und Englisch sind von Hand gepflegt, die
   übrigen Übersetzungen entstanden mit maschineller Hilfe – Korrekturen sind willkommen.
 - Neu in 1.1: Übertragen an Fernseher und Empfänger (DLNA, Chromecast, AirPlay, Lumen-TV-Apps, Browser),
   Blu-ray 3D in allen Paketen, experimentelle 3D-Bildfolge für Shutterbrillen.
@@ -144,7 +144,7 @@ Doku und Beispiele: [plugins/README.md](plugins/README.md) (englisch).
 | Bereich | Umfang |
 |---|---|
 | Quellen | Optische Laufwerke (Auto-Erkennung, Hersteller/Modell/Firmware, Auswerfen, Autostart beim Einlegen), ISO (Blu-ray/DVD/HD DVD automatisch erkannt), CUE/BIN/NRG-Abbilder, Disc-Ordner (BDMV, VIDEO_TS, HVDVD_TS, MPEGAV/MPEG2), DCP-Ordner und Kino-Festplatten, alle Formate, die mpv abspielt |
-| Blu-ray | Disc-Menüs (HDMV, BD-J mit Java), Hauptfilm, Titel/Playlists mit Laufzeit, Video-/Tonformat, UHD- und 3D-Erkennung |
+| Blu-ray | Disc-Menüs (HDMV; BD-J mit Java und dem JAR von libbluray, sonst läuft der Hauptfilm), Hauptfilm, Titel/Playlists mit Laufzeit, Video-/Tonformat, UHD- und 3D-Erkennung |
 | **Blu-ray 3D** | **Beide Ansichten (MVC)**, Ausgabe als HDMI Frame Packing 1080p, Side-by-Side/Top-and-Bottom (Half/Full), Zeilenverschachtelt, Anaglyph oder 2D; Untertitel und Menüs je Auge mit einstellbarer Tiefe |
 | **DVD-Video** | **Disc-Menüs** über libdvdnav (Haupt-/Titel-/Ton-/Untertitelmenü, Buttons per Tastatur, Fernbedienung und Maus), Standbilder, eigener Subpicture-Dekoder mit Disc-Palette und Button-Hervorhebung, erzwungene Untertitel, Mehrfachwinkel, Sprachen aus der IFO, Region/Sprache aus den Systemeinstellungen, Titel- und Kapitelwahl |
 | **DCP** | SMPTE und Interop, OV/VF (Ergänzungspakete in Nachbarordnern), mehrrollige CPLs mit Einstiegspunkten, **JPEG 2000 (XYZ → Anzeigefarbraum)**, 24-Bit-PCM bis 16 Kanäle, **verschlüsselte DCPs (KDM, AES-128)**, Untertitel (Interop-XML und SMPTE Timed Text inkl. verschlüsseltem MXF und eingebetteten Schriften → positioniertes ASS), **CPL-Marker als Kapitel** (FFOC, LFOC, FFEC, FFMC …), **3D-DCPs**, Prüfsummen-Kontrolle gegen die PKL |
@@ -228,8 +228,13 @@ libbluray bd_open_file_dec() ─ abhängige Ansicht (0x1012) ─┘   (je Bild p
   Side-by-Side-Bild dekodiert. `tools/build_deps.sh` baut es und libmpv dagegen, für jede Plattform.
   Lumen erkennt den Decoder an der Versionskennung (`…-mvc`).
 - **Zweite Ansicht:** libbluray liefert nur die Basisansicht. `MvcMerger` liest den SS-Subpfad der Playlist
-  (welcher Clip), die CLPI-EP-Map (Sprungpunkte) und die abhängige `.m2ts` über libbluray, paart Access Units
-  per PTS und hängt die MVC-NAL-Units an die der Basisansicht an.
+  (welcher Clip), die EP-Map des abhängigen Clips (Sprungpunkte; gepresste Discs führen sie in den
+  Erweiterungsdaten `CPI_SS`) und die abhängige `.m2ts` über libbluray, paart Access Units per PTS und hängt
+  die MVC-NAL-Units an die der Basisansicht an. Die abhängige Datei wird in Aligned Units (6144 Byte) gelesen:
+  Die entschlüsselnde Datei von libbluray beantwortet keine andere Lesegröße.
+- **Eine Zeitachse je Playlist:** Jeder Clip zählt seine Zeitstempel für sich. `retimeM2ts` verschiebt PTS,
+  DTS und PCR des zweiten und der folgenden Clips so, dass sie an den ersten anschließen; der Spieler sieht an
+  einer Clipgrenze keinen Zeitsprung (auch bei 2D-Titeln über `lumenbd://`).
 - **3D-Wiedergabe läuft immer über libbluray** (`lumenbd://`), auch „Hauptfilm“ und Titelwahl.
   Der Disc wird „3D bevorzugt“ gemeldet (PSR21/23), damit Menüs die 3D-Playlist wählen.
 - **Untertitel/Menüs:** libbluray rendert PG-Untertitel und Menügrafik; Lumen zeichnet sie einmal je Auge
@@ -502,9 +507,10 @@ Entwickler-Hilfen: `LUMEN_SNAPSHOT=shot.png` (optional `LUMEN_SNAPSHOT_DELAY=ms`
 ## Kommandozeile
 
 ```bash
-lumen D:\                      # Laufwerk: erkennt Blu-ray / DVD / HD DVD / VCD / Audio-CD und spielt den Hauptfilm
-lumen --menu D:\               # mit Disc-Menü (Blu-ray, DVD; z. B. für HTPC-Launcher)
-lumen --menu Film.iso          # ISO (Blu-ray, DVD oder HD DVD) / Disc-Ordner mit Menü
+lumen D:\                      # Laufwerk: erkennt Blu-ray / DVD / HD DVD / VCD / Audio-CD und startet wie im Fenster
+                               # eingestellt – mit dem Disc-Menü, solange „Mit Disc-Menü starten“ an ist
+lumen --menu D:\               # immer mit Disc-Menü (Blu-ray, DVD; z. B. für HTPC-Launcher)
+lumen --main Film.iso          # immer der Hauptfilm: ISO (Blu-ray, DVD oder HD DVD) / Disc-Ordner
 lumen VideoCD.cue              # Video-CD-/SVCD-Abbild
 lumen E:\DCP\Film_FTR          # DCP-Ordner: spielt die erste (Spielfilm-)CPL
 lumen --kdm film.xml E:\DCP\Film_FTR   # vorher einen KDM laden
@@ -531,10 +537,18 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
 
 ## Blu-ray-Disc-Menüs
 
-- libbluray führt das Menüprogramm der Disc aus und liefert den Strom über `lumenbd://` an mpv;
-  Menügrafik (IG oder BD-J) kommt als ARGB-Overlay, auf die Bildfläche skaliert (im 3D-Modus je Auge).
+- Discs starten mit ihrem Menü (Startseite: *Mit Disc-Menü starten*, ab Werk an). libbluray führt das
+  Menüprogramm der Disc aus und liefert den Strom über `lumenbd://` an mpv.
+- Menügrafik wird auf die Bildfläche skaliert (im 3D-Modus je Auge). HDMV-Menüs und von libbluray dekodierte
+  Untertitel kommen als komprimierte Overlays (Lauflängen mit Palette, `BdOverlay`), BD-J-Grafik als ARGB.
 - Im Disc-Menü gewählte Ton-/Untertitelspuren werden über die Stream-PID der passenden Spur zugeordnet.
-- **BD-J-Menüs** brauchen eine Java-Laufzeit (JRE ≥ 8) und `libbluray-j2se-*.jar`; ohne bleibt der Titelmodus.
+- **BD-J-Menüs** (die meisten neueren Filmdiscs) brauchen eine Java-Laufzeit (JRE ≥ 8) und das Java-Archiv von
+  libbluray in der Version der verwendeten libbluray: `libbluray-j2se-<Version>.jar` und
+  `libbluray-awt-j2se-<Version>.jar`. libbluray sucht neben sich selbst und in `/usr/share/java` (Linux: Paket
+  `libbluray-bdj` der Distribution); Lumen reicht außerdem einen Ordner `bdj` beim Programm oder in seinem
+  Datenordner (`…/Lumen/Lumen/bdj`) weiter. Lumens eigene Pakete enthalten das Archiv noch nicht.
+- Lässt sich ein Menü nicht starten (kein Java, kein Archiv), läuft stattdessen der Hauptfilm; die Seite
+  *Titel* nennt den Grund.
 
 ## Einschränkungen / Stand
 

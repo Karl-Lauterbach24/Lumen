@@ -40,7 +40,7 @@ Lumen 可播放 **Blu-ray / UHD / Blu-ray 3D、带菜单的 DVD-Video、HD DVD�
 - **音频：**向 AV 功放输出码流（TrueHD/Atmos、DTS-HD）、夜间模式、延迟和速度调节。
 - **音乐 CD：**曲目名称来自 CD-Text，或通过 *Disc identification* 插件从 MusicBrainz 获取。
 - **日常使用：**可续播的“最近播放”列表、拖放、外挂字幕文件、键盘快捷键 (F1)。
-- **16 种界面语言**，可在起始页选择。
+- **16 种界面语言**，可在窗口顶部的地球图标处选择。
 
 ## 复制保护
 

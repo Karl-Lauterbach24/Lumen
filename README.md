@@ -12,14 +12,14 @@ A fast, minimalist player for home cinemas, screening rooms and small cinemas wi
 Plays **Blu-ray / UHD / Blu-ray 3D, DVD-Video (with menus), HD DVD, Video-CD / Super Video-CD, Audio-CD,
 Digital Cinema Packages (DCP, JPEG 2000, SMPTE and Interop, encrypted with KDM)** and every file format mpv can play.
 
-> The interface is in English by default. On the start page you can switch between 16 languages: German, English, French,
+> The interface is in English by default. The globe symbol in the header switches between 16 languages: German, English, French,
 > Spanish, Italian, Portuguese, Dutch, Polish, Swedish, Czech, Turkish, Ukrainian, Russian, Japanese, Simplified Chinese and Korean.
 > English and German are maintained by hand; the other translations were made with machine assistance, corrections are welcome.
 
 ## Screenshots
 
 <p align="center">
-  <img src="docs/screenshots/start.png" width="49%" alt="Start page with language selection">
+  <img src="docs/screenshots/start.png" width="49%" alt="Start page">
   <img src="docs/screenshots/cinema.png" width="49%" alt="Playing a Digital Cinema Package (Cinema tab)">
 </p>
 <p align="center">
@@ -152,7 +152,7 @@ Documentation and examples: [plugins/README.md](plugins/README.md).
 | Area | Scope |
 |---|---|
 | Sources | Optical drives (auto-detection, vendor/model/firmware, eject, autoplay on insert), ISO (Blu-ray/DVD/HD DVD detected automatically), CUE/BIN/NRG images, disc folders (BDMV, VIDEO_TS, HVDVD_TS, MPEGAV/MPEG2), DCP folders and cinema drives, every format mpv can play |
-| Blu-ray | Disc menus (HDMV, BD-J with Java), main feature, titles/playlists with duration, video/audio format, UHD and 3D detection |
+| Blu-ray | Disc menus (HDMV; BD-J with Java and libbluray's JAR, otherwise the main feature plays), main feature, titles/playlists with duration, video/audio format, UHD and 3D detection |
 | **Blu-ray 3D** | **Both views (MVC)**, output as HDMI Frame Packing 1080p, side-by-side / top-and-bottom (half/full), row-interleaved, anaglyph or 2D; subtitles and menus per eye with adjustable depth |
 | **DVD-Video** | **Disc menus** via libdvdnav (root/title/audio/subtitle menus, buttons with keyboard, remote and mouse), stills, own subpicture decoder with the disc palette and button highlights, forced subtitles, multi-angle, languages from the IFO, region/language from system settings, title & chapter selection |
 | **DCP** | SMPTE and Interop, OV/VF (supplemental packages in neighbouring folders), multi-reel CPLs with entry points, **JPEG 2000 (XYZ → display colour space)**, 24-bit PCM up to 16 channels, **encrypted DCPs (KDM, AES-128)**, subtitles (Interop XML and SMPTE Timed Text incl. encrypted MXF and embedded fonts → positioned ASS), **CPL markers as chapters** (FFOC, LFOC, FFEC, FFMC …), **3D DCPs**, hash verification against the PKL |
@@ -237,8 +237,13 @@ libbluray bd_open_file_dec() ─ dependent view (0x1012) ─┘   (paired per fr
   into one side-by-side frame. `tools/build_deps.sh` builds it, and libmpv against it, for every platform.
   Lumen detects the decoder by its version string (`…-mvc`).
 - **Second view:** libbluray only delivers the base view. `MvcMerger` reads the playlist's SS sub-path
-  (which clip), the CLPI EP map (seek points) and the dependent `.m2ts` via libbluray, pairs access
-  units by PTS and appends the MVC NAL units to the base-view NAL units.
+  (which clip), the EP map of the dependent clip (seek points; pressed discs keep it in the extension data
+  `CPI_SS`) and the dependent `.m2ts` via libbluray, pairs access units by PTS and appends the MVC NAL units
+  to the base-view NAL units. The dependent file is read one aligned unit (6144 bytes) at a time: libbluray's
+  decrypting file answers no other read size.
+- **One time line per playlist:** every clip counts its own time stamps. `retimeM2ts` moves PTS, DTS and
+  PCR of the second and later clips so that they continue the first one; the player sees no time jump at a
+  clip change (also for 2D titles played through `lumenbd://`).
 - **3D playback always goes through libbluray** (`lumenbd://`), including "main feature" and title selection.
   The disc is told "3D preferred" (PSR21/23) so that menus select the 3D playlist.
 - **Subtitles/menus:** libbluray renders PG subtitles and menu graphics; Lumen draws them once per eye
@@ -461,8 +466,11 @@ H.264 encoder, audio tap, Lua, libbluray, libdvdnav) and exits. The package buil
 cmake -DLUMEN_BUILD_TESTS=ON …        # builds mvcmerge_test and dcp_test
 
 # Blu-ray 3D: synthetic 3D disc from the MVC test stream tests/data/mvc8.h264 -> merge both views ->
-# decode with the FFmpeg in PATH -> every frame must have left eye luma 165, right eye 36
+# decode with the FFmpeg in PATH -> every frame must have left eye luma 165, right eye 36.
+# Then the playlist time line: a generated M2TS moved by 100 s must carry exactly these time stamps.
 tools/test_bd3d.sh build build/tests/bd3d
+mvcmerge_test /Volumes/DISC 803 out.m2ts 0 500        # a real disc: playlist 00803, stop after 500 MiB
+bdoverlay_test disc.iso subtitle.png                  # compressed overlays (subtitles, HDMV menus) -> picture
 
 # Frame-sequential 3D: the filter chains for the patterns (L R, L S R S, trigger box ...) applied with FFmpeg
 tools/test_seq3d.sh build build/tests/seq3d
@@ -513,9 +521,10 @@ Developer aids: `LUMEN_SNAPSHOT=shot.png` (optionally `LUMEN_SNAPSHOT_DELAY=ms`)
 ## Command line
 
 ```bash
-lumen D:\                      # drive: detects Blu-ray / DVD / HD DVD / VCD / Audio-CD and plays the main feature
-lumen --menu D:\               # with disc menu (Blu-ray, DVD; e.g. for HTPC launchers)
-lumen --menu Movie.iso         # ISO (Blu-ray, DVD or HD DVD) / disc folder with menu
+lumen D:\                      # drive: detects Blu-ray / DVD / HD DVD / VCD / Audio-CD and starts it as set in the
+                               # window – with the disc menu unless "Start with disc menu" is switched off
+lumen --menu D:\               # always with the disc menu (Blu-ray, DVD; e.g. for HTPC launchers)
+lumen --main Movie.iso         # always the main feature: ISO (Blu-ray, DVD or HD DVD) / disc folder
 lumen VideoCD.cue              # Video-CD / SVCD image
 lumen E:\DCP\Feature_FTR       # DCP folder: plays the first (feature) CPL
 lumen --kdm feature.xml E:\DCP\Feature_FTR   # load a KDM first
@@ -542,10 +551,17 @@ lumen movie.mkv                # any file mpv can play
 
 ## Blu-ray disc menus
 
-- libbluray runs the disc's menu program and feeds the stream to mpv via `lumenbd://`;
-  menu graphics (IG or BD-J) arrive as an ARGB overlay scaled to the video area (per eye in 3D mode).
+- Discs start with their menu (start page: *Start with disc menu*, on by default). libbluray runs the
+  disc's menu program and feeds the stream to mpv via `lumenbd://`.
+- Menu graphics are scaled to the video area (per eye in 3D mode). HDMV menus and subtitles decoded by
+  libbluray arrive as compressed overlays (run lengths with a palette, `BdOverlay`), BD-J graphics as ARGB.
 - Audio/subtitle choices made in the disc menu are mapped via the stream PID to the matching track.
-- **BD-J menus** need a Java runtime (JRE ≥ 8) and `libbluray-j2se-*.jar`; without them, title mode remains available.
+- **BD-J menus** (most recent film discs) need a Java runtime (JRE ≥ 8) and libbluray's Java archive in the
+  version of the libbluray in use: `libbluray-j2se-<version>.jar` and `libbluray-awt-j2se-<version>.jar`.
+  libbluray looks next to itself and in `/usr/share/java` (Linux: the distribution's `libbluray-bdj` package);
+  Lumen also passes a folder `bdj` next to the program or in its data folder (`…/Lumen/Lumen/bdj`). Lumen's
+  own packages do not contain the archive yet.
+- A menu that cannot start (no Java, no archive) is replaced by the main feature; the *Titles* page says why.
 
 ## Limitations / status
 

@@ -40,7 +40,7 @@ Tüm paketler aynı medya kitaplıklarını içerir (Blu-ray 3D kod çözücül�
 - **Ses:** AV alıcısına bitstream (TrueHD/Atmos, DTS-HD), gece kipi, gecikme ve hız.
 - **Ses CD'si:** parça adları CD-Text'ten veya *Disc identification* eklentisiyle MusicBrainz'den.
 - **Günlük kullanım:** kaldığı yerden sürdürmeli son oynatılanlar listesi, sürükle-bırak, harici altyazı dosyaları, klavye kısayolları (F1).
-- **16 dilde arayüz**, başlangıç sayfasından seçilir.
+- **16 dilde arayüz**, pencerenin üst kısmındaki küre simgesinden seçilir.
 
 ## Kopya koruması
 

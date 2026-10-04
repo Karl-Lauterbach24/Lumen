@@ -40,7 +40,7 @@ Alla paket innehåller samma mediebibliotek (FFmpeg med Blu-ray 3D-avkodare, lib
 - **Ljud:** bitström till en AV-förstärkare (TrueHD/Atmos, DTS-HD), nattläge, fördröjning och hastighet.
 - **Ljud-cd:** spårnamn från CD-Text eller, med pluginet *Disc identification*, från MusicBrainz.
 - **I vardagen:** lista över senast spelade med återupptagning, dra och släpp, externa undertextfiler, kortkommandon (F1).
-- **Gränssnitt på 16 språk**, väljs på startsidan.
+- **Gränssnitt på 16 språk**, väljs i fönstrets rubrikrad (jordglobssymbolen).
 
 ## Kopieringsskydd
 

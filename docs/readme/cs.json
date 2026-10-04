@@ -24,7 +24,7 @@
 "f_audio": "**Zvuk:** bitstream do AV receiveru (TrueHD/Atmos, DTS-HD), noční režim, zpoždění a rychlost.",
 "f_cd": "**Zvukové CD:** názvy stop z CD-Textu nebo, s pluginem *Disc identification*, z MusicBrainz.",
 "f_comfort": "**Každodenní používání:** seznam naposledy přehraných s pokračováním, přetažení myší, externí soubory s titulky, klávesové zkratky (F1).",
-"f_languages": "**Rozhraní v 16 jazycích**, volitelné na úvodní stránce.",
+"f_languages": "**Rozhraní v 16 jazycích**, volitelné v záhlaví okna (symbol zeměkoule).",
 "h_protection": "Ochrana proti kopírování",
 "protection_text": "Lumen **neobsahuje** žádné obcházení ochrany proti kopírování. Chráněné disky (AACS, BD+, CSS) se přehrají jen tehdy, když si potřebné knihovny přidáte sami pomocí pluginu; za soulad s právem vaší země odpovídáte vy.",
 "h_plugins": "Pluginy",
