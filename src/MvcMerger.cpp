@@ -150,10 +150,20 @@ bool MvcMerger::parsePlaylistSs(const QByteArray &mpls, uint32_t playlist)
     return !m_depClip.isEmpty();
 }
 
-bool MvcMerger::setPlaylist(uint32_t playlist)
+bool MvcMerger::setPlaylist(uint32_t playlist, QByteArray &out, bool complete)
 {
-    if (playlist == m_playlist)
+    // Das letzte Bild wartet noch auf den nächsten Paketstart: jetzt ausgeben, solange seine
+    // abhängige Datei offen ist
+    if (m_active && complete)
+        emitBase(out);
+    m_basePes = PesAssembler();
+    if (playlist == m_playlist) {
+        if (m_active) {
+            m_playItem = 0;
+            openDependent(0);
+        }
         return m_active;
+    }
     m_playlist = playlist;
     closeDependent();
     m_depClip.clear();

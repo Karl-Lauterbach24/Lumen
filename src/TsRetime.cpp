@@ -19,6 +19,31 @@ void shiftStamp(uint8_t *t, uint64_t offset)
 
 } // namespace
 
+TsStamps scanM2ts(const uint8_t *data, size_t size, int pid)
+{
+    TsStamps st;
+    for (size_t pos = 0; pos + 192 <= size; pos += 192) {
+        const uint8_t *ts = data + pos + 4;
+        if (ts[0] != 0x47 || !(ts[1] & 0x40) || (((ts[1] & 0x1f) << 8) | ts[2]) != pid)
+            continue;
+        const int afc = (ts[3] >> 4) & 3;
+        const int payload = 4 + ((afc & 2) ? 1 + ts[4] : 0);
+        if (!(afc & 1) || payload + 14 > 188)
+            continue;
+        const uint8_t *p = ts + payload;
+        if (p[0] != 0 || p[1] != 0 || p[2] != 1 || (p[6] & 0xc0) != 0x80 || !(p[7] & 0x80))
+            continue;
+        const uint8_t *t = p + 9;
+        const int64_t pts = int64_t((t[0] >> 1) & 7) << 30 | int64_t(t[1]) << 22 | int64_t(t[2] >> 1) << 15 | int64_t(t[3]) << 7
+                            | int64_t(t[4] >> 1);
+        if (st.first < 0)
+            st.first = pts;
+        if (pts > st.max)
+            st.max = pts;
+    }
+    return st;
+}
+
 void retimeM2ts(uint8_t *data, size_t size, int64_t offset)
 {
     const uint64_t off = uint64_t(offset) & kMask;

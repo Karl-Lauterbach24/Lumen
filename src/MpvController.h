@@ -316,6 +316,7 @@ private:
     QString writeInputConf() const;
     void handleClientMessage(const QStringList &args);
     void selectTrackByPid(const QString &type, int pid);
+    void syncDiscTracks();
     int trackIdForPid(const QString &type, int pid) const;
     void openNavStream(const QString &device, const QString &mode, int playlist);
     void placeEmbeddedWindow();

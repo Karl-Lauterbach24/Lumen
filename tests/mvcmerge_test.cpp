@@ -34,7 +34,8 @@ int main(int argc, char **argv)
         return 1;
     }
     MvcMerger mvc(bd);
-    const bool is3d = mvc.setPlaylist(playlist);
+    QByteArray before;
+    const bool is3d = mvc.setPlaylist(playlist, before);
     std::printf("MVC aktiv=%d, Basis rechts=%d\n", is3d, mvc.baseViewIsRight());
     if (argc > 4 && std::atof(argv[4]) > 0) {
         bd_seek_time(bd, uint64_t(std::atof(argv[4]) * 90000));

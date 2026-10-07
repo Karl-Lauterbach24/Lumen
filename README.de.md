@@ -360,6 +360,8 @@ Hardware-Decoder kann ihn, auch nicht seine Basisansicht, und das Bild blieb bis
 src/MpvController   libmpv-Instanz, ereignisgesteuerte Property-Beobachtung, Profile -> mpv-Optionen, Quellenwahl, Vorführprogramm
 src/BlurayNav       libbluray als mpv-Stream "lumenbd://": Menüs, Titel, 3D, Overlays je Auge
 src/MvcMerger       Blu-ray 3D: mischt die abhängige Ansicht zu (SS-Subpfad, EP-Map, PTS-Paarung)
+src/TsRetime        Blu-ray: Clips und Playlists auf einer Zeitachse (PTS, DTS, PCR)
+src/TsRemap         Blu-ray: eigene PID für Ströme, deren Format mit der Playlist wechselt
 src/DvdNav          libdvdnav als mpv-Stream "lumendvd://": Menüs, SPU-Dekoder, Hervorhebung, Spuren, Winkel
 src/OpticalMedia    Video-CD/SVCD ("lumenvcd://", libcdio), Audio-CD, HD DVD (XPL-Playlists, EVO)
 src/DcpPackage      DCP: ASSETMAP/PKL/CPL-Parser, MXF-Kopf (Auflösung, Kanäle, 3D, Verschlüsselung)
@@ -505,8 +507,10 @@ Entwickler-Hilfen: `LUMEN_SNAPSHOT=shot.png` (optional `LUMEN_SNAPSHOT_DELAY=ms`
 `LUMEN_MPV_LOG=warn|info|v` gibt mpvs Log aus (unter Windows zusammen mit `QT_FORCE_STDERR_LOGGING=1`);
 `LUMEN_APP_NAME=LumenDev` hält Einstellungen, Profile und Verlauf eines Testlaufs vom installierten Lumen getrennt;
 `LUMEN_GPU="llvmpipe"` gibt einen Grafiktreiber vor; `LUMEN_STEREO_DEBUG=1` nennt die Entscheidungen der 3D-Erkennung;
-`LUMEN_PLAYER_SNAPSHOT=shot.png@+8` speichert das Player-Fenster 8 Sekunden nach dem Programmstart (ohne `+`: an
-dieser Stelle der Wiedergabe, angehalten); `LUMEN_NO_DRIVES=1` lässt die Laufwerke außer Acht.
+`LUMEN_PLAYER_SNAPSHOT=shot.png@+8` speichert das Player-Fenster 8 Sekunden nach dem Programmstart (mehrere Zeiten:
+`@+8,+20,+40` → `shot.png`, `shot-2.png` …; ohne `+`: an dieser Stelle der Wiedergabe, angehalten);
+`LUMEN_NO_DRIVES=1` lässt die Laufwerke außer Acht; `LUMEN_BD_DUMP=out.m2ts` schreibt den Strom mit, den eine
+Blu-ray an mpv gibt (beide Ansichten zusammengeführt, Zeitachse und PIDs, wie mpv sie sieht) – zum Nachsehen mit ffprobe.
 
 ## Kommandozeile
 
@@ -545,7 +549,20 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
   Menüprogramm der Disc aus und liefert den Strom über `lumenbd://` an mpv.
 - Menügrafik wird auf die Bildfläche skaliert (im 3D-Modus je Auge). HDMV-Menüs und von libbluray dekodierte
   Untertitel kommen als komprimierte Overlays (Lauflängen mit Palette, `BdOverlay`), BD-J-Grafik als ARGB.
-- Im Disc-Menü gewählte Ton-/Untertitelspuren werden über die Stream-PID der passenden Spur zugeordnet.
+- Im Disc-Menü gewählte Ton-/Untertitelspuren werden über die Stream-PID der passenden Spur zugeordnet. Die
+  Spurlisten zeigen die Ströme der laufenden Playlist, in der Reihenfolge der Disc und mit den Sprachen, die
+  die Playlist nennt (der Datenstrom selbst trägt keine).
+- **Eine Zeitachse über Playlists hinweg.** Der Start einer Disc läuft durch mehrere Playlists (Hinweise,
+  Logos, Menü), ein Menü läuft in einer Schleife, und jede Playlist zählt ihre Zeit vom selben Anfang. Ohne
+  Umrechnung springt die Zeit an jedem Wechsel zurück, und der Spieler verwirft, was „in der Vergangenheit“
+  liegt – kurze Logos ganz, vom Folgenden die ersten Sekunden. Lumen lässt jede neue Playlist dort
+  anschließen, wo das letzte Bild endete (`BlurayNav`, `scanM2ts`/`retimeM2ts`). Sprünge des Nutzers
+  innerhalb einer Playlist bleiben, wie sie sind.
+- **Formate wechseln von Playlist zu Playlist.** Der Ton des Menüs ist AC-3 auf PID 0x1100, der des Films
+  DTS-HD auf derselben PID; ein MPEG-TS-Demuxer legt das Format einer PID mit der ersten Programmtabelle fest
+  und gäbe DTS an den AC-3-Decoder. Ein solcher Strom bekommt eine eigene PID, in den Paketen und in der
+  Programmtabelle (`TsRemap`), mpv sieht eine neue Spur, und Lumen wechselt auf die Spur, die die Disc
+  vorsieht, wenn es die gewählte in der Playlist nicht mehr gibt.
 - **BD-J-Menüs** (die meisten neueren Filmdiscs) sind Java-Programme. Sie brauchen eine **Java-Laufzeit** auf
   dem Rechner (JRE oder JDK ab Version 8, für denselben Prozessortyp wie Lumen) und das Java-Archiv von
   libbluray in der Version der verwendeten libbluray (`libbluray-j2se-<Version>.jar`,

@@ -58,6 +58,18 @@ print('%d packets, %s' % (len(a), 'all moved by 100 s' if ok else 'time stamps d
     case "$result" in *"all moved by 100 s") ;; *) echo "::error::Blu-ray: time stamps not moved onto the playlist's time line"; exit 1 ;; esac
 fi
 
+# Stream formats change from playlist to playlist (menu sound AC-3, film sound DTS-HD on the same PID):
+# such a stream must get a PID of its own, in the packets and in the programme table (TsRemap).
+if [ -x "$BUILD/tsremap_test" ] || [ -x "$BUILD/tsremap_test.exe" ]; then
+    T="$BUILD/tsremap_test"; [ -x "$T" ] || T="$BUILD/tsremap_test.exe"
+    if ! "$T" > "$WORK/tsremap.log" 2>&1; then
+        cat "$WORK/tsremap.log"
+        echo "::error::Blu-ray: stream with a changed format did not get its own PID"
+        exit 1
+    fi
+    echo "playlist streams: $(grep -c '^OK' "$WORK/tsremap.log") checks passed"
+fi
+
 # BD-J menus: rides along because every CI platform calls this script. Report only, the packages are
 # built either way: where no Java is at hand the test skips itself, and a failure shows as a warning.
 if [ -z "${LUMEN_SKIP_BDJ:-}" ]; then

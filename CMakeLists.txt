@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 1.3.1 LANGUAGES CXX)
+project(Lumen VERSION 1.3.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -333,7 +333,8 @@ if(LUMEN_HAVE_BLURAY)
     target_link_libraries(lumen PRIVATE lumen_bluray)
     target_compile_definitions(lumen PRIVATE LUMEN_HAVE_BLURAY=1)
     # Blu-ray 3D: MVC-Ansicht zumischen (Decoder: FFmpeg-mvc zur Laufzeit)
-    target_sources(lumen PRIVATE src/MvcMerger.h src/MvcMerger.cpp src/TsRetime.h src/TsRetime.cpp src/BdOverlay.h src/BdOverlay.cpp)
+    target_sources(lumen PRIVATE src/MvcMerger.h src/MvcMerger.cpp src/TsRetime.h src/TsRetime.cpp src/TsRemap.h src/TsRemap.cpp
+                               src/BdOverlay.h src/BdOverlay.cpp)
 
     # BD-J-Menüs: libbluray lädt sein Java-Archiv nur in der eigenen Version. resources/bdj enthält
     # die mit tools/build_bdj.sh gebauten Archive. macOS nimmt das passende Paar ins Bundle
@@ -475,8 +476,11 @@ if(LUMEN_BUILD_TESTS AND LUMEN_HAVE_BLURAY)
     add_executable(bdj_test tests/bdj_test.cpp src/BdjSetup.cpp src/BdjSetup.h)
     target_compile_definitions(bdj_test PRIVATE LUMEN_HAVE_BLURAY=1)
     target_link_libraries(bdj_test PRIVATE Qt6::Gui lumen_bluray)
+    # Test: eigene PID für Ströme, deren Format sich von Playlist zu Playlist ändert
+    add_executable(tsremap_test tests/tsremap_test.cpp src/TsRemap.cpp src/TsRemap.h)
+    target_link_libraries(tsremap_test PRIVATE Qt6::Core)
     # Die Paket-Builds bauen nur "lumen mvcmerge_test": was tools/test_bd3d.sh außerdem aufruft, fährt mit
-    add_dependencies(mvcmerge_test tsretime_test bdj_test)
+    add_dependencies(mvcmerge_test tsretime_test tsremap_test bdj_test)
 endif()
 # Test: DCP lesen, KDM auspacken, Spurdateien entschlüsseln, Untertitel wandeln
 if(LUMEN_BUILD_TESTS)

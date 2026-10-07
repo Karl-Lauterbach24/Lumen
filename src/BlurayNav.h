@@ -1,7 +1,9 @@
 #pragma once
 
 #include <QImage>
+#include <QHash>
 #include <QObject>
+#include <QSet>
 #include <QTimer>
 #include <QVariant>
 #include <atomic>
@@ -85,6 +87,16 @@ public:
     // 3D-Untertitel (von libbluray gerendert): Stream per PID wählen, 0 = aus
     void selectSubtitlePid(int pid);
 
+    // Ströme des laufenden Clips, so wie mpv sie als Spuren sieht (PID in der Ausgabe). Die Playlists
+    // einer Disc bringen verschiedene mit: nach dem Menü beginnt der Film mit anderen Tonspuren.
+    QSet<int> livePids() const { return m_livePids; }
+    // Spur, die die Disc für "video", "audio" oder "sub" vorsieht (PID in der Ausgabe, 0 = keine)
+    int discPid(const QString &type) const;
+    // Sprache eines Stroms laut Playlist (ISO 639-2, leer = keine Angabe) und sein Platz in der
+    // Liste der Disc (-1 = nicht in der Liste)
+    QString pidLanguage(int pid) const { return m_pidLang.value(pid); }
+    int pidOrder(int pid) const { return m_pidOrder.value(pid, -1); }
+
     // Maus in OSD-Koordinaten des Player-Fensters
     void mouseMove(double x, double y);
     void mouseClick(double x, double y);
@@ -100,6 +112,8 @@ signals:
     // Stream-Wahl aus dem Disc-Menü -> mpv-Spur mit dieser PID wählen
     void audioPidSelected(int pid);
     void subtitlePidSelected(int pid, bool enabled);
+    // ein Clip mit anderen Strömen hat begonnen
+    void streamsChanged();
 
 private:
     struct Session;
@@ -123,6 +137,13 @@ private:
     int m_requestedPlaylist = -1;
 
     std::mutex m_mutex; // schützt m_session gegen close aus dem mpv-Thread
+    QSet<int> m_livePids;
+    QHash<int, int> m_pidSource; // eigene PID der Ausgabe -> PID auf der Disc (TsRemap)
+    QHash<int, QString> m_pidLang;
+    QHash<int, int> m_pidOrder;
+    int m_videoPid = 0;
+    int m_audioPid = 0;
+    int m_subPid = 0;
     Session *m_session = nullptr;
 
     QTimer m_poll;

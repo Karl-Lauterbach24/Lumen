@@ -229,19 +229,29 @@ MpvController::MpvController(DisplayManager *displays, BlurayNav *nav, QObject *
         m_snapshotFile = snap.section(QLatin1Char('@'), 0, -2);
         const QString when = snap.section(QLatin1Char('@'), -1);
         if (when.startsWith(QLatin1Char('+'))) {
-            // <datei>@+<sekunden>: so lange nach dem Start, ohne anzuhalten (Disc-Menüs: dort zählt
-            // jede Playlist ihre Zeit von vorn)
+            // <datei>@+<sekunden>[,+<sekunden>…]: so lange nach dem Start, ohne anzuhalten (Disc-Menüs:
+            // dort zählt jede Playlist ihre Zeit von vorn). Weitere Zeiten: <datei>-2.png, -3 …
             m_snapshotAt = -1;
-            QTimer::singleShot(int(when.mid(1).toDouble() * 1000), this, [this] {
-                if (m_window)
-                    m_window->grabFramebuffer().save(m_snapshotFile);
-            });
+            const QStringList times = when.split(QLatin1Char(','), Qt::SkipEmptyParts);
+            for (int i = 0; i < times.size(); ++i) {
+                QString file = m_snapshotFile;
+                if (i > 0) {
+                    const int dot = file.lastIndexOf(QLatin1Char('.'));
+                    file.insert(dot < 0 ? file.size() : dot, QStringLiteral("-%1").arg(i + 1));
+                }
+                QTimer::singleShot(int(times.at(i).mid(1).toDouble() * 1000), this, [this, file] {
+                    if (m_window)
+                        m_window->grabFramebuffer().save(file);
+                });
+            }
         } else {
             m_snapshotAt = when.toDouble();
         }
     }
     if (m_nav) {
         connect(m_nav, &BlurayNav::audioPidSelected, this, [this](int pid) { selectTrackByPid(QStringLiteral("audio"), pid); });
+        // ein Clip mit anderen Strömen: Spurlisten neu filtern, verwaiste Auswahl umstellen
+        connect(m_nav, &BlurayNav::streamsChanged, this, [this] { rebuildTracks(m_rawTracks); });
         connect(m_nav, &BlurayNav::subtitlePidSelected, this, [this](int pid, bool on) {
             if (m_nav->mvcActive()) {
                 // 3D: libbluray rendert die Untertitel selbst – nur die Anzeige nachführen
@@ -891,10 +901,43 @@ void MpvController::selectTrackByPid(const QString &type, int pid)
         if (t.value("type").toString() == type && t.value("src-id").toInt() == pid) {
             if (type == QLatin1String("audio"))
                 setAudioId(t.value("id").toInt());
+            else if (type == QLatin1String("video"))
+                setOptionRaw(QStringLiteral("vid"), QString::number(t.value("id").toInt()), false);
             else
                 setSubtitleId(t.value("id").toInt());
             return;
         }
+    }
+}
+
+// Disc über libbluray: Die Playlists einer Disc bringen verschiedene Ströme mit. Zeigt die gewählte
+// Spur auf einen Strom, den der laufende Clip nicht hat – nach dem Menü beginnt der Film, sein Ton
+// hat ein anderes Format und darum eine eigene Spur –, die Spur wählen, die die Disc vorsieht.
+// Eine Spur, die es im Clip gibt, bleibt gewählt: die Wahl des Nutzers geht vor.
+void MpvController::syncDiscTracks()
+{
+    if (!m_nav || !m_nav->active())
+        return;
+    const QSet<int> live = m_nav->livePids();
+    if (live.isEmpty())
+        return;
+    for (const QString &type : {QStringLiteral("video"), QStringLiteral("audio"), QStringLiteral("sub")}) {
+        // 3D: Untertitel zeichnet libbluray selbst
+        if (type == QLatin1String("sub") && m_nav->mvcActive())
+            continue;
+        int selected = -1;
+        for (const auto &v : std::as_const(m_rawTracks)) {
+            const QVariantMap t = v.toMap();
+            if (t.value("type").toString() == type && t.value("selected").toBool() && !t.value("external").toBool())
+                selected = t.value("src-id").toInt();
+        }
+        // nichts gewählt (Ton oder Untertitel aus) bleibt so; die Spur des Clips ebenfalls
+        if (selected < 0 || live.contains(selected))
+            continue;
+        const int want = m_nav->discPid(type);
+        // die neue Spur erscheint mit der Programmtabelle des Clips: dann ruft rebuildTracks wieder
+        if (want > 0 && trackIdForPid(type, want) > 0)
+            selectTrackByPid(type, want);
     }
 }
 
@@ -2582,6 +2625,14 @@ void MpvController::rebuildTracks(const QVariantList &list)
     m_audioTracks.clear();
     m_subtitleTracks.clear();
     int dv = 0;
+    // Disc über libbluray: nur die Ströme des laufenden Clips anbieten (mpv behält die Spuren
+    // früherer Playlists, etwa die des Menüs)
+    QSet<int> live = m_nav && m_nav->active() ? m_nav->livePids() : QSet<int>();
+    const bool known = std::any_of(list.cbegin(), list.cend(), [&live](const QVariant &v) {
+        return live.contains(v.toMap().value("src-id").toInt());
+    });
+    if (!known)
+        live.clear(); // die Spuren des Clips sind noch nicht da: nichts ausblenden
     for (const auto &v : list) {
         const QVariantMap t = v.toMap();
         const QString type = t.value("type").toString();
@@ -2589,9 +2640,14 @@ void MpvController::rebuildTracks(const QVariantList &list)
             dv = t.value("dolby-vision-profile").toInt();
         if (type != QLatin1String("audio") && type != QLatin1String("sub"))
             continue;
+        if (!live.isEmpty() && !t.value("external").toBool() && !live.contains(t.value("src-id").toInt()))
+            continue;
         QStringList parts;
         // ohne Sprachangabe nur Format und Titel (statt eines Strichs)
-        const QString lang = t.value("lang").toString().toUpper();
+        QString lang = t.value("lang").toString().toUpper();
+        // Blu-ray: die Sprachen stehen in der Playlist, nicht im Datenstrom
+        if (lang.isEmpty() && !live.isEmpty())
+            lang = m_nav->pidLanguage(t.value("src-id").toInt()).toUpper();
         if (!lang.isEmpty())
             parts << lang;
         parts << prettyCodec(t.value("codec").toString(), t.value("codec-profile").toString());
@@ -2618,9 +2674,22 @@ void MpvController::rebuildTracks(const QVariantList &list)
             {"selected", t.value("selected").toBool()},
             {"external", t.value("external").toBool()},
         };
+        if (!live.isEmpty() && !t.value("external").toBool())
+            e.insert(QStringLiteral("order"), m_nav->pidOrder(t.value("src-id").toInt()));
         (type == QLatin1String("audio") ? m_audioTracks : m_subtitleTracks).append(e);
     }
+    if (!live.isEmpty()) {
+        // in der Reihenfolge der Disc; mpv zählt die Spuren, wie sie im Strom auftauchen
+        const auto discOrder = [](const QVariant &a, const QVariant &b) {
+            const int x = a.toMap().value(QStringLiteral("order"), 1 << 20).toInt();
+            const int y = b.toMap().value(QStringLiteral("order"), 1 << 20).toInt();
+            return (x < 0 ? 1 << 19 : x) < (y < 0 ? 1 << 19 : y);
+        };
+        std::stable_sort(m_audioTracks.begin(), m_audioTracks.end(), discOrder);
+        std::stable_sort(m_subtitleTracks.begin(), m_subtitleTracks.end(), discOrder);
+    }
     emit tracksChanged();
+    syncDiscTracks();
     if (dv != m_dvProfile) {
         m_dvProfile = dv;
         updateVideoInfo();

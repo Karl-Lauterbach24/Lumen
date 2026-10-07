@@ -29,8 +29,11 @@ public:
     explicit MvcMerger(struct bluray *bd);
     ~MvcMerger();
 
-    // Liest den SS-Subpfad der Playlist. false = Playlist ist nicht 3D.
-    bool setPlaylist(uint32_t playlist);
+    // Liest den SS-Subpfad der Playlist. false = Playlist ist nicht 3D. Das letzte Bild der alten
+    // Playlist geht vorher mit seinem Partner nach out, wenn sie zu Ende gelesen war (complete) –
+    // wurde sie abgebrochen (Taste im Menü), ist es unvollständig und entfällt. Dieselbe Playlist
+    // noch einmal (Menüschleife) beginnt von vorn.
+    bool setPlaylist(uint32_t playlist, QByteArray &out, bool complete = true);
     // Wechsel des PlayItems (Clip): gibt das letzte Bild des alten Clips mit seinem Partner
     // nach out und öffnet dann die abhängige Datei des neuen
     void setPlayItem(int index, QByteArray &out);

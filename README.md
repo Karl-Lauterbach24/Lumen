@@ -362,6 +362,8 @@ base view, and the picture used to stay black.
 src/MpvController   libmpv instance, event-driven property observation, profiles -> mpv options, source dispatch, show playlist
 src/BlurayNav       libbluray as mpv stream "lumenbd://": menus, titles, 3D, overlays per eye
 src/MvcMerger       Blu-ray 3D: mixes in the dependent view (SS sub-path, EP map, PTS pairing)
+src/TsRetime        Blu-ray: clips and playlists on one time line (PTS, DTS, PCR)
+src/TsRemap         Blu-ray: a PID of its own for streams whose format changes with the playlist
 src/DvdNav          libdvdnav as mpv stream "lumendvd://": menus, SPU decoder, highlights, streams, angles
 src/OpticalMedia    Video-CD/SVCD ("lumenvcd://", libcdio), Audio-CD, HD DVD (XPL playlists, EVO)
 src/DcpPackage      DCP: ASSETMAP/PKL/CPL parser, MXF header probe (resolution, channels, 3D, encryption)
@@ -518,8 +520,10 @@ Developer aids: `LUMEN_SNAPSHOT=shot.png` (optionally `LUMEN_SNAPSHOT_DELAY=ms`)
 `LUMEN_MPV_LOG=warn|info|v` forwards mpv's log (with `QT_FORCE_STDERR_LOGGING=1` on Windows);
 `LUMEN_APP_NAME=LumenDev` keeps settings, profiles and history of a test run apart from the installed Lumen;
 `LUMEN_GPU="llvmpipe"` pretends a graphics driver; `LUMEN_STEREO_DEBUG=1` prints the 3D detection's decisions;
-`LUMEN_PLAYER_SNAPSHOT=shot.png@+8` saves the player window 8 seconds after the program started (without the `+`: at
-that playback position, paused); `LUMEN_NO_DRIVES=1` ignores the physical drives.
+`LUMEN_PLAYER_SNAPSHOT=shot.png@+8` saves the player window 8 seconds after the program started (several times:
+`@+8,+20,+40` → `shot.png`, `shot-2.png` …; without the `+`: at that playback position, paused);
+`LUMEN_NO_DRIVES=1` ignores the physical drives; `LUMEN_BD_DUMP=out.m2ts` records the stream a Blu-ray hands to
+mpv (both views merged, time line and PIDs as mpv sees them) for a look with ffprobe.
 
 ## Command line
 
@@ -558,7 +562,19 @@ lumen movie.mkv                # any file mpv can play
   disc's menu program and feeds the stream to mpv via `lumenbd://`.
 - Menu graphics are scaled to the video area (per eye in 3D mode). HDMV menus and subtitles decoded by
   libbluray arrive as compressed overlays (run lengths with a palette, `BdOverlay`), BD-J graphics as ARGB.
-- Audio/subtitle choices made in the disc menu are mapped via the stream PID to the matching track.
+- Audio/subtitle choices made in the disc menu are mapped via the stream PID to the matching track. The
+  track lists show the streams of the playlist that is playing, in the disc's order and with the languages
+  the playlist names (the data stream itself carries none).
+- **One time line across playlists.** A disc start runs through several playlists (warnings, logos, menu),
+  a menu loops, and every playlist counts its time from the same start. Without correction the time jumps
+  back at each change and the player drops what lies "in the past" – short logos entirely, the first seconds
+  of what follows. Lumen lets each new playlist continue where the last picture ended (`BlurayNav`,
+  `scanM2ts`/`retimeM2ts`). Seeks by the user inside a playlist stay as they are.
+- **Formats change from playlist to playlist.** The menu's sound is AC-3 on PID 0x1100, the film's DTS-HD on
+  the same PID; an MPEG-TS demuxer fixes the format of a PID with the first programme table and would hand
+  DTS to the AC-3 decoder. Such a stream gets a PID of its own, in the packets and in the programme table
+  (`TsRemap`), mpv sees a new track, and Lumen switches to the track the disc intends when the selected one
+  no longer exists in the playlist.
 - **BD-J menus** (most recent film discs) are Java programs. They need a **Java runtime** on the computer
   (JRE or JDK from version 8 on, built for the same processor type as Lumen) and libbluray's Java archive in
   the version of the libbluray in use (`libbluray-j2se-<version>.jar`, `libbluray-awt-j2se-<version>.jar`).

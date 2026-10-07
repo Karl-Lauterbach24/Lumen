@@ -3,6 +3,7 @@
 #include "PathUtil.h"
 
 #include <QDeadlineTimer>
+#include <QFile>
 #include <QHash>
 #include <QLocale>
 #include <QPainter>
@@ -15,6 +16,7 @@
 #ifdef LUMEN_HAVE_BLURAY
 #include "BdOverlay.h"
 #include "MvcMerger.h"
+#include "TsRemap.h"
 #include "TsRetime.h"
 #include <libbluray/bluray.h>
 #include <libbluray/keys.h>
@@ -31,6 +33,7 @@
 namespace {
 constexpr double kTicks = 90000.0;
 constexpr int kReadBlock = 6144 * 32;
+constexpr int kVideoPid = 0x1011; // Hauptbild jeder Blu-ray
 }
 
 // ---------------------------------------------------------------------------
@@ -58,7 +61,18 @@ struct BlurayNav::Session
     std::mutex planeMutex;
     int playitem = 0;
     BLURAY_TITLE_INFO *playlistInfo = nullptr;
-    int64_t tsOffset = 0; // 90 kHz: Zeit auf der Playlist minus Zeitstempel des laufenden Clips
+    int64_t tsOffset = 0; // 90 kHz: Zeit auf der Zeitachse minus Zeitstempel des laufenden Clips
+    // Zeitachse über Playlists hinweg (Menü: Logos, Vorspann, Menüschleifen), siehe retime()
+    int64_t tsBase = 0;     // Versatz der laufenden Playlist
+    int64_t tsEnd = -1;     // Ende des zuletzt ausgegebenen Bildes, -1 = noch keines
+    int64_t tsSegment = -1; // höchste Bildzeit seit dem letzten Sprung oder Playlistbeginn
+    bool rebase = false;    // die nächsten Bilddaten schließen an tsEnd an
+    TsRemap remap;          // eigene PID für Ströme, deren Format sich mit der Playlist ändert
+    int audioStream = 1;    // Wahl der Disc (Menü "Sprachen"): Nummer der Tonspur, 1 = erste
+    int pgStream = 0;       // Nummer der Untertitel, 0 = keine Angabe
+    bool pgOn = false;
+    bool drained = false;   // die Playlist ist bis zu ihrem Ende gelesen (BD_EVENT_END_OF_TITLE)
+    std::unique_ptr<QFile> dump; // LUMEN_BD_DUMP=<datei>: alles, was mpv bekommt, mitschreiben
 
     ~Session()
     {
@@ -74,7 +88,11 @@ struct BlurayNav::Session
     void flushOverlay();
     void handleEvent(const BD_EVENT &ev);
     void startMvc(uint32_t playlist);
+    void startClip();
+    int64_t clipOffset() const;
+    int64_t frameTicks() const;
     void updateOffset();
+    void startTimeline(const uint8_t *raw, size_t size);
     void retime(int from);
     int64_t read(char *buf, uint64_t size);
 #endif
@@ -181,7 +199,7 @@ void BlurayNav::Session::startMvc(uint32_t playlist)
 {
     if (!mvc)
         return;
-    const bool on = mvc->setPlaylist(playlist);
+    const bool on = mvc->setPlaylist(playlist, out, drained);
     QMetaObject::invokeMethod(nav, [n = nav, on, right = mvc->baseViewIsRight()] {
         if (n->m_mvcActive == on && n->m_baseRight == right)
             return;
@@ -198,20 +216,128 @@ void BlurayNav::Session::startMvc(uint32_t playlist)
 // für jeden Clip Beginn (in_time) und Platz auf ihrer Zeitachse (start_time). Der erste Clip
 // behält seine Zeitstempel (DTS und PCR liegen vor der ersten PTS und dürfen nicht unter null
 // rutschen), die folgenden schließen daran an.
-void BlurayNav::Session::updateOffset()
+int64_t BlurayNav::Session::clipOffset() const
 {
-    tsOffset = 0;
     if (playlistInfo && playitem > 0 && playitem < int(playlistInfo->clip_count)) {
         const BLURAY_CLIP_INFO &c = playlistInfo->clips[playitem];
-        tsOffset = int64_t(c.start_time) - int64_t(c.in_time) + int64_t(playlistInfo->clips[0].in_time);
+        return int64_t(c.start_time) - int64_t(c.in_time) + int64_t(playlistInfo->clips[0].in_time);
     }
+    return 0;
 }
 
-// Zeitstempel der M2TS-Pakete in out ab der Stelle from auf die Zeitachse der Playlist legen
+void BlurayNav::Session::updateOffset()
+{
+    tsOffset = tsBase + clipOffset();
+}
+
+// Dauer eines Bildes des laufenden Clips in 90-kHz-Ticks (Kennzahl der Bildrate aus der Playlist)
+int64_t BlurayNav::Session::frameTicks() const
+{
+    if (playlistInfo && playitem < int(playlistInfo->clip_count) && playlistInfo->clips[playitem].video_stream_count > 0) {
+        switch (playlistInfo->clips[playitem].video_streams[0].rate) {
+        case BLURAY_VIDEO_RATE_24: return 3750;
+        case BLURAY_VIDEO_RATE_25: return 3600;
+        case BLURAY_VIDEO_RATE_30000_1001: return 3003;
+        case BLURAY_VIDEO_RATE_50: return 1800;
+        case BLURAY_VIDEO_RATE_60000_1001: return 1502;
+        default: break;
+        }
+    }
+    return 3754; // 23,976 Bilder/s
+}
+
+// Auch jede Playlist zählt ihre Zeit von vorn, die meisten ab derselben Zahl. Beim Start einer Disc
+// folgen mehrere aufeinander (Logos, Hinweise, Menü), ein Menü läuft in einer Schleife. Ohne
+// Umrechnung springt die Zeit an jedem Wechsel zurück: mpv hält das Bild an und verwirft, was
+// "in der Vergangenheit" liegt – kurze Logos ganz, vom Menü die ersten Sekunden. Darum schließt
+// eine neue Playlist an das Ende des zuletzt ausgegebenen Bildes an. Sprünge des Nutzers innerhalb
+// einer Playlist bleiben, wie sie sind: dort leert Lumen mpvs Puffer selbst.
+//
+// raw: der nächste Block von libbluray, noch vor dem Zumischen der zweiten Ansicht (das gibt jedes
+// Bild erst mit dem Beginn des nächsten aus; Ton davor bekäme sonst noch den alten Versatz).
+void BlurayNav::Session::startTimeline(const uint8_t *raw, size_t size)
+{
+    const TsStamps video = scanM2ts(raw, size, kVideoPid);
+    if (video.first < 0)
+        return;
+    rebase = false;
+    tsBase = tsEnd - (video.first + clipOffset());
+    updateOffset();
+}
+
+// Zeitstempel der M2TS-Pakete in out ab der Stelle from auf die Zeitachse legen
 void BlurayNav::Session::retime(int from)
 {
-    if (tsOffset && from < out.size())
-        retimeM2ts(reinterpret_cast<uint8_t *>(out.data()) + from, size_t(out.size() - from), tsOffset);
+    if (from >= out.size())
+        return;
+    auto *data = reinterpret_cast<uint8_t *>(out.data()) + from;
+    const size_t size = size_t(out.size() - from);
+    retimeM2ts(data, size, tsOffset);
+    const TsStamps video = scanM2ts(data, size, kVideoPid);
+    if (video.max >= 0) {
+        tsSegment = std::max(tsSegment, video.max);
+        tsEnd = tsSegment + frameTicks();
+    }
+    remap.process(data, size);
+}
+
+// Ein Clip beginnt: seinen Strömen, deren Format von dem abweicht, was der Demuxer unter derselben
+// PID schon kennt, eine eigene PID geben (TsRemap) und der Oberfläche sagen, welche Spuren es
+// jetzt gibt und welche die Disc vorsieht.
+void BlurayNav::Session::startClip()
+{
+    if (!playlistInfo || playitem < 0 || playitem >= int(playlistInfo->clip_count))
+        return;
+    const BLURAY_CLIP_INFO &c = playlistInfo->clips[playitem];
+    QList<TsRemap::Stream> streams;
+    const auto add = [&streams](const BLURAY_STREAM_INFO *s, int n) {
+        for (int i = 0; i < n; ++i)
+            streams.append({s[i].pid, s[i].coding_type});
+    };
+    add(c.video_streams, c.video_stream_count);
+    add(c.audio_streams, c.audio_stream_count);
+    add(c.pg_streams, c.pg_stream_count);
+    add(c.ig_streams, c.ig_stream_count);
+    add(c.sec_audio_streams, c.sec_audio_stream_count);
+    add(c.sec_video_streams, c.sec_video_stream_count);
+    remap.setStreams(streams);
+
+    QSet<int> live;
+    QHash<int, int> source;
+    for (const TsRemap::Stream &s : std::as_const(streams)) {
+        const int out = remap.map(s.pid);
+        live.insert(out);
+        if (out != s.pid)
+            source.insert(out, s.pid);
+    }
+    // Sprache und Platz in der Liste der Disc (der Datenstrom selbst nennt keine Sprachen)
+    QHash<int, QString> langs;
+    QHash<int, int> order;
+    const auto describe = [&](const BLURAY_STREAM_INFO *s, int n) {
+        for (int i = 0; i < n; ++i) {
+            const int out = remap.map(s[i].pid);
+            order.insert(out, i);
+            const QString lang = QString::fromLatin1(reinterpret_cast<const char *>(s[i].lang), int(qstrnlen(reinterpret_cast<const char *>(s[i].lang), 3)));
+            if (!lang.trimmed().isEmpty())
+                langs.insert(out, lang.trimmed());
+        }
+    };
+    describe(c.audio_streams, c.audio_stream_count);
+    describe(c.pg_streams, c.pg_stream_count);
+    const int video = c.video_stream_count > 0 ? remap.map(c.video_streams[0].pid) : 0;
+    const int a = audioStream >= 1 && audioStream <= c.audio_stream_count ? audioStream : 1;
+    const int audio = c.audio_stream_count > 0 ? remap.map(c.audio_streams[a - 1].pid) : 0;
+    const int sub = pgOn && pgStream >= 1 && pgStream <= c.pg_stream_count ? remap.map(c.pg_streams[pgStream - 1].pid) : 0;
+    QMetaObject::invokeMethod(nav, [n = nav, live, source, langs, order, video, audio, sub] {
+        n->m_livePids = live;
+        n->m_pidSource = source;
+        n->m_pidLang = langs;
+        n->m_pidOrder = order;
+        n->m_videoPid = video;
+        n->m_audioPid = audio;
+        n->m_subPid = sub;
+        emit n->streamsChanged();
+    }, Qt::QueuedConnection);
 }
 
 void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
@@ -231,12 +357,19 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
         post([n, t = int(ev.param)] { n->m_title = t; emit n->stateChanged(); });
         break;
     case BD_EVENT_PLAYLIST: {
+        // Was die alte Playlist noch ausgibt (3D: ihr letztes Bild), trägt deren Zeitstempel
+        const int from = out.size();
+        startMvc(ev.param);
+        retime(from);
         if (playlistInfo)
             bd_free_title_info(playlistInfo);
         playlistInfo = bd_get_playlist_info(bd, ev.param, 0);
         playitem = 0;
+        // die neue Playlist schließt an das zuletzt ausgegebene Bild an
+        rebase = tsEnd >= 0;
+        tsSegment = -1;
         updateOffset();
-        startMvc(ev.param);
+        startClip();
         QVariantList chapters;
         double duration = 0;
         if (playlistInfo) {
@@ -262,9 +395,13 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
         retime(from);
         playitem = int(ev.param);
         updateOffset();
+        startClip();
         break;
     }
     case BD_EVENT_SEEK:
+        // nach einem Sprung zählt für den Anschluss der nächsten Playlist nur, was danach kam
+        tsSegment = -1;
+        [[fallthrough]];
     case BD_EVENT_DISCONTINUITY:
         if (mvc)
             mvc->reset();
@@ -272,23 +409,38 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
     case BD_EVENT_CHAPTER:
         post([n, c = int(ev.param) - 1] { n->m_chapter = c; emit n->positionChanged(); });
         break;
+    // Die Wahl im Menü der Disc gilt dem Film: das Menü selbst hat meist nur eine Tonspur. Die
+    // Nummer merken, startClip() wendet sie auf den Clip an, der dann beginnt.
     case BD_EVENT_AUDIO_STREAM:
+        if (ev.param >= 1)
+            audioStream = int(ev.param);
         if (playlistInfo && playitem < int(playlistInfo->clip_count) && ev.param >= 1) {
             const BLURAY_CLIP_INFO &c = playlistInfo->clips[playitem];
             if (ev.param <= c.audio_stream_count)
-                post([n, pid = int(c.audio_streams[ev.param - 1].pid)] { emit n->audioPidSelected(pid); });
+                post([n, pid = int(remap.map(c.audio_streams[ev.param - 1].pid))] {
+                    n->m_audioPid = pid;
+                    emit n->audioPidSelected(pid);
+                });
         }
         break;
     case BD_EVENT_PG_TEXTST_STREAM:
+        pgStream = int(ev.param);
         if (playlistInfo && playitem < int(playlistInfo->clip_count) && ev.param >= 1) {
             const BLURAY_CLIP_INFO &c = playlistInfo->clips[playitem];
             if (ev.param <= c.pg_stream_count)
-                post([n, pid = int(c.pg_streams[ev.param - 1].pid)] { emit n->subtitlePidSelected(pid, true); });
+                post([n, on = pgOn, pid = int(remap.map(c.pg_streams[ev.param - 1].pid))] {
+                    n->m_subPid = on ? pid : 0;
+                    emit n->subtitlePidSelected(pid, true);
+                });
         }
         break;
     case BD_EVENT_PG_TEXTST:
+        pgOn = ev.param != 0;
         if (!ev.param)
-            post([n] { emit n->subtitlePidSelected(0, false); });
+            post([n] {
+                n->m_subPid = 0;
+                emit n->subtitlePidSelected(0, false);
+            });
         break;
     case BD_EVENT_STILL:
         still = ev.param != 0;
@@ -304,6 +456,9 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
         break;
     case BD_EVENT_IDLE:
         idle = true;
+        break;
+    case BD_EVENT_END_OF_TITLE:
+        drained = true;
         break;
     case BD_EVENT_MENU:
         post([n, on = ev.param != 0] { n->m_menuVisible = on; emit n->stateChanged(); });
@@ -323,6 +478,8 @@ int64_t BlurayNav::Session::read(char *buf, uint64_t size)
         if (outPos < out.size()) {
             const int n = int(std::min<uint64_t>(size, uint64_t(out.size() - outPos)));
             std::memcpy(buf, out.constData() + outPos, size_t(n));
+            if (dump)
+                dump->write(buf, n);
             outPos += n;
             if (outPos >= out.size()) {
                 out.clear();
@@ -346,7 +503,10 @@ int64_t BlurayNav::Session::read(char *buf, uint64_t size)
         if (r < 0)
             return -1;
         if (r > 0) {
+            drained = false;
             timedStill = false;
+            if (rebase)
+                startTimeline(reinterpret_cast<const uint8_t *>(block.constData()), size_t(r));
             const int from = out.size();
             if (mvc && mvc->active())
                 mvc->process(reinterpret_cast<const uint8_t *>(block.constData()), size_t(r), out);
@@ -571,6 +731,11 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
         emit nav->stateChanged();
     });
 
+    if (qEnvironmentVariableIsSet("LUMEN_BD_DUMP")) {
+        s->dump = std::make_unique<QFile>(qEnvironmentVariable("LUMEN_BD_DUMP"));
+        if (!s->dump->open(QIODevice::WriteOnly))
+            s->dump.reset();
+    }
     info->cookie = s;
     info->read_fn = [](void *c, char *buf, uint64_t n) { return static_cast<Session *>(c)->read(buf, n); };
     info->close_fn = [](void *c) {
@@ -602,6 +767,11 @@ void BlurayNav::closeSession(Session *s)
         m_popupAvailable = false;
         m_still = false;
         m_chapters.clear();
+        m_livePids.clear();
+        m_pidSource.clear();
+        m_pidLang.clear();
+        m_pidOrder.clear();
+        m_videoPid = m_audioPid = m_subPid = 0;
         const bool hadMvc = m_mvcActive;
         m_mvcActive = false;
         onOverlay(QImage(), QRect());
@@ -740,9 +910,19 @@ bool BlurayNav::key(const QString &name)
 #endif
 }
 
+int BlurayNav::discPid(const QString &type) const
+{
+    if (type == QLatin1String("video"))
+        return m_videoPid;
+    if (type == QLatin1String("audio"))
+        return m_audioPid;
+    return type == QLatin1String("sub") ? m_subPid : 0;
+}
+
 void BlurayNav::selectSubtitlePid(int pid)
 {
 #ifdef LUMEN_HAVE_BLURAY
+    pid = m_pidSource.value(pid, pid); // die Disc kennt ihre eigene PID
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_session || !m_session->playlistInfo)
         return;
