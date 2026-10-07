@@ -7,6 +7,7 @@
 // ist 0x1100 AC-3, im zweiten DTS-HD. Verarbeitet wird in Blöcken, die die PMT mittendurch teilen.
 #include "../src/TsRemap.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <vector>
