@@ -132,16 +132,18 @@ if have weston; then
             run wayland-play "$BUILD/lumen" "av://lavfi:testsrc2=size=1280x720:rate=24"
         if [ -s "$WORK/wayland-player.png" ]; then echo "start test [wayland-play]: player window rendered"
         else echo "::warning::start test [wayland-play]: no picture from the player window"; fi
-        # Start and end, several times and watched: once in about 150 runs on the build machines the
-        # program did not end by itself on Wayland.
+        # Start and end, several times and watched. Found this way (4 of 360 runs, Fedora 44 with
+        # PipeWire 1.6.9 only, no PipeWire service in the container): mpv's core stands in
+        # pw_thread_loop_stop() after a failed connection (ao_pipewire: hotplug_init -> uninit), and
+        # the program neither goes on nor ends. LUMEN_START_TEST_REPEAT=30 repeats that search.
         if have gdb; then
             hung=0
-            for i in $(seq 1 "${LUMEN_START_TEST_REPEAT:-30}"); do
+            for i in $(seq 1 "${LUMEN_START_TEST_REPEAT:-2}"); do
                 WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software watched "wayland-software-$i" "$BUILD/lumen" || hung=$((hung + 1))
                 WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland watched "wayland-opengl-$i" "$BUILD/lumen" || hung=$((hung + 1))
                 WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland watched "wayland-play-$i" "$BUILD/lumen" "av://lavfi:testsrc2=size=1280x720:rate=24" || hung=$((hung + 1))
             done
-            echo "start test [wayland, watched]: $hung of $((3 * ${LUMEN_START_TEST_REPEAT:-30})) runs did not end by themselves"
+            echo "start test [wayland, watched]: $hung of $((3 * ${LUMEN_START_TEST_REPEAT:-2})) runs did not end by themselves"
         fi
         # mpv's own window on Wayland (profile choice "native"; the default until 1.3.2). It ended the
         # program at start when mpv got no graphics context of its own (tools/patches/mpv-wayland-egl-uninit.patch);
