@@ -385,6 +385,7 @@
  "Immer im Vordergrund": "Her zaman üstte",
  "Player-Fenster": "Oynatıcı penceresi",
  "Automatisch (macOS: eingebettet)": "Otomatik (macOS: gömülü)",
+ "Automatisch (Wayland: eingebettet)": "Otomatik (Wayland: gömülü)",
  "Automatisch (nativ)": "Otomatik (yerel pencere)",
  "Nativ – HDR-Ausgabe, beste Qualität": "Yerel pencere – HDR çıkışı, en iyi kalite",
  "Eingebettet – Qt-Fenster, nur SDR": "Gömülü – Qt penceresi, yalnızca SDR",

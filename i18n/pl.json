@@ -385,6 +385,7 @@
  "Immer im Vordergrund": "Zawsze na wierzchu",
  "Player-Fenster": "Okno odtwarzacza",
  "Automatisch (macOS: eingebettet)": "Automatycznie (macOS: osadzone)",
+ "Automatisch (Wayland: eingebettet)": "Automatycznie (Wayland: osadzone)",
  "Automatisch (nativ)": "Automatycznie (natywne)",
  "Nativ – HDR-Ausgabe, beste Qualität": "Natywne – wyjście HDR, najlepsza jakość",
  "Eingebettet – Qt-Fenster, nur SDR": "Osadzone – okno Qt, tylko SDR",

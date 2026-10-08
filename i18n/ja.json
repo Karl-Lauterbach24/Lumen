@@ -385,6 +385,7 @@
  "Immer im Vordergrund": "常に手前に表示",
  "Player-Fenster": "プレーヤーウィンドウ",
  "Automatisch (macOS: eingebettet)": "自動（macOS: 埋め込み）",
+ "Automatisch (Wayland: eingebettet)": "自動（Wayland: 埋め込み）",
  "Automatisch (nativ)": "自動（ネイティブ）",
  "Nativ – HDR-Ausgabe, beste Qualität": "ネイティブ – HDR 出力、最高画質",
  "Eingebettet – Qt-Fenster, nur SDR": "埋め込み – Qt ウィンドウ、SDR のみ",

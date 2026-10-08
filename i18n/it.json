@@ -385,6 +385,7 @@
  "Immer im Vordergrund": "Sempre in primo piano",
  "Player-Fenster": "Finestra del lettore",
  "Automatisch (macOS: eingebettet)": "Automatico (macOS: incorporata)",
+ "Automatisch (Wayland: eingebettet)": "Automatico (Wayland: incorporata)",
  "Automatisch (nativ)": "Automatico (nativa)",
  "Nativ – HDR-Ausgabe, beste Qualität": "Nativa – uscita HDR, qualità massima",
  "Eingebettet – Qt-Fenster, nur SDR": "Incorporata – finestra Qt, solo SDR",

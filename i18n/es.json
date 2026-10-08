@@ -385,6 +385,7 @@
  "Immer im Vordergrund": "Siempre visible",
  "Player-Fenster": "Ventana del reproductor",
  "Automatisch (macOS: eingebettet)": "Automático (macOS: integrada)",
+ "Automatisch (Wayland: eingebettet)": "Automático (Wayland: integrada)",
  "Automatisch (nativ)": "Automático (nativa)",
  "Nativ – HDR-Ausgabe, beste Qualität": "Nativa – salida HDR, máxima calidad",
  "Eingebettet – Qt-Fenster, nur SDR": "Integrada – ventana Qt, solo SDR",

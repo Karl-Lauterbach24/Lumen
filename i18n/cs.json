@@ -385,6 +385,7 @@
  "Immer im Vordergrund": "Vždy navrchu",
  "Player-Fenster": "Okno přehrávače",
  "Automatisch (macOS: eingebettet)": "Automaticky (macOS: vložené)",
+ "Automatisch (Wayland: eingebettet)": "Automaticky (Wayland: vložené)",
  "Automatisch (nativ)": "Automaticky (nativní)",
  "Nativ – HDR-Ausgabe, beste Qualität": "Nativní – výstup HDR, nejlepší kvalita",
  "Eingebettet – Qt-Fenster, nur SDR": "Vložené – okno Qt, jen SDR",

@@ -86,8 +86,26 @@ if have weston; then
     fi
     for _ in $(seq 1 20); do [ -S "$XDG_RUNTIME_DIR/lumen-test" ] && break; sleep 0.5; done
     if [ -S "$XDG_RUNTIME_DIR/lumen-test" ]; then
-        LUMEN_MPV_LOG=v WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland run wayland-opengl "$BUILD/lumen"
+        WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland run wayland-opengl "$BUILD/lumen"
         WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software run wayland-software "$BUILD/lumen"
+        # a picture in the player window: a generated test pattern, grabbed after six seconds
+        rm -f "$WORK/wayland-player.png"
+        LUMEN_PLAYER_SNAPSHOT="$WORK/wayland-player.png@+7" WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland \
+            run wayland-play "$BUILD/lumen" "av://lavfi:testsrc2=size=1280x720:rate=24"
+        if [ -s "$WORK/wayland-player.png" ]; then echo "start test [wayland-play]: player window rendered"
+        else echo "::warning::start test [wayland-play]: no picture from the player window"; fi
+        # for the record: mpv's own window on Wayland (what Lumen did before 1.4) – where does it stop?
+        if [ "${CI:-}" = "true" ] && [ "$(id -u)" = "0" ]; then
+            have gdb || { have apt-get && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends gdb > /dev/null 2>&1; } \
+                     || { have dnf && dnf install -y -q gdb > /dev/null 2>&1; } || true
+            if have gdb; then
+                echo "::group::start test: mpv's own window on Wayland (backtrace)"
+                LUMEN_PLAYER_WINDOW=native LUMEN_APP_NAME=LumenStartTest LUMEN_NO_DRIVES=1 LUMEN_QUIT_AFTER=8 WAYLAND_DISPLAY=lumen-test \
+                    QT_QPA_PLATFORM=wayland timeout 60 gdb -q -batch -ex "set pagination off" -ex "set debuginfod enabled off" \
+                    -ex run -ex "bt 16" --args "$BUILD/lumen" 2>&1 | grep -vE "^\[(New|Thread|Detaching)|warning:" | tail -30 | cut -c1-220
+                echo "::endgroup::"
+            fi
+        fi
     else
         echo "start test: weston did not start - Wayland skipped"; tail -5 "$WORK/weston.log"
     fi

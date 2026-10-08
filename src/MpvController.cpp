@@ -320,17 +320,34 @@ int MpvController::trackIdForPid(const QString &type, int pid) const
     return 0;
 }
 
-bool MpvController::wantsEmbedded(const QVariantMap &profile)
+bool MpvController::embeddedOnly()
 {
 #ifdef Q_OS_MACOS
-    // libmpv kann unter macOS kein eigenes Fenster öffnen – auch nicht, wenn ein
-    // (z. B. unter Windows angelegtes) Profil "nativ" verlangt
-    Q_UNUSED(profile)
+    // libmpv kann unter macOS kein eigenes Fenster öffnen
     return true;
 #else
+    // Entwickler-Hilfe: LUMEN_PLAYER_WINDOW=native|embedded erzwingt die Art des Player-Fensters
+    const QByteArray forced = qgetenv("LUMEN_PLAYER_WINDOW");
+    if (!forced.isEmpty())
+        return forced == "embedded";
+    // Wayland: mpvs eigenes Fenster bricht dort beim Start ab (Zusicherung in mpvs X11-Code, das
+    // Programm endet, bevor ein Fenster erscheint). Das Qt-Fenster mit der Render-API läuft überall,
+    // wo Qt läuft.
+    return QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
+#endif
+}
+
+bool MpvController::wantsEmbedded(const QVariantMap &profile)
+{
+    // gilt auch, wenn ein (z. B. unter Windows angelegtes) Profil "nativ" verlangt
+    if (embeddedOnly())
+        return true;
+#ifndef Q_OS_MACOS
+    if (qEnvironmentVariableIsSet("LUMEN_PLAYER_WINDOW"))
+        return false;
+#endif
     const QString mode = profile.value("playerWindow", "auto").toString();
     return mode == QLatin1String("embedded");
-#endif
 }
 
 MpvController::~MpvController()

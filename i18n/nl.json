@@ -385,6 +385,7 @@
  "Immer im Vordergrund": "Altijd op voorgrond",
  "Player-Fenster": "Spelervenster",
  "Automatisch (macOS: eingebettet)": "Automatisch (macOS: ingebed)",
+ "Automatisch (Wayland: eingebettet)": "Automatisch (Wayland: ingebed)",
  "Automatisch (nativ)": "Automatisch (native)",
  "Nativ – HDR-Ausgabe, beste Qualität": "Native – HDR-uitvoer, beste kwaliteit",
  "Eingebettet – Qt-Fenster, nur SDR": "Ingebed – Qt-venster, alleen SDR",
