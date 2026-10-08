@@ -110,7 +110,8 @@ pipewire_sound() {
         elif have dnf; then
             # the daemon's package requires systemd, the container has systemd-standalone-tmpfiles in its
             # place and the two exclude each other: --allowerasing lets dnf swap them
-            dnf install -y -q --allowerasing pipewire pipewire-utils wireplumber > "$pw/install.log" 2>&1 || true
+            dnf install -y -q --allowerasing --setopt=install_weak_deps=False pipewire pipewire-utils wireplumber > "$pw/install.log" 2>&1 \
+                || dnf install -y -q --allowerasing pipewire pipewire-utils wireplumber >> "$pw/install.log" 2>&1 || true
             dnf install -y -q dbus-daemon >> "$pw/install.log" 2>&1 || true
         fi
     fi
@@ -173,6 +174,8 @@ EOF
         "$ffmpeg" -hide_banner -loglevel error -y -f lavfi -i "testsrc2=size=640x360:rate=24" -f lavfi -i "sine=frequency=440:sample_rate=48000" \
             -t 6 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a pcm_s16le -ac 2 "$pw/tone.mkv"
         local stood=0 i rec log ao tenths seconds peak links
+        # mpv's messages come through Qt's log; Fedora's Qt sends that to the journal unless told otherwise
+        export QT_FORCE_STDERR_LOGGING=1
         for i in 1 2; do
             log="$WORK/pipewire-start-$i.log"
             LUMEN_MPV_LOG=v WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland watched "pipewire-start-$i" "$BUILD/lumen" || stood=$((stood + 1))
@@ -206,6 +209,7 @@ print(sum(1 for i in range(0, len(a) - 4799, 4800) if max(a[i:i + 4800]) > 1000)
             tail -n 5 "$pw/record-$i.log" 2> /dev/null | cut -c1-200
             echo "::endgroup::"
         done
+        export -n QT_FORCE_STDERR_LOGGING
         echo "start test [pipewire]: $stood of 4 runs with a running PipeWire did not end by themselves"
     fi
     kill "$session" "$daemon" $bus 2> /dev/null
@@ -320,7 +324,9 @@ if have cc && have pkg-config && pkg-config --exists libpipewire-0.3 && [ -f "$H
 /* The calls of mpv's PipeWire output when no PipeWire service answers: in mpv 0.41's order
  * ("before": the loop's thread is started, then the connection is tried, fails, and the thread is
  * stopped again) or in the order of tools/patches/mpv-pipewire-start-after-connect.patch ("after":
- * the thread starts once there is a connection, so here it never does). One line per pass. */
+ * the thread starts once there is a connection, so here it never does). One line per pass, with
+ * the call that failed: "connect", or "context" where not even a context can be made (seen in
+ * the Debian build container as long as the daemon's packages are not installed). */
 #include <pipewire/pipewire.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -339,16 +345,17 @@ int main(int argc, char **argv)
         if (before && pw_thread_loop_start(loop) < 0)
             return 2;
         struct pw_context *context = pw_context_new(pw_thread_loop_get_loop(loop), NULL, 0);
-        if (!context)
-            return 2;
-        if (pw_context_connect(context, pw_properties_new(PW_KEY_REMOTE_NAME, NULL, NULL), 0))
-            return 3; /* a PipeWire service answered: not the case this is about */
-        pw_context_destroy(context);
+        const char *failed = context ? "connect" : "context";
+        if (context) {
+            if (pw_context_connect(context, pw_properties_new(PW_KEY_REMOTE_NAME, NULL, NULL), 0))
+                return 3; /* a PipeWire service answered: not the case this is about */
+            pw_context_destroy(context);
+        }
         pw_thread_loop_unlock(loop);
         pw_thread_loop_stop(loop);
         pw_thread_loop_destroy(loop);
         pw_deinit();
-        printf("%d\n", i);
+        printf("%d %s\n", i, failed);
         fflush(stdout);
     }
     return 0;
@@ -393,21 +400,27 @@ EOF
               -Wl,-rpath-link,"$HERE/3rdparty/prefix/lib" -lmpv >> "$P/cc.log" 2>&1; then
         none=(env -u PIPEWIRE_REMOTE -u PIPEWIRE_RUNTIME_DIR XDG_RUNTIME_DIR="$P/run")
         version="$(pkg-config --modversion libpipewire-0.3)"
+        case "$("${none[@]}" timeout -k 5 30 "$P/pw_order" after 1 2> "$P/probe.err" | cut -d' ' -f2)" in
+            connect) fails="the connection fails" ;;
+            context) fails="no context can be made ($(head -n 1 "$P/probe.err" | sed 's/.*\] //' | cut -c1-90))" ;;
+            *) fails="?" ;;
+        esac
         if rounds "$P/before.txt" 25 60 "${none[@]}" "$P/pw_order" before 200; then
-            echo "start test [pipewire, no service]: libpipewire $version, mpv 0.41's order (thread started, connection fails, thread stopped): $PASSES passes, stood $STOOD times"
+            echo "start test [pipewire, no service]: libpipewire $version, $fails. mpv 0.41's order (thread started, then stopped at once): $PASSES passes, stood $STOOD times"
         else
             echo "::warning::start test [pipewire, no service]: pw_order before ended with $? after $PASSES passes"
         fi
         if rounds "$P/after.txt" 25 60 "${none[@]}" "$P/pw_order" after 200; then
             [ "$STOOD" = 0 ] || echo "::warning::start test [pipewire, no service]: the patched order stood $STOOD times in $PASSES passes"
-            echo "start test [pipewire, no service]: libpipewire $version, patched order (thread starts with a connection only): $PASSES passes, stood $STOOD times"
+            echo "start test [pipewire, no service]: libpipewire $version, $fails. Patched order (thread starts with a connection only): $PASSES passes, stood $STOOD times"
         else
             echo "::warning::start test [pipewire, no service]: pw_order after ended with $? after $PASSES passes"
         fi
         if rounds "$P/devices.txt" 10 120 "${none[@]}" "$P/mpv_devices" 100; then
             [ "$STOOD" = 0 ] || echo "::warning::start test [pipewire, no service]: Lumen's libmpv stood $STOOD times while asked for the sound devices ($PASSES passes)"
             echo "start test [pipewire, no service]: Lumen's libmpv asked for the sound devices in $PASSES new instances, stood $STOOD times"
-            echo "    $("${none[@]}" timeout -k 5 60 "$P/mpv_devices" 1 "all=no,ao/pipewire=v" 2>&1 | grep -m1 -i "connect" | cut -c1-160)"
+            said="$("${none[@]}" timeout -k 5 60 "$P/mpv_devices" 1 "all=no,ao/pipewire=v" 2>&1 | grep -m1 -i "connect" | cut -c1-160)"
+            [ -z "$said" ] || echo "    mpv: $said"
         else
             echo "::warning::start test [pipewire, no service]: mpv_devices ended with $? after $PASSES passes"
         fi
