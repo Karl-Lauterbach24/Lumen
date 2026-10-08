@@ -43,6 +43,12 @@ run() {
     # the files the program has mapped: libraries and plugins it really uses
     local lumen; lumen="$(pgrep -n -x lumen || true)"
     [ -n "$lumen" ] && [ -r "/proc/$lumen/maps" ] && awk '$6 ~ /^\// {print $6}' "/proc/$lumen/maps" | sort -u > "$maps"
+    # it ends by itself (LUMEN_QUIT_AFTER); a program that does not must not hold up the build
+    for _ in $(seq 1 40); do kill -0 "$pid" 2> /dev/null || break; sleep 1; done
+    if kill -0 "$pid" 2> /dev/null; then
+        echo "::warning::start test [$name]: did not end by itself - stopped"
+        pkill -9 -x lumen 2> /dev/null; kill -9 "$pid" 2> /dev/null
+    fi
     wait "$pid" 2> /dev/null; local rc=$?
     if [ -s "$png" ]; then
         echo "start test [$name]: control window rendered (exit $rc)"
@@ -51,6 +57,25 @@ run() {
         echo "::group::start test [$name] log"; tail -120 "$log" | cut -c1-300; echo "::endgroup::"
     fi
     grep -iE "qt\.qpa|wayland|could not|cannot|failed|not installed|is not a type|module .* not|error|warning" "$log" | sort | uniq -c | sort -rn | head -15 || true
+}
+
+# watched <name> <command...>: one start under gdb. Returns 1 when the program had to be interrupted.
+watched() {
+    local name="$1"; shift
+    local log="$WORK/$name.log"
+    ( sleep 45; p="$(pgrep -n -x lumen)"; [ -n "$p" ] && kill -INT "$p" ) > /dev/null 2>&1 &
+    local dog=$!
+    LUMEN_APP_NAME=LumenStartTest LUMEN_NO_DRIVES=1 LUMEN_QUIT_AFTER=8 \
+        timeout 120 gdb -q -batch -ex "set pagination off" -ex "set debuginfod enabled off" -ex "handle SIGPIPE nostop noprint pass" \
+        -ex run -ex "thread apply all bt 18" --args "$@" > "$log" 2>&1
+    kill "$dog" 2> /dev/null; wait "$dog" 2> /dev/null
+    if grep -qE "exited normally|exited with code" "$log"; then return 0; fi
+    echo "::warning::start test [$name]: did not end by itself"
+    echo "::group::start test [$name]: where the threads stand"
+    grep -vE "^\[(New|Thread|Detaching)|^warning:|IconImage|^$" "$log" | tail -260 | cut -c1-200
+    echo "::endgroup::"
+    pkill -9 -x lumen 2> /dev/null
+    return 1
 }
 
 export LD_LIBRARY_PATH="$HERE/3rdparty/prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -85,6 +110,10 @@ if have weston; then
         WESTON=$!
     fi
     for _ in $(seq 1 20); do [ -S "$XDG_RUNTIME_DIR/lumen-test" ] && break; sleep 0.5; done
+    if [ "${CI:-}" = "true" ] && [ "$(id -u)" = "0" ] && ! have gdb; then
+        { have apt-get && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends gdb > /dev/null 2>&1; } \
+            || { have dnf && dnf install -y -q gdb > /dev/null 2>&1; } || true
+    fi
     if [ -S "$XDG_RUNTIME_DIR/lumen-test" ]; then
         WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland run wayland-opengl "$BUILD/lumen"
         WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software run wayland-software "$BUILD/lumen"
@@ -94,13 +123,21 @@ if have weston; then
             run wayland-play "$BUILD/lumen" "av://lavfi:testsrc2=size=1280x720:rate=24"
         if [ -s "$WORK/wayland-player.png" ]; then echo "start test [wayland-play]: player window rendered"
         else echo "::warning::start test [wayland-play]: no picture from the player window"; fi
+        # Start and end, several times and watched: once in about seventy runs the program did not
+        # end by itself on Wayland. Under gdb a run that is still there after 45 s is interrupted and
+        # every thread says where it stands.
+        if have gdb; then
+            hung=0
+            for i in $(seq 1 "${LUMEN_START_TEST_REPEAT:-6}"); do
+                WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software watched "wayland-software-$i" "$BUILD/lumen" || hung=$((hung + 1))
+                WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland watched "wayland-opengl-$i" "$BUILD/lumen" || hung=$((hung + 1))
+                WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland watched "wayland-play-$i" "$BUILD/lumen" "av://lavfi:testsrc2=size=1280x720:rate=24" || hung=$((hung + 1))
+            done
+            echo "start test [wayland, watched]: $hung of $((3 * ${LUMEN_START_TEST_REPEAT:-6})) runs did not end by themselves"
+        fi
         # mpv's own window on Wayland (profile choice "native"; the default until 1.3.2). It ended the
         # program at start when mpv got no graphics context of its own (tools/patches/mpv-wayland-egl-uninit.patch);
         # with the patch it must end normally, with or without a picture.
-        if [ "${CI:-}" = "true" ] && [ "$(id -u)" = "0" ]; then
-            have gdb || { have apt-get && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends gdb > /dev/null 2>&1; } \
-                     || { have dnf && dnf install -y -q gdb > /dev/null 2>&1; } || true
-        fi
         if have gdb; then
             LUMEN_PLAYER_WINDOW=native LUMEN_APP_NAME=LumenStartTest LUMEN_NO_DRIVES=1 LUMEN_QUIT_AFTER=8 WAYLAND_DISPLAY=lumen-test \
                 QT_QPA_PLATFORM=wayland timeout 60 gdb -q -batch -ex "set pagination off" -ex "set debuginfod enabled off" \
