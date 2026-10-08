@@ -48,7 +48,7 @@ run() {
         echo "start test [$name]: control window rendered (exit $rc)"
     else
         echo "::warning::start test [$name]: no control window (exit $rc)"
-        echo "::group::start test [$name] log"; tail -40 "$log"; echo "::endgroup::"
+        echo "::group::start test [$name] log"; tail -120 "$log" | cut -c1-300; echo "::endgroup::"
     fi
     grep -iE "qt\.qpa|wayland|could not|cannot|failed|not installed|is not a type|module .* not|error|warning" "$log" | sort | uniq -c | sort -rn | head -15 || true
 }
@@ -86,7 +86,7 @@ if have weston; then
     fi
     for _ in $(seq 1 20); do [ -S "$XDG_RUNTIME_DIR/lumen-test" ] && break; sleep 0.5; done
     if [ -S "$XDG_RUNTIME_DIR/lumen-test" ]; then
-        WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland run wayland-opengl "$BUILD/lumen"
+        LUMEN_MPV_LOG=v WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland run wayland-opengl "$BUILD/lumen"
         WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software run wayland-software "$BUILD/lumen"
     else
         echo "start test: weston did not start - Wayland skipped"; tail -5 "$WORK/weston.log"
