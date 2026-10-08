@@ -5,17 +5,20 @@
 #
 #   1. X11, Qt Quick on OpenGL (Mesa llvmpipe)            -> control window must render
 #   2. Wayland (weston, headless), Qt Quick on OpenGL     -> control window must render
-#   3. sound through PipeWire: with a PipeWire daemon and WirePlumber started for the test, Lumen
-#      plays a tone that must arrive at the sink; without a service, the connection that fails
-#      must not hold the program (tools/patches/mpv-pipewire-start-after-connect.patch)
+#   3. PipeWire without a service: the connection that fails must not hold the program
+#      (tools/patches/mpv-pipewire-start-after-connect.patch)
 #   4. which distribution packages the running program has loaded files from, and which of them
 #      the package's declared dependencies do not pull in (QML modules, Qt plugins: nothing links
 #      to them, so no tool finds them)
+#   5. PipeWire with a service: a PipeWire daemon and WirePlumber are started for the test, Lumen
+#      plays a tone, and the tone must arrive at the sink
 #
 #   tools/test_start_linux.sh <build-dir> <work-dir>
 #
 # Report only: prints what it finds and always exits 0. In CI (root in a container) it installs
-# weston and the Qt Wayland plugin for step 2, PipeWire, WirePlumber and a D-Bus daemon for step 3.
+# weston and the Qt Wayland plugin for step 2, and PipeWire, WirePlumber and a D-Bus daemon for
+# step 5 - the last step, because on Fedora the PipeWire daemon brings systemd in place of the
+# container's stand-in for it, and nothing measured should see those packages.
 set -uo pipefail
 BUILD="$1"
 WORK="$2"
@@ -90,7 +93,7 @@ watched() {
     return 1
 }
 
-# pipewire_sound: Lumen with a PipeWire that runs (called while weston is up). The build machines
+# pipewire_sound: Lumen with a PipeWire that runs (step 5, called while weston is up). The build machines
 # have no sound service, so there mpv's PipeWire output only ever fails to connect. Here a PipeWire
 # daemon and WirePlumber run in the test's runtime folder, with one sink that leads nowhere. Lumen
 # is started alone (mpv connects to list the sound devices and keeps that connection to the end) and
@@ -105,7 +108,9 @@ pipewire_sound() {
             DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends pipewire pipewire-bin wireplumber > "$pw/install.log" 2>&1 || true
             DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends dbus-daemon dbus-session-bus-common >> "$pw/install.log" 2>&1 || true
         elif have dnf; then
-            dnf install -y -q pipewire pipewire-utils wireplumber > "$pw/install.log" 2>&1 || true
+            # the daemon's package requires systemd, the container has systemd-standalone-tmpfiles in its
+            # place and the two exclude each other: --allowerasing lets dnf swap them
+            dnf install -y -q --allowerasing pipewire pipewire-utils wireplumber > "$pw/install.log" 2>&1 || true
             dnf install -y -q dbus-daemon >> "$pw/install.log" 2>&1 || true
         fi
     fi
@@ -160,6 +165,11 @@ EOF
         echo "::endgroup::"
     else
         echo "start test [pipewire]: PipeWire $(pipewire --version | sed -n 's/^Linked with libpipewire //p') and WirePlumber $(wireplumber --version | sed -n 's/^Linked with libwireplumber //p') run, default sink: lumen-test"
+        if [ -s "$pw/install.log" ]; then
+            echo "::group::start test [pipewire]: packages installed (and removed) for this step"
+            grep -vE "^\[|^>>>|^(Get|Fetched|Reading|Building|Selecting|Preparing|Unpacking|Setting up|Processing|\(Reading)" "$pw/install.log" | cut -c1-160 | head -90
+            echo "::endgroup::"
+        fi
         "$ffmpeg" -hide_banner -loglevel error -y -f lavfi -i "testsrc2=size=640x360:rate=24" -f lavfi -i "sine=frequency=440:sample_rate=48000" \
             -t 6 -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a pcm_s16le -ac 2 "$pw/tone.mkv"
         local stood=0 i rec log ao tenths seconds peak links
@@ -278,17 +288,14 @@ if have weston; then
                 echo "start test [wayland-native]: mpv's own window does not end the program ($(grep -cE 'exited normally|exited with code' "$WORK/wayland-native.log") normal exit)"
             fi
         fi
-        # --- 3. PipeWire, with a service ----------------------------------------------------------
-        have gdb && pipewire_sound
     else
         echo "start test: weston did not start - Wayland skipped"; tail -5 "$WORK/weston.log"
     fi
-    kill "$WESTON" 2> /dev/null
 else
     echo "start test: no weston - Wayland skipped"
 fi
 
-# --- 3. PipeWire, without a service -------------------------------------------------------------
+# --- 3. PipeWire without a service --------------------------------------------------------------
 # The connection that fails, many times and quickly, with a folder for the runtime files in which
 # no service listens. pw_order makes libpipewire's calls in mpv 0.41's order and in the patched one;
 # mpv_devices asks Lumen's libmpv for the sound devices, each time in a new instance.
@@ -297,7 +304,7 @@ rounds() {
     local out="$1" n="$2" limit="$3" rc; shift 3
     PASSES=0; STOOD=0
     for _ in $(seq 1 "$n"); do
-        timeout -s KILL "$limit" "$@" > "$out" 2> /dev/null; rc=$?
+        timeout -k 5 "$limit" "$@" > "$out" 2> /dev/null; rc=$?
         PASSES=$((PASSES + $(wc -l < "$out")))
         case "$rc" in
             0) ;;
@@ -400,7 +407,7 @@ EOF
         if rounds "$P/devices.txt" 10 120 "${none[@]}" "$P/mpv_devices" 100; then
             [ "$STOOD" = 0 ] || echo "::warning::start test [pipewire, no service]: Lumen's libmpv stood $STOOD times while asked for the sound devices ($PASSES passes)"
             echo "start test [pipewire, no service]: Lumen's libmpv asked for the sound devices in $PASSES new instances, stood $STOOD times"
-            echo "    $("${none[@]}" timeout -s KILL 60 "$P/mpv_devices" 1 "all=no,ao/pipewire=v" 2>&1 | grep -m1 -i "connect" | cut -c1-160)"
+            echo "    $("${none[@]}" timeout -k 5 60 "$P/mpv_devices" 1 "all=no,ao/pipewire=v" 2>&1 | grep -m1 -i "connect" | cut -c1-160)"
         else
             echo "::warning::start test [pipewire, no service]: mpv_devices ended with $? after $PASSES passes"
         fi
@@ -446,4 +453,10 @@ else
     echo "start test: every package in use is pulled in by the declared dependencies"
 fi
 echo "::group::start test: packages in use"; cat "$WORK/used.txt"; echo "::endgroup::"
+
+# --- 5. PipeWire with a service -----------------------------------------------------------------
+if [ -n "${WESTON:-}" ] && [ -S "$XDG_RUNTIME_DIR/lumen-test" ] && have gdb; then
+    pipewire_sound
+fi
+[ -n "${WESTON:-}" ] && kill "$WESTON" 2> /dev/null
 exit 0
