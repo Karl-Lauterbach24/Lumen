@@ -24,6 +24,7 @@ fi
 rm -rf "$WORK"
 mkdir -p "$WORK"
 "$PY" "$HERE/tools/make_test_bdj.py" "$WORK/disc" --seconds 5
+runtime=0
 # test with the runtime as the packages carry it, so the test says what the package will do
 case "$(uname -s)" in
     Linux)
@@ -42,12 +43,17 @@ case "$(uname -s)" in
         # the runtime tools/build_deps.sh made for the packages
         if [ -f "$HERE/3rdparty/prefix/jre/lumen-jre.txt" ]; then
             export LUMEN_DEPS_JRE="$HERE/3rdparty/prefix/jre"
+            runtime=1
             echo "BD-J menu: with the runtime the packages carry ($(cut -d' ' -f1 "$LUMEN_DEPS_JRE/lumen-jre.txt"))"
         fi ;;
     *)
         "$PY" "$HERE/tools/make_jre.py" "$WORK/jre" || true
         if [ -f "$WORK/jre/lumen-jre.txt" ]; then
-            export JAVA_HOME="$WORK/jre"
+            # a full path in the system's own spelling: Windows loads the VM from nothing else
+            JAVA_HOME="$(cd "$WORK/jre" && pwd)"
+            if command -v cygpath > /dev/null 2>&1; then JAVA_HOME="$(cygpath -m "$JAVA_HOME")"; fi
+            export JAVA_HOME
+            runtime=1
             echo "BD-J menu: with the runtime the packages carry ($(cut -d' ' -f1 "$WORK/jre/lumen-jre.txt"))"
         fi ;;
 esac
@@ -63,7 +69,9 @@ status=0
 grep -E '^(LIBBLURAY_CP|JAVA_HOME|BD-J|menu drawn|key |film behind|waited for|the film|cannot open|not a BD-J|bd_play)' "$WORK/bdj.log" || true
 case "$status" in
     0) ;;
-    77) echo "BD-J menu: skipped" ;;
+    77) # no Java found: fine on a machine without one, a fault when the runtime was just made
+        if [ "$runtime" = 1 ]; then echo "::error::BD-J menu test: the Java runtime made for it was not found"; exit 1; fi
+        echo "BD-J menu: skipped" ;;
     *) echo "::group::BD-J log"; tail -60 "$WORK/bdj.log"; echo "::endgroup::"
        echo "::error::BD-J menu test failed"; exit 1 ;;
 esac
