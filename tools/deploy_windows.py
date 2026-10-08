@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import struct
+import subprocess
 import sys
 
 
@@ -93,6 +94,19 @@ def deploy_bdj(target):
     print(f"BD-J: Archiv für libbluray {version} kopiert")
 
 
+def deploy_jre(exe, target):
+    """Java-Laufzeit für BD-J-Menüs in den Ordner "jre" neben die exe (tools/make_jre.py)."""
+    with open(lp(exe), "rb") as f:
+        head = f.read(4096)
+    pe = struct.unpack_from("<I", head, 0x3C)[0]
+    machine = struct.unpack_from("<H", head, pe + 4)[0]
+    arch = {0x8664: "x86_64", 0xAA64: "aarch64"}.get(machine)
+    if not arch:
+        return
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "make_jre.py")
+    subprocess.run([sys.executable, script, os.path.join(target, "jre"), "--arch", arch], check=False)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("exe")
@@ -140,6 +154,7 @@ def main():
             f.write("[Paths]\nPrefix = .\nPlugins = .\nQmlImports = qml\n")
     print(f"{copied} DLLs kopiert, {len(seen)} Abhängigkeiten geprüft")
     deploy_bdj(target)
+    deploy_jre(a.exe, target)
 
 
 if __name__ == "__main__":

@@ -15,10 +15,12 @@
 #endif
 
 #ifdef LUMEN_HAVE_BLURAY
-// Java-Laufzeit für BD-J-Menüs: libbluray nimmt JAVA_HOME und sucht sonst selbst. Unter macOS findet
-// es so nur das alte Browser-Plugin (sein Aufruf von /usr/libexec/java_home scheitert in 1.5.0),
-// unter Windows nur Registry-Einträge, die neuere OpenJDK-Installer nicht mehr anlegen. Linux kennt
-// die Ordner der Distributionen selbst.
+// Java-Laufzeit für BD-J-Menüs: libbluray nimmt JAVA_HOME und sucht sonst selbst. Die Pakete für
+// macOS und Windows bringen eine kleine Laufzeit mit (Ordner "jre", tools/make_jre.py); sie geht
+// einem installierten Java vor – mit ihr sind die Menüs geprüft. Fehlt sie (eigener Build): Unter
+// macOS findet libbluray nur das alte Browser-Plugin (sein Aufruf von /usr/libexec/java_home
+// scheitert in 1.5.0), unter Windows nur Registry-Einträge, die neuere OpenJDK-Installer nicht mehr
+// anlegen; dort sucht Lumen selbst. Linux kennt die Ordner der Distributionen.
 static void findJavaRuntime()
 {
     if (qEnvironmentVariableIsSet("JAVA_HOME"))
@@ -27,6 +29,11 @@ static void findJavaRuntime()
     QStringList libs;
 #if defined(Q_OS_MACOS)
     libs = {QStringLiteral("lib/server/libjvm.dylib"), QStringLiteral("jre/lib/server/libjvm.dylib")};
+    homes << QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/jre");
+    if (QFileInfo::exists(homes.first() + QLatin1Char('/') + libs.first())) {
+        qputenv("JAVA_HOME", QDir::toNativeSeparators(QDir(homes.first()).absolutePath()).toLocal8Bit());
+        return;
+    }
     QProcess p;
     p.start(QStringLiteral("/usr/libexec/java_home"), QStringList{});
     if (p.waitForFinished(3000) && p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0)
@@ -38,7 +45,7 @@ static void findJavaRuntime()
           << QStringLiteral("/usr/local/opt/openjdk/libexec/openjdk.jdk/Contents/Home");
 #elif defined(Q_OS_WIN)
     libs = {QStringLiteral("bin/server/jvm.dll"), QStringLiteral("jre/bin/server/jvm.dll")};
-    // ein mitgegebener Ordner "jre" neben dem Programm (portabel) geht vor
+    // die mitgelieferte Laufzeit: Ordner "jre" neben dem Programm
     homes << QCoreApplication::applicationDirPath() + QStringLiteral("/jre");
     bool registry = false;
     for (const char *key : {"Java Runtime Environment", "JRE", "JDK"}) {

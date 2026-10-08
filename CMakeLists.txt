@@ -426,6 +426,9 @@ if(APPLE)
             COMMAND "${MACDEPLOYQT}" "$<TARGET_BUNDLE_DIR:lumen>" -qmldir=${CMAKE_CURRENT_SOURCE_DIR}/qml ${_deploy_libpaths} -always-overwrite
             ${_shim_cmd}
             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_macos_bundle.sh" "$<TARGET_BUNDLE_DIR:lumen>" "${LUMEN_DEPS_PREFIX}"
+            # Java-Laufzeit für BD-J-Menüs (mit jlink aus einem JDK der Build-Maschine; fehlt eines, ohne)
+            COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tools/make_jre.py" "$<TARGET_BUNDLE_DIR:lumen>/Contents/Resources/jre"
+                    --arch "${CMAKE_SYSTEM_PROCESSOR}"
             COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:lumen>"
             COMMAND "${CMAKE_COMMAND}" "-DAPP=$<TARGET_BUNDLE_DIR:lumen>" -DDMG=Lumen.dmg -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/MakeDmg.cmake"
             DEPENDS lumen
