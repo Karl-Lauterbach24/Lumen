@@ -31,6 +31,8 @@ class PluginManager : public QObject
     Q_PROPERTY(QString userDir READ userDir CONSTANT)
     Q_PROPERTY(bool restartNeeded READ restartNeeded NOTIFY pluginsChanged)
     Q_PROPERTY(QStringList discLibraries READ discLibraries NOTIFY pluginsChanged)
+    Q_PROPERTY(bool discsHeld READ discsHeld NOTIFY discsHeldChanged)
+    Q_PROPERTY(QString discsHeldBy READ discsHeldBy NOTIFY discsHeldChanged)
 
 public:
     explicit PluginManager(QObject *parent = nullptr);
@@ -61,7 +63,19 @@ public:
     //   ready                                 Skript ist bereit: letztes "disc"-Ereignis erneut senden
     //   http <antwort-name> <url> [<header-json>]
     //        HTTP-GET über Lumen; Antwort: script-message <antwort-name> <status> <text>
+    // seit Lumen 1.4:
+    //   action <plugin-id> <aktion> <text>    Schaltfläche des Plugins anlegen oder umbenennen, leerer
+    //        Text entfernt sie; ein Klick kommt als script-message "lumen-action" <plugin-id> <aktion>
+    //   hold-discs <plugin-id> <0|1>          eingelegte Discs weder einlesen noch abspielen (das Plugin
+    //        braucht das Laufwerk für sich); das Ereignis "drive" meldet weiter jede neue Disc
+    //   eject <gerät>                         Disc auswerfen
+    //   open-folder <ordner>                  Ordner in der Dateiverwaltung zeigen
+    //   trigger <plugin-id> <aktion>          Schaltfläche eines Plugins auslösen
+    //   dirs <plugin-id> <antwort-name>       Antwort: script-message <antwort-name> <plugin-ordner> <einstellungs-ordner>
     void handleScriptMessage(const QStringList &args);
+    // Ein Plugin hält das Laufwerk für sich: Discs nicht einlesen und nicht abspielen
+    bool discsHeld() const { return !m_holds.isEmpty(); }
+    QString discsHeldBy() const;
 
     QVariantList plugins() const;
     bool restartNeeded() const { return m_restartNeeded; }
@@ -75,6 +89,8 @@ public:
 
 signals:
     void pluginsChanged();
+    void discsHeldChanged();
+    void ejectRequested(const QString &device);
     void openRequested(const QString &url);
     // Ein Plugin liefert Metadaten zur eingelegten Disc
     void discInfoProvided(const QVariantMap &info);
@@ -103,6 +119,8 @@ private:
     QString resolveLibrary(const Plugin &p, const QString &base) const;
     static QByteArray libbluraySpec(const QString &file);
     void setupHost(Plugin &p);
+    void setAction(Plugin &p, const QString &id, const QString &label);
+    void setHold(const QString &pluginId, bool on);
     QByteArray providedDcpKey(const QByteArray &keyId);
 
     std::vector<std::unique_ptr<Plugin>> m_plugins;
@@ -112,6 +130,7 @@ private:
     QNetworkAccessManager *m_net = nullptr;
     QByteArray m_lastDisc; // JSON des letzten "disc"-Ereignisses (für später startende Skripte)
     bool m_restartNeeded = false;
+    QStringList m_holds; // Plugins, die das Laufwerk für sich halten
 
     friend struct PluginHostImpl;
 };

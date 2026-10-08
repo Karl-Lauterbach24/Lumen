@@ -65,7 +65,8 @@ typedef struct lumen_host {
     void (*free_string)(void *ctx, char *s);
     /* On-screen message in the player window */
     void (*show_text)(void *ctx, const char *text, int duration_ms);
-    /* Button in the plugin's entry in the control window; triggers on_action(id) */
+    /* Button in the plugin's entry in the control window; triggers on_action(id).
+       Since Lumen 1.4 the same id again renames the button and an empty label removes it. */
     int (*add_action)(void *ctx, const char *id, const char *label);
     /* Status line shown under the plugin's name */
     void (*set_status)(void *ctx, const char *text);
@@ -82,6 +83,15 @@ typedef struct lumen_host {
         "tracks": [{"title", "artist"}]}
        Lumen shows it in the control window (disc name, track names, cover). */
     void (*set_disc_info)(void *ctx, const char *json);
+
+    /* ---- since Lumen 1.4: check with LUMEN_HOST_HAS() before calling ---- */
+
+    /* 1 = the plugin needs the drive for itself: Lumen neither scans nor plays discs that are
+       inserted (it still sends the "drive" event). 0 = back to normal. Callable from any thread,
+       like log, set_status, add_action and eject. */
+    int (*hold_discs)(void *ctx, int hold);
+    /* Eject the disc in a drive ("device" of the "drive" event). */
+    int (*eject)(void *ctx, const char *device);
 } lumen_host;
 
 /* A readable stream behind one of the plugin's URL schemes (mirrors mpv's stream_cb). */
@@ -114,6 +124,8 @@ typedef struct lumen_plugin {
                        audio CD: "mbDiscId" (MusicBrainz disc ID), "toc": {"first",
                        "last", "leadout", "offsets": [...]}, "cdText": bool}
                       (disc inserted / scanned)
+       "drive"        {"device", "path", "label", "kind"}   (since Lumen 1.4: a disc was
+                      inserted; sent before the scan and also while a plugin holds the drive)
        "shutdown"     {}
        mpv scripts receive the same events as
        script-message "lumen-event" <event> <json>, see plugins/README.md. */

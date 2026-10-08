@@ -204,6 +204,18 @@ int main(int argc, char *argv[])
     });
     QObject::connect(&player, &MpvController::pluginMessage, &plugins, &PluginManager::handleScriptMessage);
     QObject::connect(&plugins, &PluginManager::discInfoProvided, &scanner, &DiscScanner::applyMetadata);
+    // Plugins erfahren von jeder neuen Disc, noch vor dem Einlesen – auch während eines das Laufwerk
+    // für sich hält (dann liest und spielt Lumen sie nicht)
+    QObject::connect(&drives, &DriveManager::discInserted, &plugins, [&](const QVariantMap &d) {
+        plugins.sendEvent(QStringLiteral("drive"), {{"device", d.value("device")}, {"path", d.value("path")},
+                                                    {"label", d.value("label")}, {"kind", d.value("kind")}});
+    });
+    QObject::connect(&plugins, &PluginManager::ejectRequested, &drives, [&](const QString &device) {
+        // die Disc nicht unter der laufenden Wiedergabe wegnehmen
+        if (!player.idle() && (player.device() == device || player.path().contains(device)))
+            player.stop();
+        drives.eject(device);
+    });
     QObject::connect(&plugins, &PluginManager::openRequested, &player, [&](const QString &url) {
         const QFileInfo fi(url);
         if (fi.exists())

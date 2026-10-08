@@ -24,7 +24,7 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 have() { command -v "$1" > /dev/null 2>&1; }
 owner() { # package that owns a file
     if have dpkg-query; then dpkg-query -S "$1" 2> /dev/null | head -1 | cut -d: -f1
-    else rpm -qf --qf '%{NAME}\n' "$1" 2> /dev/null | head -1; fi
+    else rpm -qf --qf '%{NAME}\n' "$1" 2> /dev/null | grep -v ' ' | head -1; fi
 }
 
 # run <name> <seconds> <command...>: starts Lumen, waits for the control window's picture
@@ -50,7 +50,7 @@ run() {
         echo "::warning::start test [$name]: no control window (exit $rc)"
         echo "::group::start test [$name] log"; tail -40 "$log"; echo "::endgroup::"
     fi
-    grep -iE "qt\.qpa|could not|cannot|failed|not installed|is not a type|module .* not|error" "$log" | sort | uniq -c | sort -rn | head -15 || true
+    grep -iE "qt\.qpa|wayland|could not|cannot|failed|not installed|is not a type|module .* not|error|warning" "$log" | sort | uniq -c | sort -rn | head -15 || true
 }
 
 export LD_LIBRARY_PATH="$HERE/3rdparty/prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -73,10 +73,17 @@ if [ "${CI:-}" = "true" ] && [ "$(id -u)" = "0" ] && ! have weston; then
     fi
 fi
 if have weston; then
-    export XDG_RUNTIME_DIR="$WORK/xdg"
-    rm -rf "$XDG_RUNTIME_DIR"; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
-    weston --backend=headless --socket=lumen-test --width=1600 --height=900 > "$WORK/weston.log" 2>&1 &
+    # an absolute folder of our own with mode 0700, as libwayland demands
+    XDG_RUNTIME_DIR="$(mktemp -d)"; export XDG_RUNTIME_DIR
+    chmod 700 "$XDG_RUNTIME_DIR"
+    weston --backend=headless --renderer=gl --socket=lumen-test --width=1600 --height=900 > "$WORK/weston.log" 2>&1 &
     WESTON=$!
+    sleep 2
+    if ! kill -0 "$WESTON" 2> /dev/null; then
+        # older weston or no EGL for it: software compositing; clients still use their own OpenGL
+        weston --backend=headless --socket=lumen-test --width=1600 --height=900 > "$WORK/weston.log" 2>&1 &
+        WESTON=$!
+    fi
     for _ in $(seq 1 20); do [ -S "$XDG_RUNTIME_DIR/lumen-test" ] && break; sleep 0.5; done
     if [ -S "$XDG_RUNTIME_DIR/lumen-test" ]; then
         WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland run wayland-opengl "$BUILD/lumen"
@@ -102,10 +109,11 @@ echo "start test: $(wc -l < "$WORK/files.txt") files mapped, from $(wc -l < "$WO
 
 # what the package declares (CMakeLists.txt) plus what the linker finds for lumen and its own libraries
 if have dpkg-query; then
-    declared="$(sed -n 's/.*CPACK_DEBIAN_PACKAGE_DEPENDS "\(.*\)").*/\1/p' "$HERE/CMakeLists.txt" | tr ',' '\n' | sed 's/[ (].*//; s/^ *//' | grep -v '^$')"
+    declared="$(sed -n 's/.*CPACK_DEBIAN_PACKAGE_DEPENDS "\(.*\)").*/\1/p' "$HERE/CMakeLists.txt" | tr ',' '\n' | sed 's/^ *//; s/[ (].*//' | grep -v '^$')"
 else
     declared="$(sed -n 's/.*CPACK_RPM_PACKAGE_REQUIRES "\(.*\)").*/\1/p' "$HERE/CMakeLists.txt" | tr ',' '\n' | sed 's/^ *//; s/ .*//' | grep -v '^$')"
 fi
+echo "start test: declared dependencies: $(echo $declared)"
 linked="$( { ldd "$BUILD/lumen"; for l in "$HERE"/3rdparty/prefix/lib/*.so.*; do [ -f "$l" ] && ldd "$l"; done; } 2> /dev/null \
     | awk '$3 ~ /^\// {print $3}' | sort -u | while read -r f; do case "$f" in "$HERE"/*) ;; *) owner "$(readlink -f "$f")" ;; esac; done | sort -u)"
 roots="$(printf '%s\n%s\n' "$declared" "$linked" | grep -v '^$' | sort -u)"

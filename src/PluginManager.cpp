@@ -134,10 +134,22 @@ struct PluginHostImpl
         P *plugin = p(ctx);
         PluginManager *m = plugin->owner;
         const QString aid = QString::fromUtf8(id), text = QString::fromUtf8(label);
-        QMetaObject::invokeMethod(m, [plugin, m, aid, text] {
-            plugin->actions.append({aid, text});
-            emit m->pluginsChanged();
-        }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(m, [plugin, m, aid, text] { m->setAction(*plugin, aid, text); }, Qt::QueuedConnection);
+        return 0;
+    }
+    static int holdDiscs(void *ctx, int hold)
+    {
+        P *plugin = p(ctx);
+        PluginManager *m = plugin->owner;
+        QMetaObject::invokeMethod(m, [m, id = plugin->id, hold] { m->setHold(id, hold != 0); }, Qt::QueuedConnection);
+        return 0;
+    }
+    static int eject(void *ctx, const char *device)
+    {
+        if (!device)
+            return -1;
+        PluginManager *m = p(ctx)->owner;
+        QMetaObject::invokeMethod(m, [m, d = QString::fromUtf8(device)] { emit m->ejectRequested(d); }, Qt::QueuedConnection);
         return 0;
     }
     static void setStatus(void *ctx, const char *text)
@@ -501,6 +513,8 @@ void PluginManager::setupHost(Plugin &p)
     h.config_dir = PluginHostImpl::configDir;
     h.open = PluginHostImpl::open;
     h.set_disc_info = PluginHostImpl::setDiscInfo;
+    h.hold_discs = PluginHostImpl::holdDiscs;
+    h.eject = PluginHostImpl::eject;
 }
 
 void PluginManager::unloadAll()
@@ -565,11 +579,93 @@ void PluginManager::sendEvent(const QString &event, const QVariantMap &payload)
     }
 }
 
+// Schaltfläche anlegen, umbenennen (gleiche Kennung) oder entfernen (leerer Text)
+void PluginManager::setAction(Plugin &p, const QString &id, const QString &label)
+{
+    for (int i = 0; i < p.actions.size(); ++i) {
+        if (p.actions.at(i).id != id)
+            continue;
+        if (label.isEmpty())
+            p.actions.removeAt(i);
+        else if (p.actions.at(i).label == label)
+            return;
+        else
+            p.actions[i].label = label;
+        emit pluginsChanged();
+        return;
+    }
+    if (label.isEmpty())
+        return;
+    p.actions.append({id, label});
+    emit pluginsChanged();
+}
+
+void PluginManager::setHold(const QString &pluginId, bool on)
+{
+    if (on == m_holds.contains(pluginId))
+        return;
+    if (on)
+        m_holds.append(pluginId);
+    else
+        m_holds.removeAll(pluginId);
+    emit discsHeldChanged();
+}
+
+QString PluginManager::discsHeldBy() const
+{
+    for (const auto &p : m_plugins)
+        if (m_holds.contains(p->id))
+            return p->name;
+    return {};
+}
+
 void PluginManager::handleScriptMessage(const QStringList &args)
 {
     if (args.value(0) != QLatin1String("lumen-plugin"))
         return;
     const QString cmd = args.value(1);
+    if (cmd == QLatin1String("action")) {
+        for (auto &p : m_plugins)
+            if (p->id == args.value(2) && p->loaded && !args.value(3).isEmpty())
+                setAction(*p, args.value(3), args.value(4).left(80));
+        return;
+    }
+    if (cmd == QLatin1String("hold-discs")) {
+        for (auto &p : m_plugins)
+            if (p->id == args.value(2) && p->loaded)
+                setHold(p->id, args.value(3) == QLatin1String("1"));
+        return;
+    }
+    if (cmd == QLatin1String("eject")) {
+        if (!args.value(2).isEmpty())
+            emit ejectRequested(args.value(2));
+        return;
+    }
+    if (cmd == QLatin1String("open-folder")) {
+        const QFileInfo dir(args.value(2));
+        if (dir.isDir())
+            QDesktopServices::openUrl(QUrl::fromLocalFile(dir.absoluteFilePath()));
+        return;
+    }
+    if (cmd == QLatin1String("trigger")) {
+        // Schaltfläche eines Plugins auslösen (z. B. die des nativen Teils aus seinem Skript)
+        trigger(args.value(2), args.value(3));
+        return;
+    }
+    if (cmd == QLatin1String("dirs")) {
+        // Ordner des Plugins und sein beschreibbarer Ordner für Einstellungen
+        for (auto &p : m_plugins) {
+            if (p->id != args.value(2) || !p->loaded || !m_mpv || args.value(3).isEmpty())
+                continue;
+            const QString cfg = userDir() + QStringLiteral("/config/") + p->id;
+            QDir().mkpath(cfg);
+            const QByteArray reply = args.value(3).toUtf8(), dir = QDir::toNativeSeparators(p->dir).toUtf8(),
+                             config = QDir::toNativeSeparators(cfg).toUtf8();
+            const char *a[] = {"script-message", reply.constData(), dir.constData(), config.constData(), nullptr};
+            mpv_command(m_mpv, a);
+        }
+        return;
+    }
     if (cmd == QLatin1String("disc-info")) {
         const QVariantMap info = QJsonDocument::fromJson(args.value(2).toUtf8()).object().toVariantMap();
         if (!info.isEmpty())
@@ -685,6 +781,12 @@ void PluginManager::trigger(const QString &id, const QString &actionId)
     for (auto &p : m_plugins) {
         if (p->id == id && p->api && p->api->on_action)
             p->api->on_action(p->ctx, actionId.toUtf8().constData());
+    }
+    // Schaltflächen, die ein mpv-Skript angelegt hat
+    if (m_mpv) {
+        const QByteArray i = id.toUtf8(), a = actionId.toUtf8();
+        const char *args[] = {"script-message", "lumen-action", i.constData(), a.constData(), nullptr};
+        mpv_command(m_mpv, args);
     }
 }
 

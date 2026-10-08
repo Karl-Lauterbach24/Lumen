@@ -102,8 +102,17 @@ ApplicationWindow {
     function localPath(url) {
         return decodeURIComponent(url.toString().replace(/^file:\/{2,3}/, Qt.platform.os === "windows" ? "" : "/"))
     }
+    // Ein Plugin hält das Laufwerk für sich (es liest die Disc selbst aus): Discs im Laufwerk weder
+    // einlesen noch abspielen
+    function driveHeld(path) {
+        if (!Plugins.discsHeld) return false
+        for (let i = 0; i < Drives.drives.length; ++i)
+            if (Drives.drives[i].optical && (Drives.drives[i].path === path || Drives.drives[i].device === path)) return true
+        return false
+    }
     // Beliebige Quelle öffnen: Disc-Info lesen (außer DCP/Datei) und abspielen
     function openPath(path, withMenu) {
+        if (driveHeld(path)) return
         currentDevice = path
         const kind = Player.detectKind(path)
         if (kind === "dcp") { Dcp.open(path, true); settings.tab = 5; return }
@@ -186,6 +195,7 @@ ApplicationWindow {
     Connections {
         target: Drives
         function onDiscInserted(drive) {
+            if (win.driveHeld(drive.path)) return
             if (settings.autoPlay && Player.idle) win.playDrive(drive)
             else if (drive.kind !== "dcp") Disc.scan(drive.path)
         }
@@ -295,7 +305,7 @@ ApplicationWindow {
                     textRole: "title"
                     popupWidth: 380
                     placeholder: Drives.scanning ? qsTr("Suche Laufwerke …") : qsTr("Kein Laufwerk gefunden")
-                    onActivated: if (win.selectedDrive && win.selectedDrive.kind && win.selectedDrive.kind !== "dcp") Disc.scan(win.selectedDrive.path)
+                    onActivated: if (win.selectedDrive && win.selectedDrive.kind && win.selectedDrive.kind !== "dcp" && !win.driveHeld(win.selectedDrive.path)) Disc.scan(win.selectedDrive.path)
                 }
                 IconButton {
                     iconName: "disc"
@@ -638,6 +648,35 @@ ApplicationWindow {
                                         tip: qsTr("Schließen")
                                         Layout.alignment: Qt.AlignTop
                                         onClicked: win.dismissedError = Player.lastError
+                                    }
+                                }
+                            }
+                            // Ein Plugin hält das Laufwerk für sich: sagen, warum die Disc nicht spielt
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: 720
+                                visible: Plugins.discsHeld
+                                implicitHeight: heldRow.implicitHeight + 20
+                                radius: Theme.radiusSmall
+                                color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.10)
+                                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
+                                RowLayout {
+                                    id: heldRow
+                                    anchors.fill: parent
+                                    anchors.margins: 10
+                                    spacing: 10
+                                    IconButton {
+                                        iconName: "disc"
+                                        size: 22; iconSize: 18
+                                        enabled: false
+                                        Layout.alignment: Qt.AlignTop
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: qsTr("Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.").arg(Plugins.discsHeldBy)
+                                        color: Theme.text
+                                        font.pixelSize: 13
+                                        wrapMode: Text.WordWrap
                                     }
                                 }
                             }
