@@ -9,7 +9,9 @@
 #               audio tap on the timed null output, used for casting; scaler weight table
 #               without uninitialized padding (black picture with software OpenGL); sound starts
 #               after the fallback from refused bitstream output to decoding; Wayland: no abort
-#               when no EGL context can be made (the Wayland state stayed behind and tripped X11)
+#               when no EGL context can be made (the Wayland state stayed behind and tripped X11);
+#               PipeWire: the connection's thread starts once there is a connection (without a
+#               PipeWire service, stopping it right after its start could stand for good)
 #   dvdnav      libdvdread + libdvdnav 7 (only where the system has an older one)
 #   bluray      libudfread + libbluray 1.5 (only where the system has an older one): the version
 #               whose Java classes Lumen ships (resources/bdj), so disc menus written in Java (BD-J)

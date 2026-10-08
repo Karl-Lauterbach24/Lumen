@@ -402,13 +402,16 @@ libraries. Optional, enabled automatically when found: **OpenSSL ≥ 1.1** (encr
 
 **Media libraries.** `tools/build_deps.sh` builds x264, FFmpeg-mvc and mpv (and libdvdnav 7 where the system
 has an older one) from pinned sources into `3rdparty/prefix`; CMake picks that prefix up by itself. The
-versions are set at the top of the script, once for all platforms. mpv gets four small changes
+versions are set at the top of the script, once for all platforms. mpv gets five small changes
 ([`tools/patches`](tools/patches)): a fix for the scalers' weight table (uninitialized padding, which gave
 a black picture with software OpenGL), and its timed null audio output can also write the samples to a pipe, with the
 time each block is played. Casting needs that; a stock libmpv plays everything else, but the cast button is
 disabled. The third makes the sound start when an audio device refuses bitstream output: mpv falls back to
 decoding, but nobody asked the decoder for data any more and playback stayed at 0:00. The fourth is for Wayland: when mpv
-could not make an EGL context there, its Wayland state stayed behind and the next step ended the whole program. FFmpeg gets two changes. The JPEG 2000 decoder (DCP) runs its inverse wavelet transform over
+could not make an EGL context there, its Wayland state stayed behind and the next step ended the whole program. The fifth is for
+Linux without a running PipeWire service: mpv started the thread of its PipeWire connection before it had one and
+stopped it again right away when the connection failed. With PipeWire 1.6 that stop now and then never returns, and Lumen
+stood still at its start, about once in a hundred starts; the thread now starts once the connection is there. FFmpeg gets two changes. The JPEG 2000 decoder (DCP) runs its inverse wavelet transform over
 neighbouring memory instead of down single columns, and the arithmetic decoder is inlined into the coding
 passes; the decoded pictures are the same bit for bit. It also gets the option `skip_planes` (see *Hardware and
 performance*). The MVC decoder (Blu-ray 3D) keeps slice threading when it delivers both views, and two faults

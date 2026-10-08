@@ -1,0 +1,32 @@
+diff --git a/audio/out/ao_pipewire.c b/audio/out/ao_pipewire.c
+index 4ffe1b8..b0659a6 100644
+--- a/audio/out/ao_pipewire.c
++++ b/audio/out/ao_pipewire.c
+@@ -507,9 +507,6 @@ static int pipewire_init_boilerplate(struct ao *ao)
+ 
+     pw_thread_loop_lock(p->loop);
+ 
+-    if (pw_thread_loop_start(p->loop) < 0)
+-        goto error;
+-
+     struct pw_properties *props = NULL;
+ #if !PW_CHECK_VERSION(1, 3, 81)
+     props = pw_properties_new(PW_KEY_CONFIG_NAME, "client-rt.conf", NULL);
+@@ -533,6 +530,17 @@ static int pipewire_init_boilerplate(struct ao *ao)
+     if (pw_core_add_listener(p->core, &p->core_listener, &core_events, ao) < 0)
+         goto error;
+ 
++    // Lumen: the loop's thread is started here, once there is a connection, and no longer before
++    // pw_context_new(). Without a PipeWire service the connection fails, and the caller's uninit()
++    // stopped a thread that had only just been started: PipeWire 1.6 then runs the stop request in
++    // the calling thread if the loop's thread has not registered yet, wakes nobody, and waits in
++    // pthread_join() for a thread that sits in poll() for good. The program stood at start, about
++    // once in a hundred starts. A loop that was never started is not stopped at all. For a
++    // connection that succeeds nothing changes: this thread holds the loop's lock up to here, so
++    // the loop's thread could not run any earlier before either.
++    if (pw_thread_loop_start(p->loop) < 0)
++        goto error;
++
+     pw_thread_loop_unlock(p->loop);
+ 
+     if (!session_has_sinks(ao)) {

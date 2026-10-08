@@ -400,14 +400,17 @@ Medienbibliotheken. Optional und automatisch aktiv, wenn gefunden: **OpenSSL ≥
 
 **Medienbibliotheken.** `tools/build_deps.sh` baut x264, FFmpeg-mvc und mpv (und libdvdnav 7, wo das System
 eine ältere hat) aus festgelegten Quellen nach `3rdparty/prefix`; CMake findet dieses Präfix von selbst. Die
-Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt vier kleine Änderungen
+Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt fünf kleine Änderungen
 ([`tools/patches`](tools/patches)): eine Korrektur an der Gewichtstabelle der Skalierer (uninitialisierte
 Füllwerte, mit OpenGL auf der CPU ein schwarzes Bild), und seine zeitgesteuerte Null-Tonausgabe kann die Samples zusätzlich in eine
 Pipe schreiben, mit dem Zeitpunkt, zu dem jeder Block gespielt wird. Das braucht die Übertragung; ein
 unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt. Die dritte lässt den Ton
 anlaufen, wenn ein Tongerät den Bitstream ablehnt: mpv weicht dann auf das Dekodieren aus, nur fragte niemand
 mehr den Decoder nach Daten, und die Wiedergabe blieb bei 0:00 stehen. Die vierte betrifft Wayland: Bekam mpv
-dort keinen EGL-Kontext, blieb sein Wayland-Zustand stehen, und der nächste Schritt beendete das ganze Programm. FFmpeg bekommt zwei
+dort keinen EGL-Kontext, blieb sein Wayland-Zustand stehen, und der nächste Schritt beendete das ganze Programm. Die fünfte betrifft
+Linux ohne laufenden PipeWire-Dienst: mpv startete den Thread seiner PipeWire-Verbindung, bevor es eine hatte, und hielt
+ihn gleich wieder an, wenn die Verbindung scheiterte. Mit PipeWire 1.6 kehrt dieses Anhalten hin und wieder nicht zurück, und
+Lumen blieb beim Start stehen, etwa einmal in hundert Starts; der Thread startet jetzt erst, wenn die Verbindung steht. FFmpeg bekommt zwei
 Änderungen. Der JPEG-2000-Decoder (DCP) rechnet die Wavelet-Rücktransformation über benachbarten Speicher statt
 Spalte für Spalte, und der arithmetische Decoder ist in die Kodierdurchgänge eingebettet; die dekodierten
 Bilder sind Bit für Bit dieselben. Dazu kommt die Option `skip_planes` (siehe *Hardware und Leistung*). Der
