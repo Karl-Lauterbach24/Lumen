@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "DCP bulundu – gösterime hazır",
  "Disc erkannt – bereit zur Wiedergabe": "Disk algılandı – oynatmaya hazır",
  "Disc einlegen oder Datei öffnen": "Bir disk takın veya dosya açın",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "Sürücü şu anda “%1” eklentisine ait – takılan diskler oynatılmaz. Bunu Eklentiler sekmesinden sonlandırabilirsiniz.",
  "Datei oder Abbild …": "Dosya veya kalıp …",
  "Disc-Ordner …": "Disk klasörü …",
  "Stream-Link …": "Yayın bağlantısı …",

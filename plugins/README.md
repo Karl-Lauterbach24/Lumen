@@ -105,7 +105,7 @@ LUMEN_PLUGIN_EXPORT const lumen_plugin *lumen_plugin_entry(void)
 | Hook | Purpose |
 |------|---------|
 | `init` / `shutdown` | Set up and tear down. `init` returns the plugin's context, or NULL to refuse loading. |
-| `on_event` | `file-loaded`, `end-file`, `disc`, `shutdown`, each with a JSON payload. `disc` describes the scanned disc: `device`, `kind`, `label`, `discName`, `volumeId`, `titles`; for audio CDs also `mbDiscId` (MusicBrainz disc ID), `toc` and `cdText` |
+| `on_event` | `file-loaded`, `end-file`, `disc`, `drive` (since 1.4: a disc went in, before it is scanned), `shutdown`, each with a JSON payload. `disc` describes the scanned disc: `device`, `kind`, `label`, `discName`, `volumeId`, `titles`; for audio CDs also `mbDiscId` (MusicBrainz disc ID), `toc` and `cdText` |
 | `on_action` | Buttons registered with `host->add_action` |
 | `schemes` + `stream_open` | Own URL schemes (`myscheme://…`) as byte streams for mpv: network sources, container formats, or files the plugin decrypts itself |
 | `dcp_content_key` | DCP content keys by key ID, e.g. from an HSM or a key server; used when no KDM delivered the key |
@@ -113,7 +113,10 @@ LUMEN_PLUGIN_EXPORT const lumen_plugin *lumen_plugin_entry(void)
 The host (`lumen_host`) offers these functions:
 
 - mpv: `command`, `get_property` and `set_property` for the full [mpv API](https://mpv.io/manual/master/#properties);
-- in the window: `show_text`, `add_action` and `set_status`;
+- in the window: `show_text`, `add_action` (since 1.4 the same id again renames the button, an empty label
+  removes it) and `set_status`;
+- the drive (since Lumen 1.4, check with `LUMEN_HOST_HAS`): `hold_discs(1)` – the plugin needs the drive for
+  itself, Lumen neither scans nor plays inserted discs and says so on the start page – and `eject`;
 - playback: `open`;
 - disc metadata: `set_disc_info` (title, artist, year, cover URL, track names; since Lumen 0.2.1,
   check with `LUMEN_HOST_HAS(host, set_disc_info)`);
@@ -147,6 +150,32 @@ mp.commandv("script-message", "lumen-plugin", "disc-info",
 -- status line under the plugin's name in the Plugins tab
 mp.commandv("script-message", "lumen-plugin", "status", "my-plugin-id", "Ready")
 ```
+
+Since Lumen 1.4 a script-only plugin can have buttons and use the drive:
+
+```lua
+-- the plugin's folder and its writable settings folder; ask again after a second until the answer comes
+-- (Lumen answers once its plugin host is attached to the player)
+mp.register_script_message("my-dirs", function(plugin_dir, config_dir) ... end)
+mp.commandv("script-message", "lumen-plugin", "dirs", "my-plugin-id", "my-dirs")
+
+-- a button in the plugin's entry; the same action again renames it, an empty label removes it
+mp.commandv("script-message", "lumen-plugin", "action", "my-plugin-id", "start", "Start")
+-- a click arrives as script-message "lumen-action" <plugin-id> <action>
+mp.register_script_message("lumen-action", function(id, action) ... end)
+-- press a button of a plugin (e.g. one of its native part)
+mp.commandv("script-message", "lumen-plugin", "trigger", "my-plugin-id", "refresh")
+
+-- the plugin needs the drive for itself: Lumen neither scans nor plays inserted discs ("1"), back to normal ("0").
+-- The event "drive" {"device", "path", "label", "kind"} still reports every disc that goes in.
+mp.commandv("script-message", "lumen-plugin", "hold-discs", "my-plugin-id", "1")
+mp.commandv("script-message", "lumen-plugin", "eject", "/dev/sr0")
+-- show a folder in the file manager
+mp.commandv("script-message", "lumen-plugin", "open-folder", "/home/me/Videos")
+```
+
+The store plugin [auto-rip](https://github.com/Karl-Lauterbach24/Lumen-Plugins/tree/main/plugins/auto-rip) uses all
+of these.
 
 Pass the `device` of the `disc` event back in `disc-info`; Lumen ignores metadata for a disc that is no
 longer the current one. The store plugin

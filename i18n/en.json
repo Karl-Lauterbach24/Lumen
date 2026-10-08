@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "DCP found – ready for screening",
  "Disc erkannt – bereit zur Wiedergabe": "Disc detected – ready to play",
  "Disc einlegen oder Datei öffnen": "Insert a disc or open a file",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "The drive currently belongs to the plugin “%1” – discs you insert are not played. You can end this in the Plugins tab.",
  "Datei oder Abbild …": "File or image …",
  "Disc-Ordner …": "Disc folder …",
  "Stream-Link …": "Stream link …",

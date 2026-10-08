@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "DCP gevonden – klaar voor de voorstelling",
  "Disc erkannt – bereit zur Wiedergabe": "Schijf herkend – klaar om af te spelen",
  "Disc einlegen oder Datei öffnen": "Plaats een schijf of open een bestand",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "Het station is nu in gebruik door de plug-in ‘%1’ – geplaatste schijven worden niet afgespeeld. Beëindigen kan op het tabblad Plug-ins.",
  "Datei oder Abbild …": "Bestand of kopie …",
  "Disc-Ordner …": "Schijfmap …",
  "Stream-Link …": "Streamlink …",

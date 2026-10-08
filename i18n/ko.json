@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "DCP 발견 – 상영 준비 완료",
  "Disc erkannt – bereit zur Wiedergabe": "디스크 인식 – 재생 준비 완료",
  "Disc einlegen oder Datei öffnen": "디스크를 넣거나 파일을 여세요",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "드라이브를 현재 플러그인 “%1”이(가) 사용 중입니다. 넣은 디스크는 재생되지 않습니다. 플러그인 탭에서 끝낼 수 있습니다.",
  "Datei oder Abbild …": "파일 또는 이미지 …",
  "Disc-Ordner …": "디스크 폴더 …",
  "Stream-Link …": "스트림 링크 …",

@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "Znaleziono DCP – gotowy do seansu",
  "Disc erkannt – bereit zur Wiedergabe": "Wykryto płytę – gotowy do odtwarzania",
  "Disc einlegen oder Datei öffnen": "Włóż płytę lub otwórz plik",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "Napęd należy teraz do wtyczki „%1” – włożone płyty nie są odtwarzane. Można to zakończyć na karcie Wtyczki.",
  "Datei oder Abbild …": "Plik lub obraz …",
  "Disc-Ordner …": "Folder płyty …",
  "Stream-Link …": "Link do strumienia …",

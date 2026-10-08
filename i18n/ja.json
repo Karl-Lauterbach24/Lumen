@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "DCP を検出 – 上映できます",
  "Disc erkannt – bereit zur Wiedergabe": "ディスクを検出 – 再生できます",
  "Disc einlegen oder Datei öffnen": "ディスクを入れるか、ファイルを開いてください",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "ドライブは現在プラグイン「%1」が使用中です。挿入したディスクは再生されません。「プラグイン」タブで終了できます。",
  "Datei oder Abbild …": "ファイルまたはイメージ …",
  "Disc-Ordner …": "ディスクフォルダー …",
  "Stream-Link …": "ストリームのリンク …",

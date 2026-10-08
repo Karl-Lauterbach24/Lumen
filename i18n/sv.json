@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "DCP hittad – redo för visning",
  "Disc erkannt – bereit zur Wiedergabe": "Skiva hittad – redo att spela",
  "Disc einlegen oder Datei öffnen": "Sätt i en skiva eller öppna en fil",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "Enheten används just nu av pluginet ”%1” – isatta skivor spelas inte upp. Det avslutas på fliken Plugins.",
  "Datei oder Abbild …": "Fil eller avbild …",
  "Disc-Ordner …": "Skivmapp …",
  "Stream-Link …": "Strömlänk …",

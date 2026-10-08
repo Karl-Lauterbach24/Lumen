@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "已找到 DCP – 可以放映",
  "Disc erkannt – bereit zur Wiedergabe": "已识别光盘 – 可以播放",
  "Disc einlegen oder Datei öffnen": "请放入光盘或打开文件",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "光驱当前由插件“%1”占用，放入的光盘不会播放。可在“插件”选项卡中结束。",
  "Datei oder Abbild …": "文件或映像 …",
  "Disc-Ordner …": "光盘文件夹 …",
  "Stream-Link …": "流媒体链接 …",

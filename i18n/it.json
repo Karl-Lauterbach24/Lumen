@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "DCP trovato – pronto per la proiezione",
  "Disc erkannt – bereit zur Wiedergabe": "Disco rilevato – pronto per la riproduzione",
  "Disc einlegen oder Datei öffnen": "Inserisci un disco o apri un file",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "L’unità è ora riservata al plugin «%1»: i dischi inseriti non vengono riprodotti. Si può terminare nella scheda Plugin.",
  "Datei oder Abbild …": "File o immagine …",
  "Disc-Ordner …": "Cartella disco …",
  "Stream-Link …": "Link di streaming …",

@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "Найден DCP – готово к показу",
  "Disc erkannt – bereit zur Wiedergabe": "Диск распознан – готово к воспроизведению",
  "Disc einlegen oder Datei öffnen": "Вставьте диск или откройте файл",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "Привод сейчас занят плагином «%1» – вставленные диски не воспроизводятся. Завершить это можно на вкладке «Плагины».",
  "Datei oder Abbild …": "Файл или образ …",
  "Disc-Ordner …": "Папка диска …",
  "Stream-Link …": "Ссылка на поток …",

@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "DCP trouvé – prêt pour la projection",
  "Disc erkannt – bereit zur Wiedergabe": "Disque détecté – prêt à lire",
  "Disc einlegen oder Datei öffnen": "Insérez un disque ou ouvrez un fichier",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "Le lecteur est actuellement réservé au plugin « %1 » – les disques insérés ne sont pas lus. Vous pouvez y mettre fin dans l’onglet Plugins.",
  "Datei oder Abbild …": "Fichier ou image …",
  "Disc-Ordner …": "Dossier disque …",
  "Stream-Link …": "Lien de flux …",

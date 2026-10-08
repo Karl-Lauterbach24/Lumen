@@ -212,6 +212,7 @@
  "DCP gefunden – bereit zur Vorführung": "Nalezeno DCP – připraveno k promítání",
  "Disc erkannt – bereit zur Wiedergabe": "Disk rozpoznán – připraveno k přehrávání",
  "Disc einlegen oder Datei öffnen": "Vložte disk nebo otevřete soubor",
+ "Das Laufwerk gehört gerade dem Plugin „%1“ – eingelegte Discs werden nicht abgespielt. Beenden lässt sich das im Reiter Plugins.": "Mechaniku právě používá plugin „%1“ – vložené disky se nepřehrávají. Ukončit to lze na kartě Pluginy.",
  "Datei oder Abbild …": "Soubor nebo obraz …",
  "Disc-Ordner …": "Složka disku …",
  "Stream-Link …": "Odkaz na stream …",
