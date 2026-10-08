@@ -59,20 +59,29 @@ run() {
     grep -iE "qt\.qpa|wayland|could not|cannot|failed|not installed|is not a type|module .* not|error|warning" "$log" | sort | uniq -c | sort -rn | head -15 || true
 }
 
-# watched <name> <command...>: one start under gdb. Returns 1 when the program had to be interrupted.
+# watched <name> <command...>: one start as in run(), left alone. Only when the program is still
+# there 45 s later does a debugger look where its threads stand: the shell that started it becomes
+# gdb, because a container lets nothing but a parent attach. Returns 1 for such a run.
 watched() {
     local name="$1"; shift
     local log="$WORK/$name.log"
-    ( sleep 45; p="$(pgrep -n -x lumen)"; [ -n "$p" ] && kill -INT "$p" ) > /dev/null 2>&1 &
-    local dog=$!
-    LUMEN_APP_NAME=LumenStartTest LUMEN_NO_DRIVES=1 LUMEN_QUIT_AFTER=8 \
-        timeout 120 gdb -q -batch -ex "set pagination off" -ex "set debuginfod enabled off" -ex "handle SIGPIPE nostop noprint pass" \
-        -ex run -ex "thread apply all bt 18" --args "$@" > "$log" 2>&1
-    kill "$dog" 2> /dev/null; wait "$dog" 2> /dev/null
-    if grep -qE "exited normally|exited with code" "$log"; then return 0; fi
+    rm -f "$log.stacks"
+    LUMEN_APP_NAME=LumenStartTest LUMEN_NO_DRIVES=1 LUMEN_SNAPSHOT="$WORK/watched.png" LUMEN_SNAPSHOT_DELAY=4000 LUMEN_QUIT_AFTER=14 \
+        timeout 180 sh -c '
+            log="$1"; shift
+            "$@" > "$log" 2>&1 &
+            pid=$!
+            for _ in $(seq 1 45); do
+                if ! kill -0 "$pid" 2> /dev/null || grep -q "^State:[[:space:]]*Z" "/proc/$pid/status" 2> /dev/null; then exit 0; fi
+                sleep 1
+            done
+            exec gdb -q -batch -p "$pid" -ex "set pagination off" -ex "set debuginfod enabled off" -ex "thread apply all bt 18" > "$log.stacks" 2>&1
+        ' sh "$log" "$@"
+    [ -e "$log.stacks" ] || return 0
     echo "::warning::start test [$name]: did not end by itself"
     echo "::group::start test [$name]: where the threads stand"
-    grep -vE "^\[(New|Thread|Detaching)|^warning:|IconImage|^$" "$log" | tail -260 | cut -c1-200
+    grep -vE "^\[(New|Thread|Detaching)|^warning:|^$" "$log.stacks" | tail -260 | cut -c1-200
+    echo "--- its own output"; grep -v IconImage "$log" | tail -20 | cut -c1-200
     echo "::endgroup::"
     pkill -9 -x lumen 2> /dev/null
     return 1
@@ -123,17 +132,16 @@ if have weston; then
             run wayland-play "$BUILD/lumen" "av://lavfi:testsrc2=size=1280x720:rate=24"
         if [ -s "$WORK/wayland-player.png" ]; then echo "start test [wayland-play]: player window rendered"
         else echo "::warning::start test [wayland-play]: no picture from the player window"; fi
-        # Start and end, several times and watched: once in about seventy runs the program did not
-        # end by itself on Wayland. Under gdb a run that is still there after 45 s is interrupted and
-        # every thread says where it stands.
+        # Start and end, several times and watched: once in about 150 runs on the build machines the
+        # program did not end by itself on Wayland.
         if have gdb; then
             hung=0
-            for i in $(seq 1 "${LUMEN_START_TEST_REPEAT:-6}"); do
+            for i in $(seq 1 "${LUMEN_START_TEST_REPEAT:-30}"); do
                 WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland QT_QUICK_BACKEND=software watched "wayland-software-$i" "$BUILD/lumen" || hung=$((hung + 1))
                 WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland watched "wayland-opengl-$i" "$BUILD/lumen" || hung=$((hung + 1))
                 WAYLAND_DISPLAY=lumen-test QT_QPA_PLATFORM=wayland watched "wayland-play-$i" "$BUILD/lumen" "av://lavfi:testsrc2=size=1280x720:rate=24" || hung=$((hung + 1))
             done
-            echo "start test [wayland, watched]: $hung of $((3 * ${LUMEN_START_TEST_REPEAT:-6})) runs did not end by themselves"
+            echo "start test [wayland, watched]: $hung of $((3 * ${LUMEN_START_TEST_REPEAT:-30})) runs did not end by themselves"
         fi
         # mpv's own window on Wayland (profile choice "native"; the default until 1.3.2). It ended the
         # program at start when mpv got no graphics context of its own (tools/patches/mpv-wayland-egl-uninit.patch);
