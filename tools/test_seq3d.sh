@@ -54,6 +54,12 @@ check "right eye first in the source"        "128,128 255,255 128,128" sbsr 120 
 # already call this script: automatic 3D detection (tools/test_stereodetect.sh) and the adaptation
 # to the machine (tuning_test).
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# LumenOS: setting up a remote, MakeMKV's progress lines
+if [ -x "$BUILD/os_test" ] || [ -x "$BUILD/os_test.exe" ]; then
+    O="$BUILD/os_test"; [ -x "$O" ] || O="$BUILD/os_test.exe"
+    "$O" | grep -vE "^OK" || true
+    "$O" > /dev/null
+fi
 # reading ahead of a disc (DiscReadAhead): sequential streams, the lead kept, a standing drive
 if [ -x "$BUILD/readahead_test" ] || [ -x "$BUILD/readahead_test.exe" ]; then
     R="$BUILD/readahead_test"; [ -x "$R" ] || R="$BUILD/readahead_test.exe"

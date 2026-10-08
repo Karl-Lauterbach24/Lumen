@@ -1,0 +1,70 @@
+#!/bin/sh
+# LumenOS: make a Debian system into the player.
+#
+#   lumenos-setup install   once, when the image is built (or on a plain Debian with Lumen installed)
+#   lumenos-setup refresh   after every update of Lumen: units, rules and rights from the new version
+#
+# Everything LumenOS adds to the system comes from the Lumen package (this folder), so an update of
+# Lumen updates the system's part too.
+set -eu
+HERE=/usr/share/lumen/os
+mode="${1:-install}"
+user=lumen
+
+refresh() {
+    install -d -m 755 /etc/lumenos /etc/lumenos/shares /media /mnt/shares /var/cache/lumenos
+    for unit in "$HERE"/units/*; do
+        install -m 644 "$unit" /etc/systemd/system/
+    done
+    install -m 644 "$HERE/udev/90-lumenos.rules" /etc/udev/rules.d/90-lumenos.rules
+    # the one thing the player may do with the system's rights: call its helper
+    printf '%s\n' "$user ALL=(root) NOPASSWD: $HERE/lumenos-admin" > /etc/sudoers.d/lumenos
+    chmod 440 /etc/sudoers.d/lumenos
+    # /run/lumenos exists from the start of every boot
+    printf '%s\n' 'd /run/lumenos 0755 root root -' 'd /run/lumenos/storage 0755 root root -' > /etc/tmpfiles.d/lumenos.conf
+    [ -d /run/systemd/system ] || return 0
+    systemd-tmpfiles --create /etc/tmpfiles.d/lumenos.conf 2> /dev/null || true
+    systemctl daemon-reload || true
+    udevadm control --reload 2> /dev/null || true
+}
+
+if [ "$mode" = refresh ]; then
+    refresh
+    exit 0
+fi
+
+# --- the user the player runs as
+if ! id "$user" > /dev/null 2>&1; then
+    useradd -m -s /bin/bash -c "Lumen" "$user"
+    # a login on the second console for maintenance (Ctrl+Alt+F2); change it there with "passwd"
+    echo "$user:lumen" | chpasswd
+fi
+for group in video audio input render cdrom plugdev netdev bluetooth sudo; do
+    getent group "$group" > /dev/null 2>&1 && usermod -aG "$group" "$user"
+done
+install -d -o "$user" -g "$user" "/home/$user/Videos" "/home/$user/.config" "/home/$user/.config/aacs"
+
+refresh
+
+[ -f /etc/lumenos/update.conf ] || printf '%s\n' '# on: new releases of Lumen are installed by themselves; off: only when asked in the settings' 'AUTO=on' > /etc/lumenos/update.conf
+[ -f /etc/lumenos/session.env ] || printf '%s\n' '# environment of the player session (read by lumenos-session), e.g. LUMEN_MPV_LOG=v' > /etc/lumenos/session.env
+
+# --- services
+systemctl enable lumenos-session.service lumenos-update.timer lumenos-cec.service > /dev/null 2>&1 || true
+systemctl disable getty@tty1.service > /dev/null 2>&1 || true
+systemctl set-default graphical.target > /dev/null 2>&1 || true
+for service in NetworkManager.service bluetooth.service systemd-timesyncd.service; do
+    systemctl enable "$service" > /dev/null 2>&1 || true
+done
+# sound for every user session: PipeWire and its session manager
+systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service > /dev/null 2>&1 || true
+
+# --- the system keeps itself quiet and small
+install -d /etc/systemd/journald.conf.d
+printf '%s\n' '[Journal]' 'SystemMaxUse=80M' 'RuntimeMaxUse=30M' > /etc/systemd/journald.conf.d/lumenos.conf
+# the console stays dark behind the player: no kernel messages over the picture
+install -d /etc/sysctl.d
+printf '%s\n' 'kernel.printk = 3 3 3 3' > /etc/sysctl.d/20-lumenos-quiet.conf
+# every user of the network may be asked for by the player's helper only; Wi-Fi and Bluetooth are not blocked at start
+command -v rfkill > /dev/null 2>&1 && rfkill unblock all 2> /dev/null || true
+exit 0

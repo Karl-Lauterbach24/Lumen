@@ -1,0 +1,6 @@
+[Unit]
+Description=LumenOS: eject the disc in %I
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/lumen/os/lumenos-disc %I eject

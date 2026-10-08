@@ -1,0 +1,42 @@
+#!/bin/sh
+# LumenOS: mounts the disc of an optical drive read-only under /media/disc-<drive> and takes it
+# away again when the disc leaves. Called by lumenos-disc@<drive>.service, which udev restarts on
+# every change of medium (see 90-lumenos.rules).
+#
+# Lumen plays a Blu-ray from the mounted folder: its reading ahead of the disc works there
+# (the file cache of the system), not on the bare device.
+set -u
+drive="${1:?drive name, e.g. sr0}"
+dev="/dev/$drive"
+dir="/media/disc-$drive"
+
+mounted() { awk -v d="$dir" '$2 == d { found = 1 } END { exit !found }' /proc/mounts; }
+
+case "${2:-sync}" in
+eject)
+    # the button on the drive, or "Eject" in Lumen: let go of the disc first
+    mounted && { umount "$dir" 2> /dev/null || umount -l "$dir"; }
+    rmdir "$dir" 2> /dev/null
+    eject "$dev" 2> /dev/null || true
+    exit 0
+    ;;
+esac
+
+# what is in the drive? (ID_CDROM_MEDIA: a disc; ID_FS_TYPE: one with a file system)
+media="$(udevadm info --query=property --name="$dev" 2> /dev/null | sed -n 's/^ID_CDROM_MEDIA=//p')"
+fstype="$(udevadm info --query=property --name="$dev" 2> /dev/null | sed -n 's/^ID_FS_TYPE=//p')"
+
+if [ "$media" = 1 ] && [ -n "$fstype" ]; then
+    mounted && exit 0
+    mkdir -p "$dir"
+    # udf first: a Blu-ray and most DVDs carry both, and only udf shows the large files
+    mount -t udf -o ro,nosuid,nodev,noexec,uid=lumen,gid=lumen,mode=0444,dmode=0555 "$dev" "$dir" 2> /dev/null \
+        || mount -t iso9660 -o ro,nosuid,nodev,noexec,uid=lumen,gid=lumen "$dev" "$dir" 2> /dev/null \
+        || mount -o ro,nosuid,nodev,noexec "$dev" "$dir" \
+        || { rmdir "$dir" 2> /dev/null; exit 1; }
+else
+    # no disc (or one without a file system: an audio CD is read from the device itself)
+    if mounted; then umount "$dir" 2> /dev/null || umount -l "$dir"; fi
+    rmdir "$dir" 2> /dev/null
+fi
+exit 0

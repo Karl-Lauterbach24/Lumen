@@ -1,0 +1,8 @@
+[Unit]
+Description=LumenOS: HDMI-CEC (the television's remote)
+After=systemd-udevd.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/share/lumen/os/lumenos-admin cec-setup

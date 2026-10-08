@@ -1,0 +1,30 @@
+[Unit]
+Description=LumenOS player
+Documentation=https://github.com/Karl-Lauterbach24/Lumen
+After=systemd-user-sessions.service plymouth-quit-wait.service systemd-logind.service
+# the first console is the player's; a login for maintenance is on the second (Ctrl+Alt+F2)
+Conflicts=getty@tty1.service
+After=getty@tty1.service
+
+[Service]
+User=lumen
+Group=lumen
+PAMName=login
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty-fail
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=tty1
+UtmpMode=user
+ExecStart=/usr/share/lumen/os/lumenos-session
+# Lumen ended (it asked for a restart, or it fell over): start it again
+Restart=always
+RestartSec=1
+# a disc library that does not come back when asked to stop is not waited for
+TimeoutStopSec=12
+
+[Install]
+WantedBy=graphical.target

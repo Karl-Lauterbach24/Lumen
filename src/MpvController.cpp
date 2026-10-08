@@ -354,6 +354,9 @@ bool MpvController::wantsEmbedded(const QVariantMap &profile)
     // gilt auch, wenn ein (z. B. unter Windows angelegtes) Profil "nativ" verlangt
     if (embeddedOnly())
         return true;
+    // LumenOS: immer das eigene Fenster – nur das lässt sich mit der Oberfläche abwechseln
+    if (qEnvironmentVariableIsSet("LUMEN_OS_ACTIVE"))
+        return true;
 #ifndef Q_OS_MACOS
     if (qgetenv("LUMEN_PLAYER_WINDOW") == "native")
         return false;
@@ -398,9 +401,17 @@ QString MpvController::writeInputConf() const
     if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         // Ergänzt/überschreibt mpv's Standardbelegung im Player-Fenster
         f.write("q            stop\n"
-                "CLOSE_WIN    quit\n"
-                "ESC          set fullscreen no\n"
-                "MBTN_LEFT_DBL cycle fullscreen\n"
+                "CLOSE_WIN    quit\n");
+        // LumenOS: bildschirmfüllend bleibt es; Esc/Zurück beendet die Wiedergabe, und die Kapiteltasten
+        // einer Fernbedienung springen Kapitel statt Dateien
+        f.write(m_kiosk ? "ESC          script-message lumen-os back\n"
+                          "BS           script-message lumen-os back\n"
+                          "NEXT         add chapter 1\n"
+                          "PREV         add chapter -1\n"
+                          "MBTN_LEFT_DBL ignore\n"
+                        : "ESC          set fullscreen no\n"
+                          "MBTN_LEFT_DBL cycle fullscreen\n");
+        f.write(
                 "MBTN_RIGHT   cycle pause\n"
                 "PGUP         add chapter 1\n"
                 "PGDWN        add chapter -1\n"
@@ -573,12 +584,18 @@ void MpvController::placeEmbeddedWindow()
         }
     }
     Qt::WindowFlags flags = Qt::Window;
-    if (!m_profile.value("border", true).toBool())
+    if (!m_profile.value("border", true).toBool() || m_kiosk)
         flags |= Qt::FramelessWindowHint;
     if (m_profile.value("ontop").toBool())
         flags |= Qt::WindowStaysOnTopHint;
     m_window->setFlags(flags);
-    m_window->place(target, m_profile.value("fullscreen").toBool());
+    if (m_kiosk && !m_kioskShow) {
+        m_window->hide();
+        return;
+    }
+    m_window->place(target, m_kiosk || m_profile.value("fullscreen").toBool());
+    if (m_kiosk)
+        m_window->requestActivate();
 }
 
 void MpvController::releaseBdOpenLock()
@@ -714,6 +731,11 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
 {
     if (!m_mpv)
         return;
+    if (m_kiosk && !m_kioskShow) {
+        // das Fenster kommt mit dem Laden, nicht erst mit dem ersten Bild (es rendert erst, wenn es da ist)
+        m_kioskShow = true;
+        placeEmbeddedWindow();
+    }
     if (m_window && !m_window->ready()) {
         // vo=libmpv kann erst nach dem Render-Kontext ein Bild ausgeben
         m_pendingUrl = url;
@@ -977,6 +999,12 @@ void MpvController::syncDiscTracks()
 
 void MpvController::handleClientMessage(const QStringList &args)
 {
+    // LumenOS: "Zurück" im Player-Fenster beendet die Wiedergabe
+    if (args.value(0) == QLatin1String("lumen-os")) {
+        if (args.value(1) == QLatin1String("back"))
+            stop();
+        return;
+    }
     if (m_vcd && m_vcd->active()) {
         if (args.value(0) != QLatin1String("lumen-key"))
             return;
@@ -1517,7 +1545,15 @@ void MpvController::setSubtitleId(int id)
 
 void MpvController::setAudioDelay(double s) { setOptionRaw(QStringLiteral("audio-delay"), s, false); }
 void MpvController::setSubDelay(double s) { setOptionRaw(QStringLiteral("sub-delay"), s, false); }
-void MpvController::toggleFullscreen() { command({"cycle", "fullscreen"}); }
+void MpvController::toggleFullscreen()
+{
+    // LumenOS: das Fenster bleibt bildschirmfüllend; wo sonst das Vollbild wechselte (OK außerhalb
+    // eines Menüs, Doppelklick), hält die Wiedergabe an und setzt fort
+    if (m_kiosk)
+        togglePause();
+    else
+        command({"cycle", "fullscreen"});
+}
 void MpvController::screenshot() { command({"osd-msg", "screenshot", "video"}); }
 void MpvController::toggleStats() { command({"script-binding", "stats/display-stats-toggle"}); }
 
@@ -2501,6 +2537,10 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
             m_position = 0;
             m_positionBucket = -1;
             emit positionChanged();
+        }
+        if (m_kiosk && m_idle && m_kioskShow && m_pendingUrl.isEmpty()) {
+            m_kioskShow = false; // nichts läuft mehr: der Bildschirm gehört wieder der Oberfläche
+            placeEmbeddedWindow();
         }
         emit idleChanged();
         break;

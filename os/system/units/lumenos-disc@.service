@@ -1,0 +1,7 @@
+[Unit]
+Description=LumenOS: disc in %I
+After=systemd-udevd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/lumen/os/lumenos-disc %I

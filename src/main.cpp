@@ -4,6 +4,7 @@
 #include <QIcon>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
@@ -32,7 +33,10 @@
 #include "DiscScanner.h"
 #include "DriveHelpers.h"
 #include "DvdNav.h"
+#include "InputMapper.h"
 #include "MediaServers.h"
+#include "OsBridge.h"
+#include "RipManager.h"
 #include "Updater.h"
 #include "I18n.h"
 #include "DisplayManager.h"
@@ -205,6 +209,12 @@ int main(int argc, char *argv[])
     struct OwnHelpers { ~OwnHelpers() { DriveHelpers::endOwn(); } } ownHelpers;
     BlurayReadAhead::install();
 
+    // "lumen --os": Lumen als Abspielgerät (LumenOS) – eine Oberfläche für den Fernseher statt des
+    // Steuerfensters, das Player-Fenster nur während der Wiedergabe
+    const bool osMode = app.arguments().contains(QStringLiteral("--os")) || qEnvironmentVariableIsSet("LUMEN_OS");
+    if (osMode)
+        qputenv("LUMEN_OS_ACTIVE", "1"); // (statische Funktionen fragen danach: MpvController::wantsEmbedded)
+
     I18n i18n; // vor allen anderen: Texte der Objekte sind dann schon übersetzt
     BdjSetup::prepare();
     // Plugins vor libmpv/libbluray laden: Umgebung, Disc-Bibliotheken, mpv-Skripte
@@ -219,6 +229,8 @@ int main(int argc, char *argv[])
     DvdNav dvd;
     VcdNav vcd;
     MpvController player(&displays, &nav);
+    OsBridge os(osMode);
+    player.setKiosk(os.kiosk());
     player.setDvdNav(&dvd);
     player.setVcdNav(&vcd);
     player.addOptionProvider([&plugins] { return plugins.mpvOptions(); });
@@ -384,6 +396,59 @@ int main(int argc, char *argv[])
             player.prevChapter();
     });
 
+    // LumenOS: Fernbedienungen und Gamepads (alles außer Tastatur und Maus), nach ihrer Einrichtung.
+    // Läuft etwas, steuern ihre Tasten die Wiedergabe; sonst kommen sie als Tasten bei der Oberfläche an.
+    InputMapper remotes(osMode);
+    RipManager rip;
+    QObject::connect(&remotes, &InputMapper::action, &app, [&](const QString &name, bool repeat) {
+        if (!player.idle()) {
+            static const QSet<QString> navKeys = {"up", "down", "left", "right", "menu"};
+            if (navKeys.contains(name))
+                player.command({"script-message", "lumen-key", name});
+            else if (name == QLatin1String("ok"))
+                player.command({"script-message", "lumen-key", "enter"});
+            else if (name == QLatin1String("info"))
+                player.command({"script-message", "lumen-key", "popup"});
+            else if (name == QLatin1String("back") || name == QLatin1String("stop"))
+                player.stop();
+            else if (name == QLatin1String("playpause"))
+                player.togglePause();
+            else if (name == QLatin1String("rewind") || name == QLatin1String("forward"))
+                player.seek(name == QLatin1String("forward") ? 10 : -10, true);
+            else if (name == QLatin1String("next"))
+                player.nextChapter();
+            else if (name == QLatin1String("prev"))
+                player.prevChapter();
+            else if (name == QLatin1String("volup") || name == QLatin1String("voldown"))
+                player.command({"osd-msg-bar", "add", "volume", name == QLatin1String("volup") ? "5" : "-5"});
+            else if (name == QLatin1String("mute"))
+                player.command({"osd-msg", "cycle", "mute"});
+            else if (name == QLatin1String("audio"))
+                player.command({"osd-msg", "cycle", "audio"});
+            else if (name == QLatin1String("subtitle"))
+                player.command({"osd-msg", "cycle", "sub"});
+            return;
+        }
+        static const QHash<QString, int> keys = {
+            {"up", Qt::Key_Up}, {"down", Qt::Key_Down}, {"left", Qt::Key_Left}, {"right", Qt::Key_Right}, {"ok", Qt::Key_Select},
+            {"back", Qt::Key_Escape}, {"stop", Qt::Key_Escape}, {"menu", Qt::Key_Home}, {"prev", Qt::Key_PageUp}, {"next", Qt::Key_PageDown},
+        };
+        QWindow *window = QGuiApplication::focusWindow();
+        if (!window && !QGuiApplication::topLevelWindows().isEmpty())
+            window = QGuiApplication::topLevelWindows().constFirst();
+        if (!window || !keys.contains(name))
+            return;
+        QKeyEvent press(QEvent::KeyPress, keys.value(name), Qt::NoModifier, QString(), repeat);
+        QCoreApplication::sendEvent(window, &press);
+        QKeyEvent release(QEvent::KeyRelease, keys.value(name), Qt::NoModifier);
+        QCoreApplication::sendEvent(window, &release);
+    });
+    QObject::connect(&rip, &RipManager::finished, &drives, &DriveManager::refresh);
+    const auto tellBusy = [&] { os.setBusy(!player.idle() || rip.running()); };
+    QObject::connect(&player, &MpvController::idleChanged, &os, tellBusy);
+    QObject::connect(&rip, &RipManager::changed, &os, tellBusy);
+    tellBusy();
+
     // Entwickler-Hilfe: LUMEN_CAST_AUTO=<Text> überträgt an den ersten Empfänger, dessen Kennung
     // oder Name den Text enthält, sobald er gefunden ist (z. B. "tv:" für die erste TV-App)
     const QString castAuto = qEnvironmentVariable("LUMEN_CAST_AUTO");
@@ -443,6 +508,9 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Servers", &servers);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Recent", &recent);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Cast", &cast);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Os", &os);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Remotes", &remotes);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Rip", &rip);
     Updater updater;
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Updater", &updater);
     QTimer::singleShot(4000, &updater, &Updater::checkAutomatically);
@@ -452,7 +520,7 @@ int main(int argc, char *argv[])
     i18n.setEngine(&engine);
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
-    engine.loadFromModule("Lumen", "Main");
+    engine.loadFromModule("Lumen", osMode ? "OsMain" : "Main");
 
     // Mehrere Bildschirme: Steuerfenster auf den kleinsten, Wiedergabe auf den größten
     auto placeControl = [&] {
@@ -486,6 +554,7 @@ int main(int argc, char *argv[])
     // lumen [--menu|--main] [--kdm <datei>] <datei|iso|ordner|laufwerk|dcp|cue>
     // Ohne Schalter startet eine Disc wie im Fenster eingestellt: mit ihrem Menü ("Mit Disc-Menü starten")
     QStringList args = app.arguments().mid(1);
+    args.removeAll(QStringLiteral("--os"));
     const bool forceMenu = args.removeAll(QStringLiteral("--menu")) > 0;
     const bool forceMain = args.removeAll(QStringLiteral("--main")) > 0;
     const bool withMenu = forceMenu || (!forceMain && QSettings().value(QStringLiteral("ui/startWithMenu"), true).toBool());
@@ -521,6 +590,51 @@ int main(int argc, char *argv[])
         if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_RECENT"))
             QMetaObject::invokeMethod(window, "openRecentIndex", Q_ARG(QVariant, qEnvironmentVariableIntValue("LUMEN_SNAPSHOT_RECENT")));
         QTimer::singleShot(delay > 0 ? delay : 2500, window, [window, snapshot] { window->grabWindow().save(snapshot); });
+    }
+
+    // Entwickler-Hilfe: LUMEN_OS_SCRIPT="key down; key ok; fake Pad; btn Pad 1; snap bild.png; wait 500; quit"
+    // bedient die Oberfläche von LumenOS ohne Hände (Tests, Bilder für die Anleitung). key: up, down, left,
+    // right, ok, back, home, space oder ein Zeichen; text: Zeichenfolge tippen; fake/btn: ein Eingabegerät
+    // ohne Gerät (InputMapper::fakeDevice); snap: Fenster als Bild speichern. Ein Schritt alle 300 ms.
+    if (osMode && qEnvironmentVariableIsSet("LUMEN_OS_SCRIPT") && !engine.rootObjects().isEmpty()) {
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().constFirst());
+        auto *steps = new QStringList(qEnvironmentVariable("LUMEN_OS_SCRIPT").split(QLatin1Char(';'), Qt::SkipEmptyParts));
+        auto *timer = new QTimer(&app);
+        const auto sendKey = [window](int key, const QString &text) {
+            QKeyEvent press(QEvent::KeyPress, key, Qt::NoModifier, text);
+            QCoreApplication::sendEvent(window, &press);
+            QKeyEvent release(QEvent::KeyRelease, key, Qt::NoModifier, text);
+            QCoreApplication::sendEvent(window, &release);
+        };
+        QObject::connect(timer, &QTimer::timeout, &app, [=, &remotes, &app] {
+            if (steps->isEmpty()) {
+                timer->stop();
+                return;
+            }
+            const QString step = steps->takeFirst().trimmed();
+            const QString verb = step.section(QLatin1Char(' '), 0, 0), rest = step.section(QLatin1Char(' '), 1);
+            static const QHash<QString, int> names = {{"up", Qt::Key_Up}, {"down", Qt::Key_Down}, {"left", Qt::Key_Left}, {"right", Qt::Key_Right},
+                                                      {"ok", Qt::Key_Return}, {"select", Qt::Key_Select}, {"back", Qt::Key_Escape},
+                                                      {"home", Qt::Key_Home}, {"space", Qt::Key_Space}};
+            timer->setInterval(300);
+            if (verb == QLatin1String("key")) {
+                sendKey(names.value(rest, rest.isEmpty() ? 0 : rest.at(0).toUpper().unicode()), names.contains(rest) ? QString() : rest);
+            } else if (verb == QLatin1String("text")) {
+                for (const QChar c : rest)
+                    sendKey(c.toUpper().unicode(), QString(c));
+            } else if (verb == QLatin1String("fake")) {
+                remotes.fakeDevice(rest);
+            } else if (verb == QLatin1String("btn")) {
+                remotes.fakeButton(rest.section(QLatin1Char(' '), 0, 0), rest.section(QLatin1Char(' '), 1).toInt());
+            } else if (verb == QLatin1String("snap")) {
+                window->grabWindow().save(rest);
+            } else if (verb == QLatin1String("wait")) {
+                timer->setInterval(rest.toInt());
+            } else if (verb == QLatin1String("quit")) {
+                app.quit();
+            }
+        });
+        timer->start(1500);
     }
 
     // Entwickler-Hilfe: LUMEN_QUIT_AFTER=<sekunden> beendet Lumen auf dem normalen Weg (Test des Abbaus)

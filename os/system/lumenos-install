@@ -1,0 +1,143 @@
+#!/bin/bash
+# LumenOS: put the system that was started from a stick or disc onto a disk of this machine.
+#
+#   lumenos-install list         the disks it could go to: device, size, name (tab separated)
+#   lumenos-install to <disk>    erase that disk and install
+#
+# The disk gets a partition for starting (EFI), on amd64 one more for machines without UEFI, and
+# the rest for the system and its films. What was set up while running from the stick – remotes,
+# network, shares – comes along.
+set -u
+export LC_ALL=C
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+STATE=/run/lumenos
+TARGET=/mnt/lumenos-target
+MEDIUM=/run/live/medium
+SQUASH="$MEDIUM/live/filesystem.squashfs"
+
+die() { status error "$*"; echo "$*" >&2; exit 1; }
+status() { # state message
+    mkdir -p "$STATE"
+    printf '{"state": "%s", "message": "%s"}\n' "$1" "$(printf '%s' "${2:-}" | sed 's/["\\]/ /g')" > "$STATE/install.json.new"
+    mv "$STATE/install.json.new" "$STATE/install.json"
+}
+# the disk the running system was started from
+boot_disk() {
+    src="$(awk -v m="$MEDIUM" '$2 == m { print $1 }' /proc/mounts | head -1)"
+    [ -n "$src" ] || return 0
+    parent="$(lsblk -no PKNAME "$src" 2> /dev/null | head -1)"
+    echo "/dev/${parent:-$(basename "$src")}"
+}
+part() { case "$1" in *[0-9]) echo "${1}p$2" ;; *) echo "$1$2" ;; esac; }
+
+case "${1:-}" in
+list)
+    [ -f "$SQUASH" ] || exit 0 # not started from an image: nothing to install from
+    boot="$(boot_disk)"
+    lsblk -dbnr -o NAME,SIZE,TYPE,RO,TRAN,MODEL | while read -r name size type ro tran model; do
+        [ "$type" = disk ] && [ "$ro" = 0 ] || continue
+        [ "/dev/$name" != "$boot" ] || continue
+        [ "$size" -ge 15000000000 ] || continue # room for the system and at least a film
+        printf '/dev/%s\t%s\t%s\t%s\n' "$name" "$size" "$(printf '%b' "${model:-$name}")" "${tran:-}"
+    done
+    ;;
+
+to)
+    disk="${2:-}"
+    [[ "$disk" =~ ^/dev/[a-z0-9]+$ ]] && [ -b "$disk" ] || die "not a disk: $disk"
+    [ "$(lsblk -dno TYPE "$disk")" = disk ] || die "$disk is not a whole disk"
+    [ -f "$SQUASH" ] || die "this system was not started from a LumenOS image"
+    [ "$disk" != "$(boot_disk)" ] || die "$disk is the medium this system runs from"
+    arch="$(dpkg --print-architecture)"
+
+    status preparing
+    # let go of everything on the target
+    for p in $(lsblk -lno NAME "$disk" | tail -n +2); do
+        systemd-umount "/dev/$p" > /dev/null 2>&1 || umount -l "/dev/$p" 2> /dev/null || true
+        swapoff "/dev/$p" 2> /dev/null || true
+    done
+    wipefs -af "$disk" > /dev/null 2>&1
+    sgdisk --zap-all "$disk" > /dev/null 2>&1 || die "the disk could not be cleared"
+    if [ "$arch" = amd64 ]; then
+        sgdisk -n1:1MiB:+512MiB -t1:ef00 -c1:EFI -n2:0:+1MiB -t2:ef02 -c2:BIOS -n3:0:0 -t3:8300 -c3:LumenOS "$disk" > /dev/null || die "the disk could not be partitioned"
+        root="$(part "$disk" 3)"
+    else
+        sgdisk -n1:1MiB:+512MiB -t1:ef00 -c1:EFI -n2:0:0 -t2:8300 -c2:LumenOS "$disk" > /dev/null || die "the disk could not be partitioned"
+        root="$(part "$disk" 2)"
+    fi
+    efi="$(part "$disk" 1)"
+    partprobe "$disk" 2> /dev/null
+    udevadm settle --timeout=15
+    for _ in 1 2 3 4 5 6 7 8 9 10; do [ -b "$root" ] && [ -b "$efi" ] && break; sleep 1; done
+    [ -b "$root" ] || die "the new partitions did not appear"
+    # (the rule for pluggable storage must not mount what is being made here)
+    mkfs.vfat -F 32 -n LUMENEFI "$efi" > /dev/null 2>&1 || die "the start partition could not be formatted"
+    mkfs.ext4 -q -F -L LumenOS "$root" || die "the system partition could not be formatted"
+    udevadm settle --timeout=15
+    for p in "$efi" "$root"; do systemd-umount "$p" > /dev/null 2>&1 || true; done
+
+    status copying
+    mkdir -p "$TARGET"
+    mount "$root" "$TARGET" || die "the system partition could not be mounted"
+    trap 'for m in run sys proc dev/pts dev boot/efi; do umount -l "$TARGET/$m" 2> /dev/null; done; umount -l "$TARGET" 2> /dev/null' EXIT
+    unsquashfs -f -n -d "$TARGET" "$SQUASH" > "$STATE/install.log" 2>&1 || die "the system could not be copied (see $STATE/install.log)"
+    # what was set up in this session
+    for item in /home/lumen/.config /home/lumen/.local /home/lumen/.MakeMKV /etc/NetworkManager/system-connections /etc/lumenos /var/lib/bluetooth; do
+        [ -e "$item" ] && rsync -a "$item" "$TARGET$(dirname "$item")/" 2>> "$STATE/install.log"
+    done
+    for unit in /etc/systemd/system/mnt-shares-*; do
+        [ -e "$unit" ] && cp -a "$unit" "$TARGET/etc/systemd/system/"
+    done
+    cp -a /etc/systemd/system/multi-user.target.wants/mnt-shares-* "$TARGET/etc/systemd/system/multi-user.target.wants/" 2> /dev/null || true
+
+    status configuring
+    mkdir -p "$TARGET/boot/efi"
+    mount "$efi" "$TARGET/boot/efi" || die "the start partition could not be mounted"
+    cat > "$TARGET/etc/fstab" << FSTAB
+# LumenOS
+UUID=$(blkid -s UUID -o value "$root")  /          ext4  errors=remount-ro,noatime  0 1
+UUID=$(blkid -s UUID -o value "$efi")  /boot/efi  vfat  umask=0077                 0 2
+FSTAB
+    : > "$TARGET/etc/machine-id"
+    mkdir -p "$TARGET/etc/default"
+    cat > "$TARGET/etc/default/grub" << 'GRUB'
+GRUB_DEFAULT=0
+GRUB_TIMEOUT=0
+GRUB_TIMEOUT_STYLE=hidden
+GRUB_DISTRIBUTOR=LumenOS
+GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=3 vt.global_cursor_default=0"
+GRUB_CMDLINE_LINUX=""
+GRUB_DISABLE_OS_PROBER=true
+GRUB
+
+    for m in dev dev/pts proc sys run; do mount --bind "/$m" "$TARGET/$m"; done
+    in_target() { chroot "$TARGET" /usr/bin/env PATH=/usr/sbin:/usr/bin:/sbin:/bin DEBIAN_FRONTEND=noninteractive "$@"; }
+    # the installed system starts from its disk, not as an image
+    in_target apt-get purge -y -q live-boot live-boot-initramfs-tools live-config live-config-systemd live-tools >> "$STATE/install.log" 2>&1 || true
+    rm -rf "$TARGET/lib/live" "$TARGET/etc/live" 2> /dev/null
+    in_target update-initramfs -u -k all >> "$STATE/install.log" 2>&1 || die "the start files could not be written (see $STATE/install.log)"
+
+    status bootloader
+    case "$arch" in
+    amd64)
+        in_target grub-install --target=i386-pc --recheck "$disk" >> "$STATE/install.log" 2>&1 || echo "note: no BIOS loader" >> "$STATE/install.log"
+        efi_target=x86_64-efi
+        ;;
+    *) efi_target=arm64-efi ;;
+    esac
+    # --removable: at the place every UEFI looks, so the disk starts without an entry in the machine's memory
+    in_target grub-install --target="$efi_target" --efi-directory=/boot/efi --bootloader-id=LumenOS --removable --no-nvram --recheck >> "$STATE/install.log" 2>&1 \
+        || die "the loader could not be installed (see $STATE/install.log)"
+    in_target grub-install --target="$efi_target" --efi-directory=/boot/efi --bootloader-id=LumenOS --recheck >> "$STATE/install.log" 2>&1 || true
+    in_target update-grub >> "$STATE/install.log" 2>&1 || die "the start menu could not be written (see $STATE/install.log)"
+
+    sync
+    status done "$disk"
+    echo "installed on $disk"
+    ;;
+
+*)
+    echo "lumenos-install list | to <disk>" >&2
+    exit 1
+    ;;
+esac

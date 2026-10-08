@@ -106,6 +106,10 @@ public:
     // Player-Fenster eines Profils: "embedded"/"native" wie gewählt, "auto" nach embeddedByDefault()
     static bool wantsEmbedded(const QVariantMap &profile);
     // Auf diesem System gibt es nur das eingebettete Player-Fenster (macOS)
+    // LumenOS: Das Player-Fenster füllt den Bildschirm und ist nur da, solange etwas läuft – davor und
+    // danach gehört der Bildschirm der Oberfläche. Vor initialize() setzen.
+    void setKiosk(bool on) { m_kiosk = on; }
+    bool kiosk() const { return m_kiosk; }
     Q_INVOKABLE static bool embeddedOnly();
     // "Automatisch" heißt hier eingebettet (macOS, Wayland-Sitzungen)
     Q_INVOKABLE static bool embeddedByDefault();
@@ -420,6 +424,8 @@ private:
     double m_subDelay = 0;
     bool m_buffering = false;
     double m_cacheSeconds = 0;
+    bool m_kiosk = false;
+    bool m_kioskShow = false; // etwas wird geladen oder läuft: Player-Fenster zeigen
     bool m_cacheKnown = false; // mpv hat für die laufende Quelle einen Puffer gemeldet
     QString m_lastError;
     QString m_stereoIn = QStringLiteral("none");

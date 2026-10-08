@@ -1,0 +1,104 @@
+# LumenOS: the packages of the image besides Debian's minimal base and Lumen itself.
+# A second word limits a package to one architecture.
+
+# --- starting from the image, and the system itself
+live-boot
+live-config
+live-config-systemd
+systemd-sysv
+systemd-timesyncd
+systemd-resolved
+dbus
+dbus-user-session
+libpam-systemd
+udev
+kmod
+sudo
+locales
+tzdata
+ca-certificates
+curl
+jq
+less
+nano
+procps
+iproute2
+iputils-ping
+pciutils
+usbutils
+rfkill
+util-linux
+unattended-upgrades
+initramfs-tools
+zstd
+
+# --- firmware (network, graphics, sound) and microcode
+firmware-linux-free
+firmware-misc-nonfree
+firmware-realtek
+firmware-iwlwifi
+firmware-atheros
+firmware-brcm80211
+firmware-mediatek
+firmware-amd-graphics
+firmware-intel-graphics amd64
+firmware-intel-misc amd64
+firmware-sof-signed amd64
+intel-microcode amd64
+amd64-microcode amd64
+wireless-regdb
+
+# --- picture
+cage
+qt6-wayland
+libgl1-mesa-dri
+libegl1
+libgles2
+libgbm1
+mesa-vulkan-drivers
+mesa-va-drivers
+intel-media-va-driver amd64
+i965-va-driver amd64
+fonts-inter
+fonts-noto-core
+fonts-noto-cjk
+
+# --- sound
+pipewire
+pipewire-pulse
+pipewire-alsa
+wireplumber
+alsa-utils
+libspa-0.2-bluetooth
+
+# --- network, Bluetooth, the television's remote (HDMI-CEC)
+network-manager
+iw
+bluez
+v4l-utils
+ir-keytable
+
+# --- storage: sticks and disks, network shares, discs
+exfatprogs
+ntfs-3g
+dosfstools
+e2fsprogs
+cifs-utils
+nfs-common
+eject
+udftools
+# Debian's own libraries for reading Blu-rays with a key file of the user (no keys in them)
+libaacs0
+libbdplus0
+
+# --- installing to the internal disk
+parted
+gdisk
+rsync
+squashfs-tools
+efibootmgr
+grub-common
+grub2-common
+grub-efi-amd64-bin amd64
+grub-pc-bin amd64
+grub-efi-arm64-bin arm64

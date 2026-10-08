@@ -1,0 +1,103 @@
+#!/bin/sh
+# LumenOS: bring Lumen up to its latest release.
+#
+#   lumenos-update          look for a new release; install it when "update by itself" is on
+#   lumenos-update --now    asked for from the settings: install whatever is newer
+#
+# Takes the Debian package for this machine from the latest release on GitHub, checks it against
+# the release's SHA256SUMS.txt, waits until nothing is playing, installs it and starts the player
+# again. What it is doing stands in /run/lumenos/update.json, which the settings page shows.
+set -u
+REPO="${LUMENOS_REPO:-Karl-Lauterbach24/Lumen}"
+API="${LUMENOS_API:-https://api.github.com/repos/$REPO/releases/latest}"
+STATE=/run/lumenos
+CACHE=/var/cache/lumenos
+CONF=/etc/lumenos/update.conf
+mkdir -p "$STATE" "$CACHE"
+
+now=0
+[ "${1:-}" = "--now" ] && now=1
+AUTO=on
+[ -r "$CONF" ] && . "$CONF"
+
+current="$(dpkg-query -W -f='${Version}' lumen-player 2> /dev/null || true)"
+latest=""
+
+status() { # state message
+    tmp="$STATE/update.json.$$"
+    jq -n --arg state "$1" --arg message "${2:-}" --arg current "$current" --arg latest "$latest" --argjson time "$(date +%s)" \
+        '{state: $state, message: $message, current: $current, latest: $latest, time: $time}' > "$tmp" && mv "$tmp" "$STATE/update.json"
+    chmod 644 "$STATE/update.json" 2> /dev/null
+}
+fail() { status error "$1"; echo "lumenos-update: $1" >&2; exit 1; }
+
+# one at a time
+exec 9> "$STATE/update.lock"
+flock -n 9 || exit 0
+
+status checking
+release="$(curl -fsSL --retry 2 --max-time 40 -H 'Accept: application/vnd.github+json' "$API")" || fail "no connection to the release server"
+tag="$(printf '%s' "$release" | jq -r '.tag_name // empty')"
+latest="${tag#v}"
+[ -n "$latest" ] || fail "the release server gave no version"
+case "$latest" in *[!0-9.]*) fail "unexpected version: $latest" ;; esac
+
+if [ -n "$current" ] && ! dpkg --compare-versions "$latest" gt "$current"; then
+    status idle
+    exit 0
+fi
+if [ "$now" = 0 ] && [ "$AUTO" != on ]; then
+    status available
+    exit 0
+fi
+
+arch="$(dpkg --print-architecture)"
+name="Lumen-$latest-linux-$arch.deb"
+url="$(printf '%s' "$release" | jq -r --arg n "$name" '.assets[]? | select(.name == $n) | .browser_download_url' | head -1)"
+sums="$(printf '%s' "$release" | jq -r '.assets[]? | select(.name == "SHA256SUMS.txt") | .browser_download_url' | head -1)"
+[ -n "$url" ] || fail "release $latest has no package for this machine ($name)"
+[ -n "$sums" ] || fail "release $latest has no checksums"
+
+status downloading
+deb="$CACHE/$name"
+curl -fsSL --retry 2 --max-time 60 -o "$CACHE/SHA256SUMS.txt" "$sums" || fail "the checksums could not be loaded"
+expected="$(awk -v n="$name" '{ f = $2; sub(/^\*/, "", f); if (f == n) print $1 }' "$CACHE/SHA256SUMS.txt" | head -1)"
+[ -n "$expected" ] || fail "the checksums do not name $name"
+have=""
+[ -f "$deb" ] && have="$(sha256sum "$deb" | cut -d' ' -f1)"
+if [ "$have" != "$expected" ]; then
+    curl -fL --retry 3 --retry-delay 5 -sS -o "$deb.part" "$url" || { rm -f "$deb.part"; fail "the package could not be loaded"; }
+    have="$(sha256sum "$deb.part" | cut -d' ' -f1)"
+    [ "$have" = "$expected" ] || { rm -f "$deb.part"; fail "the package does not match its checksum"; }
+    mv "$deb.part" "$deb"
+fi
+
+# Not under a running film or a copy: Lumen says in a file of its session whether it is busy
+busy() {
+    for f in /run/user/*/lumen-os.state; do
+        [ -r "$f" ] && [ "$(cat "$f" 2> /dev/null)" = busy ] && return 0
+    done
+    return 1
+}
+waited=0
+while busy; do
+    status waiting
+    [ "$waited" -ge 2100 ] && exit 0 # the package stays; the next run goes on from here
+    sleep 30
+    waited=$((waited + 30))
+done
+
+status installing
+export DEBIAN_FRONTEND=noninteractive
+if ! apt-get install -y -q --no-install-recommends "$deb" > "$STATE/update.log" 2>&1; then
+    # packages the new version needs, and the lists here are old: once more with fresh lists
+    apt-get update -q >> "$STATE/update.log" 2>&1
+    apt-get install -y -q --no-install-recommends "$deb" >> "$STATE/update.log" 2>&1 || fail "the package could not be installed (see $STATE/update.log)"
+fi
+current="$latest"
+# the new version brings its own units, rules and scripts
+/usr/share/lumen/os/lumenos-setup refresh >> "$STATE/update.log" 2>&1 || true
+find "$CACHE" -name 'Lumen-*.deb' ! -name "$name" -delete 2> /dev/null
+status idle
+systemctl --no-block try-restart lumenos-session.service
+exit 0

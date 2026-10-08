@@ -1,0 +1,49 @@
+#!/bin/sh
+# LumenOS: a storage device was plugged in or pulled (USB stick, USB disk, card reader). Its file
+# systems appear under /media/<name> and so in Lumen's library; films can be copied to them.
+# Called by udev (90-lumenos.rules) with "add <partition>" or "remove <partition>"; the mounting
+# itself is done by systemd (udev's own processes cannot mount).
+set -u
+action="${1:?add or remove}"
+part="${2:?partition, e.g. sdb1}"
+dev="/dev/$part"
+state=/run/lumenos/storage
+mkdir -p "$state"
+
+case "$action" in
+add)
+    label="${ID_FS_LABEL:-}"
+    type="${ID_FS_TYPE:-}"
+    [ -n "$type" ] || exit 0
+    case "$type" in swap | crypto_LUKS | LVM2_member | linux_raid_member | squashfs) exit 0 ;; esac
+    # a name for the folder: the label of the file system, made harmless; else the partition
+    name="$(printf '%s' "$label" | tr -c 'A-Za-z0-9._ -' '_' | sed 's/^[ ._]*//; s/[ ._]*$//')"
+    [ -n "$name" ] || name="$part"
+    dir="/media/$name"
+    # two devices with the same label: the second gets the partition in its name
+    if awk -v d="$dir" '$2 == d { found = 1 } END { exit !found }' /proc/mounts; then dir="/media/$name-$part"; fi
+    case "$type" in
+    vfat | exfat | ntfs | ntfs3 | hfsplus) options="rw,nosuid,nodev,noexec,uid=lumen,gid=lumen,umask=022" ;;
+    *) options="rw,nosuid,nodev,noexec" ;;
+    esac
+    [ "$type" = ntfs ] && fs="-t ntfs3" || fs=""
+    mkdir -p "$dir"
+    printf '%s\n' "$dir" > "$state/$part"
+    # --collect: the mount unit disappears with the device; --no-block: udev does not wait
+    # shellcheck disable=SC2086
+    systemd-mount --no-block --collect --no-ask-password $fs -o "$options" "$dev" "$dir" > /dev/null 2>&1
+    # a file system of its own (ext4, btrfs …) belongs to root: give Lumen a folder it may write to
+    case "$type" in
+    vfat | exfat | ntfs | ntfs3 | hfsplus | udf | iso9660) ;;
+    *) ( sleep 4; [ -d "$dir/lost+found" ] || [ -w "$dir" ] && mkdir -p "$dir/Lumen" && chown lumen:lumen "$dir/Lumen" ) > /dev/null 2>&1 & ;;
+    esac
+    ;;
+remove)
+    [ -r "$state/$part" ] || exit 0
+    dir="$(cat "$state/$part")"
+    rm -f "$state/$part"
+    systemd-umount "$dir" > /dev/null 2>&1 || umount -l "$dir" 2> /dev/null
+    rmdir "$dir" 2> /dev/null
+    ;;
+esac
+exit 0

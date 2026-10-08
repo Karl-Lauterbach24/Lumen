@@ -1,0 +1,111 @@
+#!/bin/bash
+# Builds the LumenOS image: a Debian system that starts straight into Lumen as a player.
+#
+#   sudo os/image/build.sh <amd64|arm64> <Lumen-…-linux-<arch>.deb> [output folder]
+#
+# Runs on Debian 13 with the package "live-build" (the build of the other architecture needs
+# qemu-user-static, or any other way the machine runs that architecture's programs). The result
+# is LumenOS-<version>-<arch>.iso: starts from a USB stick or a disc on UEFI machines (amd64: on
+# BIOS machines too), runs from there, and installs itself to the internal disk from its settings.
+#
+# What is in the image: Debian's base system and kernel with firmware, a compositor for one
+# program (cage), sound (PipeWire), network (NetworkManager), Bluetooth (BlueZ), and Lumen from the
+# package given – which brings LumenOS's own part (share/lumen/os) with it. No keys and no
+# decryption code for discs: see os/README.md.
+set -euo pipefail
+arch="${1:?architecture: amd64 or arm64}"
+deb="$(readlink -f "${2:?the Lumen package for that architecture}")"
+out="$(readlink -f "${3:-.}")"
+here="$(cd "$(dirname "$0")" && pwd)"
+[ "$(id -u)" = 0 ] || { echo "run as root (live-build needs it)"; exit 1; }
+case "$arch" in amd64 | arm64) ;; *) echo "amd64 or arm64"; exit 1 ;; esac
+[ -f "$deb" ] || { echo "no such package: $deb"; exit 1; }
+[ "$(dpkg-deb -f "$deb" Architecture)" = "$arch" ] || { echo "$deb is not built for $arch"; exit 1; }
+version="$(dpkg-deb -f "$deb" Version)"
+work="${LUMENOS_WORK:-/var/tmp/lumenos-build-$arch}"
+mirror="${LUMENOS_MIRROR:-http://deb.debian.org/debian/}"
+
+# Start clean, but keep the packages a build before this one has already loaded. A build that
+# broke off may have left the system folders of its image mounted: never delete through those.
+if [ -d "$work" ]; then
+    ( cd "$work" && lb clean > /dev/null 2>&1 ) || true
+    if grep -q " $work/" /proc/mounts; then
+        awk -v w="$work/" 'index($2, w) == 1 { print $2 }' /proc/mounts | sort -r | while read -r m; do umount -l "$m" 2> /dev/null || true; done
+    fi
+    if grep -q " $work/" /proc/mounts; then
+        echo "something is still mounted below $work - not touching it"
+        exit 1
+    fi
+    find "$work" -mindepth 1 -maxdepth 1 ! -name cache -exec rm -rf {} +
+fi
+mkdir -p "$work" "$out"
+cd "$work"
+
+extra=()
+if [ "$(dpkg --print-architecture)" != "$arch" ]; then
+    # a foreign architecture: the second stage of the bootstrap runs that architecture's programs
+    qemu=""
+    case "$arch" in amd64) qemu=/usr/bin/qemu-x86_64-static ;; arm64) qemu=/usr/bin/qemu-aarch64-static ;; esac
+    [ -x "$qemu" ] && extra+=(--bootstrap-qemu-arch "$arch" --bootstrap-qemu-static "$qemu")
+fi
+case "$arch" in
+amd64) loaders="grub-pc,grub-efi" ;;
+arm64) loaders="grub-efi" ;;
+esac
+
+lb config \
+    --distribution trixie \
+    --architectures "$arch" \
+    --archive-areas "main contrib non-free-firmware" \
+    --mirror-bootstrap "$mirror" --mirror-chroot "$mirror" --mirror-binary "$mirror" \
+    --binary-images iso-hybrid \
+    --bootloaders "$loaders" \
+    --apt-recommends false \
+    --apt-indices false \
+    --debootstrap-options "--variant=minbase" \
+    --firmware-chroot false --firmware-binary false \
+    --memtest none \
+    --win32-loader false \
+    --chroot-squashfs-compression-type zstd \
+    --iso-application "LumenOS" \
+    --iso-publisher "Lumen; https://github.com/Karl-Lauterbach24/Lumen" \
+    --iso-volume "LumenOS $version" \
+    --image-name "LumenOS" \
+    --bootappend-live "boot=live components quiet loglevel=3 vt.global_cursor_default=0 hostname=lumenos live-config.nocomponents=user-setup,sudo,xinit,gdm3,lightdm,sddm,login,x-session-manager" \
+    "${extra[@]}" > "$work/config.log" 2>&1 || { tail -20 "$work/config.log"; exit 1; }
+
+# --- packages (one per line; lines ending in ":arch" only for that architecture)
+mkdir -p config/package-lists config/packages.chroot config/hooks/normal config/includes.chroot/etc/lumenos config/includes.binary
+sed -e 's/[[:space:]]*#.*//' -e '/^[[:space:]]*$/d' "$here/packages.list" | while read -r name only; do
+    [ -z "$only" ] || [ "$only" = "$arch" ] || continue
+    echo "$name"
+done > config/package-lists/lumenos.list.chroot
+# Lumen itself: the package given is offered to the image as a local source, and asked for by name
+# (live-build takes local packages only under Debian's file name: name_version_architecture.deb)
+package="$(dpkg-deb -f "$deb" Package)"
+cp "$deb" "config/packages.chroot/${package}_${version}_${arch}.deb"
+echo "$package" >> config/package-lists/lumenos.list.chroot
+
+# --- the system becomes the player (user, services, rules: all from Lumen's package)
+cp "$here/setup.hook" config/hooks/normal/9000-lumenos.hook.chroot
+chmod +x config/hooks/normal/9000-lumenos.hook.chroot
+printf 'LUMENOS_IMAGE=%s\nLUMENOS_ARCH=%s\nLUMENOS_BUILT=%s\n' "$version" "$arch" "$(date -u +%Y-%m-%d)" > config/includes.chroot/etc/lumenos/image
+
+# --- the boot menu
+# (live-build keeps the menu of both loaders, BIOS and UEFI, in "grub-pc")
+mkdir -p config/bootloaders
+cp -r /usr/share/live/build/bootloaders/grub-pc config/bootloaders/
+cp "$here/grub.cfg" config/bootloaders/grub-pc/grub.cfg
+sed -i "s/@VERSION@/$version/g" config/bootloaders/grub-pc/grub.cfg
+
+echo "LumenOS $version ($arch): building, log in $work/build.log"
+if ! lb build > "$work/build.log" 2>&1; then
+    tail -40 "$work/build.log"
+    exit 1
+fi
+iso="$(ls "$work"/LumenOS-*.iso "$work"/*.hybrid.iso 2> /dev/null | head -1)"
+[ -f "$iso" ] || { echo "no image came out"; tail -30 "$work/build.log"; exit 1; }
+target="$out/LumenOS-$version-$arch.iso"
+mv "$iso" "$target"
+( cd "$out" && sha256sum "$(basename "$target")" > "$(basename "$target").sha256" )
+ls -la "$target"

@@ -1,0 +1,11 @@
+[Unit]
+Description=LumenOS: update Lumen from its latest release
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/lumen/os/lumenos-update
+# the download may take its time on a slow line; nothing waits for it
+TimeoutStartSec=45min
+Nice=10

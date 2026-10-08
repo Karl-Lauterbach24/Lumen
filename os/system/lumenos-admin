@@ -1,0 +1,281 @@
+#!/bin/bash
+# LumenOS: what the player needs done with the system's rights. Lumen runs as an ordinary user and
+# calls this through sudo (the rule is written by lumenos-setup); nothing else of the system is
+# open to it. Every verb checks what it is given.
+#
+# Output is for the settings pages: lines of fields separated by tabs, or key=value.
+set -u
+export LC_ALL=C
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+HERE=/usr/share/lumen/os
+USER_NAME=lumen
+SHARES=/etc/lumenos/shares
+
+die() { echo "$*" >&2; exit 1; }
+name_ok() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$ ]]; }
+user_home() { getent passwd "$USER_NAME" | cut -d: -f6; }
+
+verb="${1:-}"
+[ $# -gt 0 ] && shift
+
+case "$verb" in
+
+# ------------------------------------------------------------------ power
+power)
+    case "${1:-}" in
+    reboot) systemctl --no-block reboot ;;
+    poweroff) systemctl --no-block poweroff ;;
+    restart) systemctl --no-block restart lumenos-session.service ;;
+    *) die "power reboot|poweroff|restart" ;;
+    esac
+    ;;
+
+# ------------------------------------------------------------------ installing to the internal disk
+install-list)
+    "$HERE/lumenos-install" list
+    ;;
+install-to)
+    "$HERE/lumenos-install" to "${1:-}" || exit 1
+    ;;
+
+# ------------------------------------------------------------------ disc
+eject)
+    drive="$(basename "${1:-}")"
+    [[ "$drive" =~ ^sr[0-9]+$ ]] || die "eject <drive>"
+    "$HERE/lumenos-disc" "$drive" eject
+    ;;
+
+# ------------------------------------------------------------------ update
+update-now)
+    # (a second request while one runs finds the unit there and does nothing)
+    systemd-run --quiet --collect --unit=lumenos-update-now "$HERE/lumenos-update" --now 2> /dev/null || true
+    ;;
+update-auto)
+    conf=/etc/lumenos/update.conf
+    case "${1:-status}" in
+    on | off)
+        printf '%s\n' "AUTO=$1" > "$conf"
+        ;;
+    status)
+        AUTO=on
+        [ -r "$conf" ] && . "$conf"
+        echo "$AUTO"
+        ;;
+    *) die "update-auto on|off|status" ;;
+    esac
+    ;;
+
+# ------------------------------------------------------------------ network
+wifi-list)
+    command -v nmcli > /dev/null || die "NetworkManager is not installed"
+    nmcli radio wifi on > /dev/null 2>&1
+    # terse output separates with ':' and escapes the ones inside a name with a backslash
+    nmcli -t -f IN-USE,SIGNAL,SECURITY,SSID device wifi list --rescan auto 2> /dev/null \
+        | awk '{
+            line = $0; gsub(/\\:/, "\001", line)
+            n = split(line, f, ":")
+            ssid = f[4]; for (i = 5; i <= n; i++) ssid = ssid ":" f[i]
+            gsub(/\001/, ":", ssid)
+            if (ssid == "") next
+            if (!(ssid in best) || f[2] + 0 > best[ssid] + 0) { best[ssid] = f[2]; sec[ssid] = f[3]; use[ssid] = (f[1] == "*") ? "yes" : (use[ssid] == "yes" ? "yes" : "no") }
+          }
+          END { for (s in best) printf "%s\t%s\t%s\t%s\n", s, best[s], (sec[s] == "" ? "--" : sec[s]), use[s] }' \
+        | sort -t "$(printf '\t')" -k4,4r -k2,2nr
+    ;;
+wifi-connect)
+    ssid="${1:-}"
+    password="${2:-}"
+    [ -n "$ssid" ] || die "wifi-connect <network> [password]"
+    if [ -n "$password" ]; then
+        nmcli --wait 40 device wifi connect "$ssid" password "$password" || { nmcli connection delete id "$ssid" > /dev/null 2>&1; exit 1; }
+    else
+        nmcli --wait 40 device wifi connect "$ssid" || exit 1
+    fi
+    ;;
+
+# ------------------------------------------------------------------ network shares
+share-list)
+    for conf in "$SHARES"/*.conf; do
+        [ -r "$conf" ] || continue
+        TYPE="" SOURCE=""
+        . "$conf"
+        name="$(basename "$conf" .conf)"
+        mounted=no
+        awk -v d="/mnt/shares/$name" '$2 == d { found = 1 } END { exit !found }' /proc/mounts && mounted=yes
+        printf '%s\t%s\t%s\t%s\n' "$name" "$TYPE" "$SOURCE" "$mounted"
+    done
+    ;;
+share-add)
+    name="${1:-}" type="${2:-}" host="${3:-}" path="${4:-}" user="${5:-}" password="${6:-}"
+    name_ok "$name" || die "the name may hold letters, digits, dot, dash and underscore"
+    [[ "$host" =~ ^[A-Za-z0-9._:-]+$ ]] || die "not a host name or address: $host"
+    [ -n "$path" ] || die "share-add <name> smb|nfs <host> <share> [user] [password]"
+    mkdir -p "$SHARES" "/mnt/shares/$name"
+    dir="/mnt/shares/$name"
+    case "$type" in
+    smb)
+        source="//$host/${path#/}"
+        cred="$SHARES/$name.cred"
+        ( umask 077; printf 'username=%s\npassword=%s\n' "${user:-guest}" "$password" > "$cred" )
+        fstype=cifs
+        options="credentials=$cred,uid=$USER_NAME,gid=$USER_NAME,file_mode=0664,dir_mode=0775,iocharset=utf8,nofail,_netdev"
+        [ -n "$user" ] || options="$options,guest"
+        ;;
+    nfs)
+        source="$host:/${path#/}"
+        fstype=nfs
+        options="rw,soft,timeo=100,nofail,_netdev"
+        ;;
+    *) die "smb or nfs" ;;
+    esac
+    # try it once now: what does not mount is not kept
+    if ! mount -t "$fstype" -o "$options" "$source" "$dir" 2> /tmp/lumenos-mount.$$; then
+        err="$(tail -1 /tmp/lumenos-mount.$$)"
+        rm -f /tmp/lumenos-mount.$$ "$SHARES/$name.cred"
+        rmdir "$dir" 2> /dev/null
+        die "${err:-mount failed}"
+    fi
+    rm -f /tmp/lumenos-mount.$$
+    umount "$dir" 2> /dev/null
+    printf 'TYPE=%s\nSOURCE=%q\n' "$type" "$source" > "$SHARES/$name.conf"
+    # mounted when first looked into, and again after the network was away
+    unit="$(systemd-escape -p --suffix=mount "$dir")"
+    auto="$(systemd-escape -p --suffix=automount "$dir")"
+    cat > "/etc/systemd/system/$unit" << UNIT
+[Unit]
+Description=LumenOS share $name
+[Mount]
+What=$source
+Where=$dir
+Type=$fstype
+Options=$options
+TimeoutSec=20
+UNIT
+    cat > "/etc/systemd/system/$auto" << UNIT
+[Unit]
+Description=LumenOS share $name
+[Automount]
+Where=$dir
+TimeoutIdleSec=0
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl daemon-reload
+    systemctl enable --now "$auto" > /dev/null 2>&1
+    ls "$dir" > /dev/null 2>&1 || true
+    ;;
+share-remove)
+    name="${1:-}"
+    name_ok "$name" || die "share-remove <name>"
+    dir="/mnt/shares/$name"
+    unit="$(systemd-escape -p --suffix=mount "$dir")"
+    auto="$(systemd-escape -p --suffix=automount "$dir")"
+    systemctl disable --now "$auto" > /dev/null 2>&1
+    systemctl stop "$unit" > /dev/null 2>&1
+    umount -l "$dir" 2> /dev/null
+    rm -f "/etc/systemd/system/$unit" "/etc/systemd/system/$auto" "$SHARES/$name.conf" "$SHARES/$name.cred"
+    rmdir "$dir" 2> /dev/null
+    systemctl daemon-reload
+    ;;
+
+# ------------------------------------------------------------------ Bluetooth
+bt-scan)
+    seconds="${1:-10}"
+    [[ "$seconds" =~ ^[0-9]+$ ]] && [ "$seconds" -le 60 ] || seconds=10
+    command -v bluetoothctl > /dev/null || die "Bluetooth is not installed"
+    rfkill unblock bluetooth 2> /dev/null
+    bluetoothctl power on > /dev/null 2>&1 || die "no Bluetooth adapter"
+    bluetoothctl --timeout "$seconds" scan on > /dev/null 2>&1
+    bluetoothctl devices 2> /dev/null | while read -r _ mac name; do
+        [[ "$mac" =~ ^[0-9A-F:]{17}$ ]] || continue
+        info="$(bluetoothctl info "$mac" 2> /dev/null)"
+        paired=no connected=no
+        grep -q 'Paired: yes' <<< "$info" && paired=yes
+        grep -q 'Connected: yes' <<< "$info" && connected=yes
+        # devices that only show an address are mostly not what one wants to pair; list them last
+        printf '%s\t%s\t%s\t%s\n' "$mac" "${name:-$mac}" "$paired" "$connected"
+    done | sort -t "$(printf '\t')" -k3,3r -k2,2
+    ;;
+bt-pair)
+    mac="${1:-}"
+    [[ "$mac" =~ ^[0-9A-Fa-f:]{17}$ ]] || die "bt-pair <address>"
+    bluetoothctl power on > /dev/null 2>&1
+    # remotes and gamepads pair without a number; a keyboard that wants one typed is not handled here
+    out="$(printf 'agent NoInputNoOutput\ndefault-agent\n' | bluetoothctl 2>&1; bluetoothctl --timeout 25 pair "$mac" 2>&1)"
+    bluetoothctl info "$mac" 2> /dev/null | grep -q 'Paired: yes' || die "$(tail -1 <<< "$out")"
+    bluetoothctl trust "$mac" > /dev/null 2>&1
+    bluetoothctl --timeout 15 connect "$mac" > /dev/null 2>&1 || true
+    ;;
+bt-remove)
+    mac="${1:-}"
+    [[ "$mac" =~ ^[0-9A-Fa-f:]{17}$ ]] || die "bt-remove <address>"
+    bluetoothctl remove "$mac" > /dev/null 2>&1
+    ;;
+
+# ------------------------------------------------------------------ HDMI-CEC
+cec-setup)
+    # Announce this device to the television as a player. From then on the kernel hands the keys
+    # of the television's remote on as an input device, which Lumen sets up like any other remote.
+    command -v cec-ctl > /dev/null || exit 0
+    for dev in /dev/cec[0-9]*; do
+        [ -e "$dev" ] || continue
+        cec-ctl -d "$dev" --playback --osd-name LumenOS > /dev/null 2>&1 || true
+    done
+    ;;
+
+# ------------------------------------------------------------------ discs: what the user may add
+support-status)
+    home="$(user_home)"
+    ldconfig -p | grep -q 'libaacs\.so' && echo aacs=yes || echo aacs=no
+    [ -s "$home/.config/aacs/KEYDB.cfg" ] && echo keydb=yes || echo keydb=no
+    ldconfig -p | grep -q 'libdvdcss\.so' && echo dvdcss=yes || echo dvdcss=no
+    if command -v makemkvcon > /dev/null 2>&1; then
+        echo "makemkv=$(makemkvcon --version 2> /dev/null | head -1 | sed 's/^MakeMKV //; s/ .*//' | cut -c1-20)"
+    else
+        echo makemkv=
+    fi
+    ;;
+keydb-import)
+    # the user's own key file from a storage device he plugged in
+    home="$(user_home)"
+    for file in "$@"; do
+        case "$(readlink -f "$file" 2> /dev/null)" in /media/*) ;; *) continue ;; esac
+        [ -s "$file" ] || continue
+        install -d -o "$USER_NAME" -g "$USER_NAME" "$home/.config/aacs"
+        install -o "$USER_NAME" -g "$USER_NAME" -m 600 "$file" "$home/.config/aacs/KEYDB.cfg"
+        exit 0
+    done
+    die "no KEYDB.cfg in the top folder of a plugged-in storage device"
+    ;;
+install-dvdcss)
+    # Debian's own way: its package libdvd-pkg loads the source of libdvdcss from VideoLAN and builds
+    # it on this machine
+    export DEBIAN_FRONTEND=noninteractive
+    grep -rqs '\bcontrib\b' /etc/apt/sources.list /etc/apt/sources.list.d/ || die "the package source 'contrib' is not enabled"
+    apt-get update -q > /dev/null 2>&1
+    echo 'libdvd-pkg libdvd-pkg/first-install note' | debconf-set-selections
+    echo 'libdvd-pkg libdvd-pkg/post-invoke_hook-install boolean true' | debconf-set-selections
+    echo 'libdvd-pkg libdvd-pkg/build boolean true' | debconf-set-selections
+    apt-get install -y -q libdvd-pkg > /tmp/lumenos-dvdcss.log 2>&1 || die "$(tail -1 /tmp/lumenos-dvdcss.log)"
+    dpkg-reconfigure -f noninteractive libdvd-pkg >> /tmp/lumenos-dvdcss.log 2>&1 || die "$(tail -1 /tmp/lumenos-dvdcss.log)"
+    ldconfig
+    ldconfig -p | grep -q 'libdvdcss\.so' || die "libdvdcss was not built (see /tmp/lumenos-dvdcss.log)"
+    systemctl --no-block try-restart lumenos-session.service
+    ;;
+install-makemkv)
+    "$HERE/lumenos-makemkv" install || exit 1
+    systemctl --no-block try-restart lumenos-session.service
+    ;;
+makemkv-key)
+    key="${1:-}"
+    [[ "$key" =~ ^[TM]-[A-Za-z0-9@_]{40,80}$ ]] || die "this does not look like a MakeMKV key"
+    "$HERE/lumenos-makemkv" key "$key"
+    ;;
+makemkv-betakey)
+    "$HERE/lumenos-makemkv" betakey
+    ;;
+
+*)
+    die "lumenos-admin: unknown request '$verb'"
+    ;;
+esac

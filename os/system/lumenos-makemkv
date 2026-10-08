@@ -1,0 +1,87 @@
+#!/bin/bash
+# LumenOS: MakeMKV, when the user asks for it in the settings (Discs).
+#
+#   lumenos-makemkv install    load MakeMKV's two official packages from makemkv.com and build them here
+#   lumenos-makemkv key <key>  enter a licence key
+#   lumenos-makemkv betakey    enter the beta key its author posts in MakeMKV's forum
+#
+# MakeMKV is GuinpinSoft's program with a licence of its own (https://www.makemkv.com/eula); the
+# settings page says so before this runs. Nothing of it is part of LumenOS: it is loaded and built
+# on this device.
+set -u
+export LC_ALL=C DEBIAN_FRONTEND=noninteractive
+LOG=/var/log/lumenos-makemkv.log
+USER_NAME=lumen
+SITE="${LUMENOS_MAKEMKV_SITE:-https://www.makemkv.com}"
+KEY_PAGE="${LUMENOS_MAKEMKV_KEY_PAGE:-https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053}"
+
+die() { echo "$*" >&2; exit 1; }
+home() { getent passwd "$USER_NAME" | cut -d: -f6; }
+
+set_key() {
+    key="$1"
+    dir="$(home)/.MakeMKV"
+    install -d -o "$USER_NAME" -g "$USER_NAME" "$dir"
+    conf="$dir/settings.conf"
+    touch "$conf"
+    # one line 'app_Key = "…"'; the rest of the file is MakeMKV's
+    grep -v '^[[:space:]]*app_Key' "$conf" > "$conf.new" || true
+    printf 'app_Key = "%s"\n' "$key" >> "$conf.new"
+    mv "$conf.new" "$conf"
+    chown "$USER_NAME:$USER_NAME" "$conf"
+    chmod 600 "$conf"
+}
+
+case "${1:-}" in
+install)
+    # the current version is named on the download page for Linux
+    page="$(curl -fsSL --max-time 40 "$SITE/download/" 2> /dev/null)" || die "makemkv.com cannot be reached"
+    version="$(grep -o 'makemkv-oss-[0-9][0-9.]*\.tar\.gz' <<< "$page" | head -1 | sed 's/makemkv-oss-//; s/\.tar\.gz//')"
+    [[ "$version" =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "the download page of makemkv.com names no version"
+    {
+        echo "=== $(date) MakeMKV $version"
+        apt-get update -q
+        apt-get install -y -q --no-install-recommends build-essential pkg-config libc6-dev libssl-dev libexpat1-dev zlib1g-dev libavcodec-dev
+    } > "$LOG" 2>&1 || die "the build tools could not be installed (see $LOG)"
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    for part in oss bin; do
+        curl -fsSL --retry 2 --max-time 600 -o "$work/makemkv-$part.tar.gz" "$SITE/download/makemkv-$part-$version.tar.gz" >> "$LOG" 2>&1 \
+            || die "makemkv-$part-$version could not be loaded"
+    done
+    (
+        set -e
+        cd "$work"
+        tar -xzf makemkv-oss.tar.gz
+        tar -xzf makemkv-bin.tar.gz
+        cd "$work"/makemkv-oss-*
+        ./configure --prefix=/usr --disable-gui
+        make -j"$(nproc)"
+        make install
+        cd "$work"/makemkv-bin-*
+        mkdir -p tmp
+        echo accepted > tmp/eula_accepted
+        make PREFIX=/usr install
+        ldconfig
+    ) >> "$LOG" 2>&1 || die "the build failed (see $LOG)"
+    command -v makemkvcon > /dev/null || die "the build left no makemkvcon (see $LOG)"
+    # the build tools are not needed any more
+    apt-get purge -y -q build-essential libssl-dev libexpat1-dev zlib1g-dev libavcodec-dev >> "$LOG" 2>&1 || true
+    apt-get autoremove -y -q >> "$LOG" 2>&1 || true
+    echo "MakeMKV $version"
+    ;;
+key)
+    [ -n "${2:-}" ] || die "key <key>"
+    set_key "$2"
+    ;;
+betakey)
+    page="$(curl -fsSL --max-time 40 -A 'Mozilla/5.0 (LumenOS)' "$KEY_PAGE" 2> /dev/null)" || die "MakeMKV's forum cannot be reached"
+    key="$(grep -o 'T-[A-Za-z0-9@_]\{60,70\}' <<< "$page" | head -1)"
+    [ -n "$key" ] || die "the forum page shows no beta key right now"
+    set_key "$key"
+    echo "beta key entered"
+    ;;
+*)
+    die "lumenos-makemkv install | key <key> | betakey"
+    ;;
+esac

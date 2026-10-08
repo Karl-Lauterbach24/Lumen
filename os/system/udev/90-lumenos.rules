@@ -1,0 +1,22 @@
+# LumenOS
+
+# Optical drives: on every change of medium look at the drive again (mount the disc, or take the
+# mount of the one that left). The eject button of the drive asks first: let go of the disc.
+ACTION=="change", SUBSYSTEM=="block", KERNEL=="sr[0-9]*", ENV{DISK_EJECT_REQUEST}=="1", RUN+="/usr/bin/systemctl --no-block start lumenos-eject@%k.service"
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sr[0-9]*", ENV{DISK_EJECT_REQUEST}!="1", RUN+="/usr/bin/systemctl --no-block restart lumenos-disc@%k.service"
+# ... and read further ahead than the 128 KiB a drive gets by default
+ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sr[0-9]*", ATTR{queue/read_ahead_kb}="2048"
+
+# Storage that can be pulled: USB sticks and disks, card readers
+# (not the stick the system itself was started from, and nothing while a disk is being installed to)
+ENV{ID_FS_LABEL}=="LumenOS*|LUMENEFI", GOTO="lumenos_storage_end"
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", ENV{ID_FS_USAGE}=="filesystem", ENV{ID_BUS}=="usb", RUN+="/usr/share/lumen/os/lumenos-storage add %k"
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", ENV{ID_FS_USAGE}=="filesystem", ENV{ID_BUS}=="usb", KERNEL=="sd*", RUN+="/usr/share/lumen/os/lumenos-storage add %k"
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_USAGE}=="filesystem", KERNEL=="mmcblk[0-9]*p[0-9]*", ATTRS{removable}=="1", RUN+="/usr/share/lumen/os/lumenos-storage add %k"
+LABEL="lumenos_storage_end"
+ACTION=="remove", SUBSYSTEM=="block", RUN+="/usr/share/lumen/os/lumenos-storage remove %k"
+
+# Remotes and gamepads: Lumen reads them itself (group "input")
+SUBSYSTEM=="input", KERNEL=="event[0-9]*", GROUP="input", MODE="0660"
+# HDMI-CEC: a new adapter (a television plugged in later) is set up as a playback device
+ACTION=="add", SUBSYSTEM=="cec", RUN+="/usr/bin/systemctl --no-block restart lumenos-cec.service"

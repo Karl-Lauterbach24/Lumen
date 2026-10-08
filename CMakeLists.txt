@@ -177,6 +177,9 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/MpvController.h     src/MpvController.cpp
     src/DriveManager.h      src/DriveManager.cpp
     src/DriveHelpers.h      src/DriveHelpers.cpp
+    src/OsBridge.h          src/OsBridge.cpp
+    src/InputMapper.h       src/InputMapper.cpp
+    src/RipManager.h        src/RipManager.cpp
     src/DiscReadAhead.h     src/DiscReadAhead.cpp   src/BlurayReadAhead.cpp
     src/DisplayManager.h    src/DisplayManager.cpp
     src/ProfileManager.h    src/ProfileManager.cpp
@@ -233,6 +236,12 @@ set(LUMEN_QML
     qml/StreamingPane.qml
     qml/HelpDialog.qml
     qml/CastDialog.qml
+    qml/OsMain.qml
+    qml/OsPage.qml
+    qml/OsItem.qml
+    qml/OsLibrary.qml
+    qml/OsKeyboard.qml
+    qml/OsRemoteSetup.qml
 )
 set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 # Alle QML-Dateien ins Modul-Wurzelverzeichnis legen (gemeinsames qmldir -> Singleton "Theme")
@@ -577,6 +586,12 @@ if(LUMEN_BUILD_TESTS)
     target_include_directories(readahead_test PRIVATE src)
     target_link_libraries(readahead_test PRIVATE Qt6::Core)
 
+    # LumenOS: Einrichtung einer Fernbedienung, Fortschritt des Kopierens
+    add_executable(os_test tests/os_test.cpp src/InputMapper.cpp src/InputMapper.h src/RipManager.cpp src/RipManager.h)
+    set_target_properties(os_test PROPERTIES AUTOMOC ON)
+    target_include_directories(os_test PRIVATE src)
+    target_link_libraries(os_test PRIVATE Qt6::Core)
+
     add_executable(tuning_test tests/tuning_test.cpp src/Tuning.cpp src/Tuning.h)
     target_include_directories(tuning_test PRIVATE src)
     target_link_libraries(tuning_test PRIVATE Qt6::Core)
@@ -632,6 +647,9 @@ install(TARGETS lumen BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_B
 # ---------------------------------------------------------------------------
 if(UNIX AND NOT APPLE)
     install(FILES packaging/linux/lumen.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    # LumenOS: what makes a Debian system into the player (session, updater, rules, helper). Part of
+    # the package, so that an update of Lumen updates it too; it does nothing until lumenos-setup is run.
+    install(DIRECTORY os/system/ DESTINATION ${CMAKE_INSTALL_DATADIR}/lumen/os USE_SOURCE_PERMISSIONS)
     install(FILES resources/logo/lumen-icon-256.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME lumen.png)
     install(FILES LICENSE THIRD_PARTY.md README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/lumen)
     # Plugin-Vorlagen (nur Daten/Skripte; aktiviert der Nutzer selbst). Suchpfad: <bin>/../lib/lumen/plugins

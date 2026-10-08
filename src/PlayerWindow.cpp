@@ -30,7 +30,8 @@ QByteArray mpvKeyName(const QKeyEvent *e)
         {Qt::Key_MediaTogglePlayPause, "PLAYPAUSE"}, {Qt::Key_MediaStop, "STOP"},
         {Qt::Key_MediaNext, "NEXT"}, {Qt::Key_MediaPrevious, "PREV"},
         {Qt::Key_VolumeUp, "VOLUME_UP"}, {Qt::Key_VolumeDown, "VOLUME_DOWN"},
-        {Qt::Key_VolumeMute, "MUTE"}, {Qt::Key_Menu, "MENU"},
+        {Qt::Key_VolumeMute, "MUTE"}, {Qt::Key_Menu, "MENU"}, {Qt::Key_Select, "ENTER"}, {Qt::Key_Back, "ESC"},
+        {Qt::Key_AudioRewind, "REWIND"}, {Qt::Key_AudioForward, "FORWARD"}, {Qt::Key_MediaRecord, "RECORD"},
     };
     QByteArray mods;
     if (e->modifiers() & Qt::ControlModifier)
