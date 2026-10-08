@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Erzeugt eine synthetische Blu-ray mit BD-J-Menü zum Testen (unverschlüsselt, unsigniert).
 
-    python tools/make_test_bdj.py out_dir --jar resources/bdj/libbluray-j2se-1.5.0.jar [--seconds 20]
+    python tools/make_test_bdj.py out_dir [--seconds 20] [--jar resources/bdj/libbluray-j2se-1.5.0.jar]
 
-Braucht ffmpeg mit libx264 sowie javac und jar (JDK ab 8) im PATH.
+Braucht ffmpeg mit libx264. Das Menü liegt übersetzt bei (tests/data/bdj/menu.jar); mit --jar wird es
+aus MenuXlet.java neu übersetzt (javac und jar eines JDK ab 8, gegen libblurays BD-J-Klassen).
   BDMV/index.bdmv            First Play und Top Menu: BD-J-Objekt 00000, Titel 1: Movie Object 0
   BDMV/BDJO/00000.bdjo       ein Xlet, startet von selbst; Playlist 00000 läuft dahinter an
   BDMV/JAR/00000.jar         tests/data/bdj/MenuXlet.java: Feld mit zwei Schaltflächen,
@@ -106,7 +107,7 @@ def video(seconds, fps):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
-    ap.add_argument("--jar", required=True, help="libbluray-j2se-<Version>.jar (BD-J-Klassen zum Übersetzen)")
+    ap.add_argument("--jar", help="libbluray-j2se-<Version>.jar: das Menü neu übersetzen statt tests/data/bdj/menu.jar zu nehmen")
     ap.add_argument("--seconds", type=int, default=20)
     a = ap.parse_args()
 
@@ -141,7 +142,10 @@ def main():
     for path, data in files.items():
         with open(path, "wb") as f:
             f.write(data)
-    build_jar(a.jar, d("JAR", "00000.jar"))
+    if a.jar:
+        build_jar(a.jar, d("JAR", "00000.jar"))
+    else:
+        shutil.copyfile(os.path.join(HERE, "tests", "data", "bdj", "menu.jar"), d("JAR", "00000.jar"))
     print(f"{len(aus)} Bilder, {len(eps)} Sprungmarken, BD-J-Menü {XLET_CLASS} -> {a.out}")
 
 

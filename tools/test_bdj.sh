@@ -6,9 +6,10 @@
 #
 #   tools/test_bdj.sh <build-dir> <work-dir>
 #
-# Needs a JDK (javac, jar) to build the menu, a Java runtime of the program's processor type and
-# libbluray's Java archive in the version of the libbluray in use (resources/bdj, or the
-# distribution's libbluray-bdj). Where one of them is missing the test says so and is skipped.
+# Runs with the Java runtime the packages carry: on Linux the one tools/build_deps.sh made
+# (3rdparty/prefix/jre), on macOS and Windows one cut the same way from a JDK of this machine
+# (tools/make_jre.py). Without one it uses the Java of the system; without any the test says so and
+# is skipped. The menu itself lies ready (tests/data/bdj/menu.jar), no Java compiler is needed.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="$1"
@@ -20,38 +21,17 @@ if [ ! -x "$T" ]; then
     echo "BD-J menu: bdj_test not built - skipped"
     exit 0
 fi
-# Linux build containers have no Java: in CI install what a user of the package gets with it – the
-# distribution's libbluray-bdj (libbluray's Java archive in its version) and a Java runtime – plus the
-# compiler for the test menu
-if [ "$(uname -s)" = "Linux" ] && [ "${CI:-}" = "true" ] && [ "$(id -u)" = "0" ] && ! command -v javac > /dev/null 2>&1; then
-    if command -v apt-get > /dev/null 2>&1; then
-        DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends default-jdk-headless libbluray-bdj > "${TMPDIR:-/tmp}/bdj-install.log" 2>&1 || true
-        echo "BD-J menu: libbluray-bdj needs: $(apt-cache depends libbluray-bdj 2> /dev/null | sed -n 's/^ *Depends: //p' | tr '\n' ' ')"
-    elif command -v dnf > /dev/null 2>&1; then
-        dnf install -y -q java-devel libbluray-bdj > "${TMPDIR:-/tmp}/bdj-install.log" 2>&1 || true
-        echo "BD-J menu: libbluray-bdj needs: $(dnf -q repoquery --installed --requires libbluray-bdj 2> /dev/null | tr '\n' ' ')"
-    fi
-    ls /usr/share/java/libbluray* 2> /dev/null || echo "BD-J menu: no libbluray archive in /usr/share/java"
-fi
-if [ -n "${JAVA_HOME:-}" ] && ! command -v javac > /dev/null 2>&1; then
-    # MSYS2 does not take over the Windows PATH; JAVA_HOME is a Windows path there
-    home="$JAVA_HOME"
-    if command -v cygpath > /dev/null 2>&1; then home="$(cygpath -u "$JAVA_HOME")"; fi
-    PATH="$PATH:$home/bin"
-fi
-if ! command -v javac > /dev/null 2>&1 || ! command -v jar > /dev/null 2>&1; then
-    echo "BD-J menu: no JDK (javac, jar) - skipped"
-    exit 0
-fi
-API="$(ls "$HERE"/resources/bdj/libbluray-j2se-*.jar | head -1)"
-
 rm -rf "$WORK"
 mkdir -p "$WORK"
-"$PY" "$HERE/tools/make_test_bdj.py" "$WORK/disc" --jar "$API" --seconds 5
-# macOS and Windows packages carry their own Java runtime (tools/make_jre.py): test with one built the
-# same way, so the test says what the package will do. Linux uses the Java of the system.
+"$PY" "$HERE/tools/make_test_bdj.py" "$WORK/disc" --seconds 5
+# test with the runtime as the packages carry it, so the test says what the package will do
 case "$(uname -s)" in
-    Linux) ;;
+    Linux)
+        # the runtime tools/build_deps.sh made for the packages
+        if [ -f "$HERE/3rdparty/prefix/jre/lumen-jre.txt" ]; then
+            export LUMEN_DEPS_JRE="$HERE/3rdparty/prefix/jre"
+            echo "BD-J menu: with the runtime the packages carry ($(cut -d' ' -f1 "$LUMEN_DEPS_JRE/lumen-jre.txt"))"
+        fi ;;
     *)
         "$PY" "$HERE/tools/make_jre.py" "$WORK/jre" || true
         if [ -f "$WORK/jre/lumen-jre.txt" ]; then

@@ -10,8 +10,14 @@
 #               without uninitialized padding (black picture with software OpenGL); sound starts
 #               after the fallback from refused bitstream output to decoding
 #   dvdnav      libdvdread + libdvdnav 7 (only where the system has an older one)
+#   bluray      libudfread + libbluray 1.5 (only where the system has an older one): the version
+#               whose Java classes Lumen ships (resources/bdj), so disc menus written in Java (BD-J)
+#               run on the same code everywhere
+#   jre         Linux: a small Java runtime for those menus, cut with jlink from an Eclipse Temurin
+#               JDK that is fetched for the build (the build containers have none). macOS and
+#               Windows take theirs from a JDK of the build machine when the package is made.
 #
-# All other libraries (Qt, libass, libplacebo, libbluray, libcdio, OpenSSL, libxml2 ...) come from
+# All other libraries (Qt, libass, libplacebo, libcdio, OpenSSL, libxml2 ...) come from
 # the platform's package manager. The result is one prefix that CMake picks up automatically:
 #
 #   tools/build_deps.sh                 # everything into 3rdparty/prefix
@@ -34,6 +40,11 @@ DVDREAD_REPO=https://code.videolan.org/videolan/libdvdread.git
 DVDREAD_REF=7.1.1
 DVDNAV_REPO=https://code.videolan.org/videolan/libdvdnav.git
 DVDNAV_REF=7.0.0
+UDFREAD_REPO=https://code.videolan.org/videolan/libudfread.git
+UDFREAD_REF=1.2.0
+BLURAY_REPO=https://code.videolan.org/videolan/libbluray.git
+BLURAY_REF=1.5.0                                           # must match the archive in resources/bdj
+JRE_JAVA=17                                                # the Java version the disc tests ran with
 # -----------------------------------------------------------------------------------------------
 
 PREFIX="${PREFIX:-$HERE/3rdparty/prefix}"
@@ -119,6 +130,41 @@ checkout() {
     fi
     echo "$dir"
 }
+
+# libbluray 1.5 where the system has an older one (Debian 13: 1.3.4, Fedora 44: 1.4.0). First in the
+# list: mpv links to it, and Lumen and mpv must use the same one. The Java part is not built here
+# (it would need ant and a JDK); the archive comes from resources/bdj.
+if want bluray && [ "$OS" = linux ] && ! pkg-config --atleast-version="$BLURAY_REF" libbluray 2>/dev/null; then
+    if ! pkg-config --atleast-version="$UDFREAD_REF" libudfread 2>/dev/null; then
+        echo "=== libudfread ($UDFREAD_REF)"
+        src="$(checkout udfread "$UDFREAD_REPO" "$UDFREAD_REF")"
+        rm -rf "$SRCROOT/udfread-build"
+        meson setup "$SRCROOT/udfread-build" "$src" --prefix="$PREFIX" --libdir=lib --buildtype=release -Ddefault_library=shared
+        meson compile -C "$SRCROOT/udfread-build"
+        meson install -C "$SRCROOT/udfread-build"
+    fi
+    echo "=== libbluray ($BLURAY_REF)"
+    src="$(checkout bluray "$BLURAY_REPO" "$BLURAY_REF")"
+    rm -rf "$SRCROOT/bluray-build"
+    meson setup "$SRCROOT/bluray-build" "$src" --prefix="$PREFIX" --libdir=lib --buildtype=release -Ddefault_library=shared \
+        -Dbdj_jar=disabled
+    meson compile -C "$SRCROOT/bluray-build"
+    meson install -C "$SRCROOT/bluray-build"
+    pkg-config --modversion libbluray
+fi
+
+# Linux: the Java runtime for BD-J menus. The distributions' Java does not do: Debian's libbluray-bdj
+# pulls in a runtime without the graphics part ("headless"), which libbluray cannot start; Fedora's
+# Java is newer than its libbluray can use. So the packages carry the runtime the menus were tried with.
+if want jre && [ "$OS" = linux ] && [ ! -f "$PREFIX/jre/lumen-jre.txt" ]; then
+    echo "=== Java runtime (Temurin $JRE_JAVA, jlink)"
+    PY="$(command -v python3 || command -v python)"
+    rm -rf "$SRCROOT/jdk"
+    jdk="$("$PY" "$HERE/tools/fetch_jdk.py" "$JRE_JAVA" "$SRCROOT/jdk")"
+    "$PY" "$HERE/tools/make_jre.py" "$PREFIX/jre" --jdk "$jdk"
+    rm -rf "$SRCROOT/jdk"
+    [ -f "$PREFIX/jre/lumen-jre.txt" ] || { echo "Java runtime: jlink failed" >&2; exit 1; }
+fi
 
 if want x264; then
     echo "=== x264 ($X264_REF)"

@@ -102,6 +102,25 @@ def pick(arch, explicit):
     return min(found) if found else None
 
 
+def prune_linux(lib):
+    """Linux: the runtime shall not depend on X11 or ALSA libraries of the system.
+
+    libbluray replaces Java's window toolkit by its own (pictures go to the player as an overlay), but
+    runs the VM as "not headless", and Java then loads libawt_xawt.so, which links to libX11, libXtst …
+    Nothing of it is called. The headless variant offers the same entry points without those
+    libraries: it takes the other one's place. Splash screen, the JAWT bridge and Java Sound are not
+    used by disc menus at all.
+    """
+    headless, xawt = os.path.join(lib, "libawt_headless.so"), os.path.join(lib, "libawt_xawt.so")
+    if os.path.isfile(headless):
+        shutil.copyfile(headless, xawt)
+    for name in ("libsplashscreen.so", "libjawt.so", "libjsound.so"):
+        try:
+            os.remove(os.path.join(lib, name))
+        except OSError:
+            pass
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
@@ -141,6 +160,8 @@ def main():
     for name in os.listdir(bindir):
         if os.path.splitext(name)[0] in ("java", "javaw", "keytool", "rmiregistry", "jrunscript"):
             os.remove(os.path.join(bindir, name))
+    if sys.platform.startswith("linux"):
+        prune_linux(os.path.join(a.out, "lib"))
     with open(stamp, "w", encoding="utf-8") as f:
         f.write(wanted)
     size = sum(os.path.getsize(os.path.join(d, n)) for d, _, names in os.walk(a.out) for n in names if not os.path.islink(os.path.join(d, n)))

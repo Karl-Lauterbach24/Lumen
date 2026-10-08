@@ -338,8 +338,8 @@ if(LUMEN_HAVE_BLURAY)
 
     # BD-J-Menüs: libbluray lädt sein Java-Archiv nur in der eigenen Version. resources/bdj enthält
     # die mit tools/build_bdj.sh gebauten Archive. macOS nimmt das passende Paar ins Bundle
-    # (Resources/bdj), Windows legt es neben lumen.exe (tools/deploy_windows.py). Linux nutzt die
-    # libbluray der Distribution, deren Paket libbluray-bdj das Archiv mitbringt.
+    # (Resources/bdj), Windows legt es neben lumen.exe (tools/deploy_windows.py), Linux nach
+    # share/lumen/bdj (dort baut tools/build_deps.sh libbluray in dieser Version).
     set(LUMEN_BLURAY_VERSION "${BLURAY_VERSION}")
     if(NOT LUMEN_BLURAY_VERSION AND BLURAY_INCLUDE_DIR AND EXISTS "${BLURAY_INCLUDE_DIR}/libbluray/bluray-version.h")
         file(STRINGS "${BLURAY_INCLUDE_DIR}/libbluray/bluray-version.h" _bd_version REGEX "define +BLURAY_VERSION_STRING")
@@ -352,7 +352,7 @@ if(LUMEN_HAVE_BLURAY)
         set(LUMEN_BDJ_JARS "${_bdj}/libbluray-j2se-${LUMEN_BLURAY_VERSION}.jar"
                            "${_bdj}/libbluray-awt-j2se-${LUMEN_BLURAY_VERSION}.jar")
         message(STATUS "Lumen: BD-J-Archiv für libbluray ${LUMEN_BLURAY_VERSION}")
-    elseif(APPLE OR WIN32)
+    else()
         message(WARNING "Lumen: kein BD-J-Archiv für libbluray ${LUMEN_BLURAY_VERSION} in resources/bdj – "
                         "BD-J-Menüs fehlen im Paket (tools/build_bdj.sh)")
     endif()
@@ -606,6 +606,13 @@ if(UNIX AND NOT APPLE AND EXISTS "${LUMEN_DEPS_PREFIX}/lib")
     install(DIRECTORY "${LUMEN_DEPS_PREFIX}/lib/" DESTINATION lib/lumen
             FILES_MATCHING PATTERN "*.so.*" PATTERN "pkgconfig" EXCLUDE PATTERN "cmake" EXCLUDE)
     set(LUMEN_BUNDLED_LIBS ON)
+    # BD-J-Menüs: Java-Laufzeit (tools/build_deps.sh, Teil "jre") und libblurays Java-Archiv
+    if(EXISTS "${LUMEN_DEPS_PREFIX}/jre/lumen-jre.txt")
+        install(DIRECTORY "${LUMEN_DEPS_PREFIX}/jre" DESTINATION lib/lumen USE_SOURCE_PERMISSIONS)
+    endif()
+    if(LUMEN_BDJ_JARS)
+        install(FILES ${LUMEN_BDJ_JARS} DESTINATION share/lumen/bdj)
+    endif()
 endif()
 install(TARGETS lumen BUNDLE DESTINATION . RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -651,14 +658,13 @@ if(UNIX AND NOT APPLE)
         set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS "${LUMEN_DEPS_PREFIX}/lib")
     endif()
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtquick-dialogs, qml6-module-qtcore, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qt-labs-folderlistmodel, qt6-svg-plugins")
-    # libbluray-bdj: Java-Archiv der libbluray der Distribution (BD-J-Menüs)
-    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "yt-dlp, libbluray-bdj")
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "yt-dlp")
 
     set(CPACK_RPM_FILE_NAME "Lumen-${PROJECT_VERSION}-linux-${_rpm_arch}.rpm")
     set(CPACK_RPM_PACKAGE_LICENSE "AGPL-3.0-or-later")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
     set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtdeclarative, qt6-qtsvg")
-    set(CPACK_RPM_PACKAGE_SUGGESTS "yt-dlp, libbluray-bdj")
+    set(CPACK_RPM_PACKAGE_SUGGESTS "yt-dlp")
     # Ordner, die anderen Paketen gehören, nicht in die Dateiliste aufnehmen
     set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
         /usr/share/applications /usr/share/doc /usr/share/icons /usr/share/icons/hicolor

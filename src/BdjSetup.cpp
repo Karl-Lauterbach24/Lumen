@@ -65,6 +65,13 @@ static void findJavaRuntime()
                 homes << dir.absoluteFilePath(e);
         }
     }
+#else
+    // Linux: die Pakete bringen die Laufzeit unter <prefix>/lib/lumen/jre mit (tools/build_deps.sh);
+    // ohne sie kennt libbluray die Ordner der Distributionen
+    libs = {QStringLiteral("lib/server/libjvm.so")};
+    homes << QCoreApplication::applicationDirPath() + QStringLiteral("/../lib/lumen/jre");
+    if (qEnvironmentVariableIsSet("LUMEN_DEPS_JRE")) // Tests aus dem Build-Ordner
+        homes.prepend(qEnvironmentVariable("LUMEN_DEPS_JRE"));
 #endif
     for (const QString &home : std::as_const(homes)) {
         if (home.isEmpty())
