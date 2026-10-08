@@ -445,6 +445,10 @@ cmake --build build
 (cd build && cpack -G DEB)     # oder RPM; die Medienbibliotheken liegen privat in /usr/lib/lumen
 ```
 
+`cpack -G DEB` liest die Abhängigkeiten aus allen Programmdateien des Pakets, auch aus der Java-Laufzeit:
+`libxtst6` und `libxi6` müssen auf dem Build-Rechner installiert sein (die Liste im Workflow nennt sie noch
+nicht; auf den Build-Servern installiert `tools/test_bdj.sh` sie).
+
 ### macOS
 
 ```bash

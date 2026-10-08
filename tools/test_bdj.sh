@@ -27,6 +27,18 @@ mkdir -p "$WORK"
 # test with the runtime as the packages carry it, so the test says what the package will do
 case "$(uname -s)" in
     Linux)
+        # Java's window library in that runtime links to libXtst and libXi (tools/make_jre.py). A build
+        # container may have neither (Debian's has not): the menu could not start here, and the
+        # package's dependency scan (dpkg-shlibdeps), which comes after the tests, would stop.
+        if [ "${CI:-}" = "true" ] && [ "$(id -u)" = "0" ] && command -v ldconfig > /dev/null 2>&1 \
+            && ! { ldconfig -p | grep -q 'libXtst\.so\.6' && ldconfig -p | grep -q 'libXi\.so\.6'; }; then
+            if command -v apt-get > /dev/null 2>&1; then
+                DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends libxtst6 libxi6 > /dev/null 2>&1 || true
+            elif command -v dnf > /dev/null 2>&1; then
+                dnf install -y -q libXtst libXi > /dev/null 2>&1 || true
+            fi
+            ldconfig -p | grep -q 'libXtst\.so\.6' && echo "BD-J menu: installed libXtst and libXi for the Java runtime"
+        fi
         # the runtime tools/build_deps.sh made for the packages
         if [ -f "$HERE/3rdparty/prefix/jre/lumen-jre.txt" ]; then
             export LUMEN_DEPS_JRE="$HERE/3rdparty/prefix/jre"

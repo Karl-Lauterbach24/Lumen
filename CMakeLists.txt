@@ -652,6 +652,9 @@ if(UNIX AND NOT APPLE)
     endif()
     set(CPACK_DEBIAN_FILE_NAME "Lumen-${PROJECT_VERSION}-linux-${_deb_arch}.deb")
     set(CPACK_DEBIAN_PACKAGE_SECTION "video")
+    # Die Abhängigkeiten liest dpkg-shlibdeps aus allen Programmdateien des Pakets – auch aus der
+    # Java-Laufzeit, deren Fensterbibliothek libXtst und libXi verlangt: Beide müssen auf dem
+    # Build-Rechner installiert sein (libxtst6, libxi6), sonst bricht cpack -G DEB ab.
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
     if(LUMEN_BUNDLED_LIBS)
         # die privaten Bibliotheken auflösen, ohne sie als Abhängigkeit zu verlangen

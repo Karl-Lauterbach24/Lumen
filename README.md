@@ -445,6 +445,10 @@ cmake --build build
 (cd build && cpack -G DEB)     # or RPM; the media libraries are installed privately in /usr/lib/lumen
 ```
 
+`cpack -G DEB` reads the dependencies from every binary in the package, the Java runtime included: `libxtst6`
+and `libxi6` must be installed on the build machine (the workflow's list does not name them yet;
+`tools/test_bdj.sh` installs them on the build servers).
+
 ### macOS
 
 ```bash
