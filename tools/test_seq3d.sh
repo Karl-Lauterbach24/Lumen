@@ -103,3 +103,9 @@ if [ -x "$BUILD/tuning_test" ] || [ -x "$BUILD/tuning_test.exe" ]; then
     "$BUILD/tuning_test" | grep -vE "^OK" || true
     "$BUILD/tuning_test" > /dev/null
 fi
+
+# Linux: does the program start the way a desktop starts it (X11 and Wayland, Qt Quick on OpenGL), and
+# do the package's dependencies pull in everything it loads? Report only, see the script.
+if [ "$(uname -s)" = "Linux" ] && [ -z "${LUMEN_SKIP_START_TEST:-}" ]; then
+    bash "$(cd "$(dirname "$0")" && pwd)/test_start_linux.sh" "$BUILD" "$WORK/../start" || true
+fi

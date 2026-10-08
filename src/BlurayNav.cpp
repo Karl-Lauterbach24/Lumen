@@ -72,6 +72,7 @@ struct BlurayNav::Session
     int pgStream = 0;       // Nummer der Untertitel, 0 = keine Angabe
     bool pgOn = false;
     bool drained = false;   // die Playlist ist bis zu ihrem Ende gelesen (BD_EVENT_END_OF_TITLE)
+    std::atomic_bool userSeek{false}; // der nächste Sprung kommt vom Nutzer (Lumen leert mpvs Puffer selbst)
     std::unique_ptr<QFile> dump; // LUMEN_BD_DUMP=<datei>: alles, was mpv bekommt, mitschreiben
 
     ~Session()
@@ -399,7 +400,13 @@ void BlurayNav::Session::handleEvent(const BD_EVENT &ev)
         break;
     }
     case BD_EVENT_SEEK:
-        // nach einem Sprung zählt für den Anschluss der nächsten Playlist nur, was danach kam
+        // Springt die Disc selbst (Java-Menü, das Ausschnitte des Films zeigt), schließt das Neue an
+        // das zuletzt ausgegebene Bild an – ein Sprung zurück hielte das Bild sonst an, bis die Zeit
+        // wieder aufgeholt ist. Nach einem Sprung des Nutzers bleibt die Zeit der Playlist: dort
+        // leert Lumen mpvs Puffer selbst.
+        if (!userSeek.exchange(false))
+            rebase = tsEnd >= 0;
+        // für den Anschluss der nächsten Playlist zählt nur, was nach dem Sprung kam
         tsSegment = -1;
         [[fallthrough]];
     case BD_EVENT_DISCONTINUITY:
@@ -978,6 +985,7 @@ void BlurayNav::seek(double seconds)
         std::lock_guard<std::mutex> lock(m_mutex);
         if (!m_session)
             return;
+        m_session->userSeek = true;
         bd_seek_time(m_session->bd, uint64_t(std::max(0.0, seconds) * kTicks));
     }
     m_position = seconds;
@@ -1000,6 +1008,7 @@ void BlurayNav::setChapter(int index)
         std::lock_guard<std::mutex> lock(m_mutex);
         if (!m_session)
             return;
+        m_session->userSeek = true;
         bd_seek_chapter(m_session->bd, unsigned(index));
     }
     dropBuffers();
