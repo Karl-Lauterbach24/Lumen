@@ -581,7 +581,8 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
   - das Java-Archiv von libbluray in der Version der verwendeten libbluray ([`resources/bdj/`](resources/bdj)) –
     ein anderes lädt libbluray nicht. Linux-Pakete bringen deshalb eine eigene libbluray 1.5 mit
     (`tools/build_deps.sh`), wo die Distribution eine ältere hat.
-  - eine kleine **Java-Laufzeit** (Java 17, mit `jlink` auf das für BD-J Nötige gekürzt, rund 45 MB): `jre` im
+  - eine kleine **Java-Laufzeit** (Java 17, im Windows-ARM64-Paket Java 21; mit `jlink` auf das für BD-J
+    Nötige gekürzt, rund 45 MB): `jre` im
     macOS-Bundle und neben `lumen.exe` (`tools/make_jre.py`), unter Linux `lib/lumen/jre` (sie lädt Javas
     X11-Fensterbibliothek, daher hängen die Pakete von libXi, libXrender und libXtst ab; ein X-Server wird nicht benutzt). Das Java der
     Distributionen taugt dafür nicht: Debians `libbluray-bdj` zieht eine Laufzeit ohne Grafikteil nach, Fedoras
