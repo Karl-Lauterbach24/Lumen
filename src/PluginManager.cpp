@@ -798,6 +798,9 @@ void PluginManager::openUserDir()
 
 void PluginManager::restartApp()
 {
+    // Der neue Lauf wartet, bis dieser beendet ist (main.cpp): Zwei zugleich am Laufwerk stören sich
+    qputenv("LUMEN_RESTART_AFTER", QByteArray::number(QCoreApplication::applicationPid()));
     QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1));
+    qunsetenv("LUMEN_RESTART_AFTER");
     QCoreApplication::quit();
 }

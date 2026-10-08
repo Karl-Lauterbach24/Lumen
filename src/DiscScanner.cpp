@@ -1,5 +1,6 @@
 #include "DiscScanner.h"
 #include "Tr.h"
+#include "DriveHelpers.h"
 #include "DvdNav.h"
 #include "MpvController.h"
 #include "OpticalMedia.h"
@@ -65,6 +66,31 @@ QString audioCodec(uint8_t t)
 DiscScanner::DiscScanner(QObject *parent)
     : QObject(parent)
 {
+    // Eine Disc ist in Sekunden gelesen, auch eine mit Java-Menü und über MakeMKV in unter einer
+    // Minute. Nach zwei Minuten kommt nichts mehr.
+    m_watch.setSingleShot(true);
+    m_watch.setInterval(qEnvironmentVariableIntValue("LUMEN_DISC_TIMEOUT") > 0 ? qEnvironmentVariableIntValue("LUMEN_DISC_TIMEOUT") * 1000 : 120000);
+    connect(&m_watch, &QTimer::timeout, this, &DiscScanner::giveUp);
+}
+
+// Das Öffnen der Disc kehrt nicht zurück. Steht dabei der Hilfsprozess der AACS-Bibliothek im
+// Laufwerk, hält er es auch für das System und jedes andere Programm besetzt: ihn beenden, dann
+// ist es (meist) wieder frei. Der Aufruf der Bibliothek in diesem Prozess endet trotzdem nicht –
+// jedes weitere Öffnen wartet hinter ihm. Das sagt die Oberfläche und bietet den Neustart an.
+void DiscScanner::giveUp()
+{
+    if (!m_busy)
+        return;
+    const int ended = DriveHelpers::endOwn(m_helpers);
+    qWarning("Lumen: Disc nach %d s nicht gelesen, %d Hilfsprozess(e) beendet", m_watch.interval() / 1000, ended);
+    ++m_generation; // ein Ergebnis, das doch noch käme, gilt nicht mehr
+    m_busy = false;
+    m_stuck = true;
+    m_info = QVariantMap{{"device", m_device},
+                         {"kind", QStringLiteral("bluray")},
+                         {"error", LTR("Das Laufwerk antwortet nicht mehr. Lumen muss neu gestartet werden; hilft das nicht, das Laufwerk aus- und wieder einschalten.")}};
+    emit busyChanged();
+    emit infoChanged();
 }
 
 DiscScanner::~DiscScanner()
@@ -137,15 +163,23 @@ void DiscScanner::scan(const QString &device)
 {
     if (!available() || device.isEmpty())
         return;
+    if (m_stuck) // hinter dem Aufruf, der nicht endet, wartete auch dieser
+        return;
     const int gen = ++m_generation;
     m_busy = true;
     emit busyChanged();
+    // Was ein abgestürzter Lauf am Laufwerk zurückgelassen hat, stört das Lesen
+    DriveHelpers::endOrphans();
+    m_device = device;
+    m_helpers = DriveHelpers::own();
+    m_watch.start();
     QPointer<DiscScanner> self(this);
     QThreadPool::globalInstance()->start([self, device, gen] {
         const QVariantMap info = scanBlocking(device);
         QMetaObject::invokeMethod(QCoreApplication::instance(), [self, info, gen] {
             if (!self || gen != self->m_generation)
                 return;
+            self->m_watch.stop();
             self->m_info = info;
             self->m_busy = false;
             emit self->busyChanged();

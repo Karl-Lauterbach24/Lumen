@@ -3,7 +3,10 @@
 #include "PathUtil.h"
 
 #include <QDeadlineTimer>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QLocale>
 #include <QPainter>
@@ -15,6 +18,7 @@
 
 #ifdef LUMEN_HAVE_BLURAY
 #include "BdOverlay.h"
+#include "DiscReadAhead.h"
 #include "MvcMerger.h"
 #include "TsRemap.h"
 #include "TsRetime.h"
@@ -73,10 +77,12 @@ struct BlurayNav::Session
     bool pgOn = false;
     bool drained = false;   // die Playlist ist bis zu ihrem Ende gelesen (BD_EVENT_END_OF_TITLE)
     std::atomic_bool userSeek{false}; // der nächste Sprung kommt vom Nutzer (Lumen leert mpvs Puffer selbst)
+    QString discRoot;       // Ordner der eingehängten Disc; leer bei einem Abbild oder Laufwerk
     std::unique_ptr<QFile> dump; // LUMEN_BD_DUMP=<datei>: alles, was mpv bekommt, mitschreiben
 
     ~Session()
     {
+        BlurayReadAhead::hintNext(QString());
         mvc.reset(); // schließt die Datei der abhängigen Ansicht vor bd_close()
         if (playlistInfo)
             bd_free_title_info(playlistInfo);
@@ -90,6 +96,7 @@ struct BlurayNav::Session
     void handleEvent(const BD_EVENT &ev);
     void startMvc(uint32_t playlist);
     void startClip();
+    void announceNextClip();
     int64_t clipOffset() const;
     int64_t frameTicks() const;
     void updateOffset();
@@ -282,6 +289,22 @@ void BlurayNav::Session::retime(int from)
     remap.process(data, size);
 }
 
+// Dem Vorausleser den Clip nennen, der in der Playlist folgt: Sein Anfang liegt dann schon im
+// Arbeitsspeicher, wenn libbluray an der Clipgrenze die nächste Datei öffnet (Discs mit vielen
+// kurzen Clips: nahtlose Verzweigung). Nur für eine eingehängte Disc – in einem Abbild liegen die
+// Clips ohnehin hintereinander.
+void BlurayNav::Session::announceNextClip()
+{
+    QString next;
+    if (!discRoot.isEmpty() && playitem + 1 < int(playlistInfo->clip_count)) {
+        const BLURAY_CLIP_INFO &c = playlistInfo->clips[playitem + 1];
+        const QString id = QString::fromLatin1(c.clip_id, int(qstrnlen(c.clip_id, sizeof(c.clip_id))));
+        if (!id.isEmpty())
+            next = QDir(discRoot).filePath(QStringLiteral("BDMV/STREAM/%1.m2ts").arg(id));
+    }
+    BlurayReadAhead::hintNext(next);
+}
+
 // Ein Clip beginnt: seinen Strömen, deren Format von dem abweicht, was der Demuxer unter derselben
 // PID schon kennt, eine eigene PID geben (TsRemap) und der Oberfläche sagen, welche Spuren es
 // jetzt gibt und welche die Disc vorsieht.
@@ -289,6 +312,7 @@ void BlurayNav::Session::startClip()
 {
     if (!playlistInfo || playitem < 0 || playitem >= int(playlistInfo->clip_count))
         return;
+    announceNextClip();
     const BLURAY_CLIP_INFO &c = playlistInfo->clips[playitem];
     QList<TsRemap::Stream> streams;
     const auto add = [&streams](const BLURAY_STREAM_INFO *s, int n) {
@@ -501,7 +525,11 @@ int64_t BlurayNav::Session::read(char *buf, uint64_t size)
         BD_EVENT ev;
         still = false;
         idle = false;
+        QElapsedTimer took;
+        took.start();
         const int r = bd_read_ext(bd, reinterpret_cast<unsigned char *>(block.data()), kReadBlock, &ev);
+        // steht der Aufruf im Laufwerk, fehlen gleich darauf Bilder – nicht, weil die Maschine zu langsam wäre
+        DiscReadAhead::noteSourceRead(took.nsecsElapsed() / 1e9);
         do {
             if (ev.event != BD_EVENT_NONE)
                 handleEvent(ev);
@@ -642,6 +670,8 @@ int BlurayNav::openStream(void *userData, char *, void *infoPtr)
     auto *s = new Session;
     s->nav = nav;
     s->menu = nav->m_mode == QLatin1String("menu");
+    if (QFileInfo(nav->m_device).isDir())
+        s->discRoot = nav->m_device;
     {
         QMutexLocker lock(&blurayOpenMutex());
         s->bd = bd_open(blurayPath(nav->m_device).toUtf8().constData(), nullptr);

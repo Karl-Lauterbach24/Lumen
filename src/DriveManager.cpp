@@ -8,6 +8,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QMutex>
+#include <QPair>
 #include <QPointer>
 #include <QProcess>
 #include <QSet>
@@ -69,6 +71,34 @@ QVariantMap inspectRoot(const QString &root)
     if (!kind.isEmpty())
         m["kind"] = kind;
     return m;
+}
+
+// Der Inhalt einer Disc ändert sich nicht: einmal ansehen genügt. Die Laufwerke werden alle drei
+// Sekunden abgefragt, auch während die Disc spielt – jedes erneute Ansehen sind Zugriffe auf ihr
+// Verzeichnis, und findet das System sie nicht mehr im Puffer, fährt der Lesekopf dafür aus dem
+// Film heraus. identity: woran eine andere Disc am selben Ort zu erkennen ist.
+QVariantMap inspectDisc(const QString &root, const QString &identity)
+{
+    static QMutex mutex;
+    static QHash<QString, QPair<QString, QVariantMap>> known;
+    {
+        QMutexLocker lock(&mutex);
+        const auto it = known.constFind(root);
+        if (it != known.constEnd() && it->first == identity)
+            return it->second;
+    }
+    const QVariantMap info = inspectRoot(root);
+    QMutexLocker lock(&mutex);
+    known.insert(root, {identity, info});
+    return info;
+}
+
+QVariantMap inspectVolume(const QStorageInfo &v)
+{
+    // nur, was sich nicht beschreiben lässt: auf einer Festplatte kann ein Paket dazukommen
+    if (!v.isReadOnly())
+        return inspectRoot(v.rootPath());
+    return inspectDisc(v.rootPath(), QStringLiteral("%1|%2|%3").arg(QString::fromLocal8Bit(v.device()), v.name()).arg(v.bytesTotal()));
 }
 
 #ifdef Q_OS_WIN
@@ -205,7 +235,7 @@ QVariantList DriveManager::scan()
         d["filesystem"] = QString::fromWCharArray(fs);
         queryModel(letter, d);
         if (hasDisc) {
-            const QVariantMap info = inspectRoot(d["path"].toString());
+            const QVariantMap info = inspectDisc(d["path"].toString(), d["label"].toString() + QLatin1Char('|') + d["filesystem"].toString());
             for (auto it = info.cbegin(); it != info.cend(); ++it)
                 d.insert(it.key(), it.value());
         }
@@ -229,7 +259,7 @@ QVariantList DriveManager::scan()
                 d["path"] = v.rootPath();
                 d["label"] = v.name();
                 d["filesystem"] = QString::fromLatin1(v.fileSystemType());
-                const QVariantMap info = inspectRoot(v.rootPath());
+                const QVariantMap info = inspectVolume(v);
                 for (auto it = info.cbegin(); it != info.cend(); ++it)
                     d.insert(it.key(), it.value());
                 seenRoots.insert(QDir::cleanPath(v.rootPath()));
@@ -260,7 +290,7 @@ QVariantList DriveManager::scan()
             || root.startsWith(QLatin1String("/snap")) || root.startsWith(QLatin1String("/sys")) || root.startsWith(QLatin1String("/proc")))
             continue;
 #endif
-        const QVariantMap info = inspectRoot(root);
+        const QVariantMap info = inspectVolume(v);
         auto addEntry = [&](const QVariantMap &inf, const QString &path, const QString &label) {
             QVariantMap d = inf;
             const QByteArray fs = v.fileSystemType();

@@ -68,7 +68,7 @@ private:
     void renderLoop();
     void wake(bool redraw);
     void updatePixelSize();
-    void syncContextWithWindow();
+    void syncContextWithWindow(int exposed = -1);
 
     mpv_handle *m_mpv = nullptr;
     mpv_render_context *m_ctx = nullptr; // gehört dem Render-Thread

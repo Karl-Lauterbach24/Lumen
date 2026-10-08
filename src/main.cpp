@@ -28,7 +28,9 @@
 #include "CastManager.h"
 #include "CastOutput.h"
 #include "DcpManager.h"
+#include "DiscReadAhead.h"
 #include "DiscScanner.h"
+#include "DriveHelpers.h"
 #include "DvdNav.h"
 #include "MediaServers.h"
 #include "Updater.h"
@@ -41,6 +43,60 @@
 #include "PluginStore.h"
 #include "ProfileManager.h"
 #include "VcdNav.h"
+
+#ifndef Q_OS_WIN
+#include <csignal>
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <QSocketNotifier>
+
+namespace {
+int g_quitPipe[2] = {-1, -1};
+
+void quitSignal(int)
+{
+    const char c = 1;
+    // nur das: alles Weitere geschieht in der Ereignisschleife
+    if (::write(g_quitPipe[1], &c, 1) < 0) {
+    }
+}
+
+// Ende von außen (Abmelden, Dienstverwaltung, Strg+C im Terminal): wie "Beenden" behandeln. Ohne das
+// endet der Prozess sofort – die Disc bliebe offen und der Hilfsprozess einer AACS-Bibliothek am Laufwerk.
+void quitOnSignals(QCoreApplication *app)
+{
+    if (::pipe(g_quitPipe) != 0)
+        return;
+    for (const int fd : g_quitPipe)
+        ::fcntl(fd, F_SETFD, FD_CLOEXEC); // nicht an Hilfsprozesse vererben
+    auto *notifier = new QSocketNotifier(g_quitPipe[0], QSocketNotifier::Read, app);
+    QObject::connect(notifier, &QSocketNotifier::activated, app, [notifier] {
+        notifier->setEnabled(false);
+        QCoreApplication::quit();
+    });
+    struct sigaction action = {};
+    action.sa_handler = quitSignal;
+    sigemptyset(&action.sa_mask);
+    for (const int sig : {SIGTERM, SIGINT, SIGHUP})
+        sigaction(sig, &action, nullptr);
+}
+
+// Neustart aus Lumen heraus: warten, bis der alte Lauf beendet ist (höchstens zehn Sekunden)
+void waitForPreviousRun()
+{
+    const long pid = qEnvironmentVariable("LUMEN_RESTART_AFTER").toLong();
+    qunsetenv("LUMEN_RESTART_AFTER");
+    for (int i = 0; pid > 1 && i < 100 && ::kill(pid_t(pid), 0) == 0; ++i)
+        ::usleep(100 * 1000);
+}
+} // namespace
+#else
+namespace {
+void quitOnSignals(QCoreApplication *) {}
+void waitForPreviousRun() {}
+} // namespace
+#endif
 
 // "lumen --selftest <datei.json>": meldet, was die mitgelieferten Bibliotheken können, und endet.
 // Damit prüfen die Paket-Builds auf jeder Plattform dasselbe (FFmpeg-mvc, libmpv mit Ton-Abgriff).
@@ -140,6 +196,14 @@ int main(int argc, char *argv[])
             return selfTest(a.at(i + 1));
     }
     QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+    waitForPreviousRun();
+    quitOnSignals(&app);
+    // Was ein früherer Lauf am Laufwerk zurückgelassen hat, zuerst beenden – und am Ende die eigenen
+    // Hilfsprozesse, falls der Abbau sie nicht erreicht hat (als Erstes angelegt, als Letztes abgebaut)
+    DriveHelpers::endOrphans();
+    struct OwnHelpers { ~OwnHelpers() { DriveHelpers::endOwn(); } } ownHelpers;
+    BlurayReadAhead::install();
 
     I18n i18n; // vor allen anderen: Texte der Objekte sind dann schon übersetzt
     BdjSetup::prepare();
@@ -352,6 +416,7 @@ int main(int argc, char *argv[])
         // einigen Sekunden trotzdem enden
         std::thread([] {
             std::this_thread::sleep_for(std::chrono::seconds(6));
+            DriveHelpers::endOwn(); // bd_close() kam nicht mehr dran: der Hilfsprozess bliebe am Laufwerk
             std::_Exit(0);
         }).detach();
         cast.shutdown();

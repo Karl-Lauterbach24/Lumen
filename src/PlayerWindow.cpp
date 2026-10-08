@@ -147,7 +147,12 @@ void PlayerWindow::updatePixelSize()
 // Haupt-Thread nachgeführt werden – AppKit bricht das Programm sonst ab. Der Render-Thread gibt
 // den Kontext dafür ab, dieser Thread aktiviert ihn einmal (das führt ihn nach) und gibt ihn
 // zurück. Der Render-Thread aktiviert ihn nur direkt nach einer solchen Übergabe.
-void PlayerWindow::syncContextWithWindow()
+//
+// exposed (0/1, -1 = unverändert): ob das Fenster danach sichtbar ist. Der Render-Thread erfährt es
+// erst mit der Rückgabe und zeichnet so nie in ein eben wieder sichtbares Fenster, bevor der Kontext
+// nachgeführt ist. (Ein Absturzbericht von 1.4.0 zeigt seinen Puffertausch in einer Fläche, die es
+// nicht mehr gab, während dieser Thread im Expose-Ereignis auf die Übergabe wartete.)
+void PlayerWindow::syncContextWithWindow(int exposed)
 {
 #ifdef Q_OS_MACOS
     if (!m_thread || !m_gl || !m_ready.load())
@@ -170,6 +175,8 @@ void PlayerWindow::syncContextWithWindow()
         m_gl->doneCurrent();
     m_gl->moveToThread(m_thread);
     lock.relock();
+    if (exposed >= 0)
+        m_exposed = exposed != 0;
     m_handover = false;
     m_released = false;
     m_handoverCond.wakeAll();
@@ -179,14 +186,20 @@ void PlayerWindow::syncContextWithWindow()
     deadline = QDeadlineTimer(1500);
     while (!m_reclaimed && !m_quit && !deadline.hasExpired())
         m_handoverCond.wait(&m_lock, deadline);
+#else
+    Q_UNUSED(exposed)
 #endif
 }
 
 void PlayerWindow::exposeEvent(QExposeEvent *)
 {
-    m_exposed = isExposed();
+    const bool exposed = isExposed();
+    // Verdeckt: sofort kein Bild mehr. Wieder sichtbar: erst, wenn der Kontext nachgeführt ist.
+    if (!exposed)
+        m_exposed = false;
     updatePixelSize();
-    syncContextWithWindow();
+    syncContextWithWindow(exposed);
+    m_exposed = exposed;
     if (isExposed() && !m_thread && m_mpv && !m_quit) {
         // Kontext hier anlegen, dann dem Render-Thread übergeben
         m_gl = new QOpenGLContext;

@@ -1134,6 +1134,13 @@ ApplicationWindow {
                                         color: Theme.bad; font.pixelSize: 12
                                         Layout.fillWidth: true; wrapMode: Text.WordWrap
                                     }
+                                    // Das Öffnen der Disc ist nicht zurückgekehrt: erst ein neuer Start liest wieder eine
+                                    Button {
+                                        visible: Disc.stuck
+                                        text: qsTr("Jetzt neu starten")
+                                        flat: true; palette.windowText: Theme.warn
+                                        onClicked: Plugins.restartApp()
+                                    }
                                     Flow {
                                         visible: !Disc.busy && !discStatus.i.error && (discStatus.i.kind || "bluray") !== "bluray"
                                         Layout.fillWidth: true

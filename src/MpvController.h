@@ -420,6 +420,7 @@ private:
     double m_subDelay = 0;
     bool m_buffering = false;
     double m_cacheSeconds = 0;
+    bool m_cacheKnown = false; // mpv hat für die laufende Quelle einen Puffer gemeldet
     QString m_lastError;
     QString m_stereoIn = QStringLiteral("none");
     bool m_autoStereo = false;   // Quellformat automatisch aus MVC gesetzt

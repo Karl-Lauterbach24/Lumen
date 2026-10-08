@@ -54,6 +54,12 @@ check "right eye first in the source"        "128,128 255,255 128,128" sbsr 120 
 # already call this script: automatic 3D detection (tools/test_stereodetect.sh) and the adaptation
 # to the machine (tuning_test).
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# reading ahead of a disc (DiscReadAhead): sequential streams, the lead kept, a standing drive
+if [ -x "$BUILD/readahead_test" ] || [ -x "$BUILD/readahead_test.exe" ]; then
+    R="$BUILD/readahead_test"; [ -x "$R" ] || R="$BUILD/readahead_test.exe"
+    "$R" | grep -vE "^OK" || true
+    "$R" > /dev/null
+fi
 if [ -x "$BUILD/stereodetect_test" ] || [ -x "$BUILD/stereodetect_test.exe" ]; then
     "$HERE/test_stereodetect.sh" "$BUILD" "$WORK/../stereodetect"
 fi

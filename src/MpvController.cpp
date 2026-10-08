@@ -5,6 +5,7 @@
 #include "BlurayNav.h"
 #include "CastRenderer.h"
 #include "DcpPackage.h"
+#include "DiscReadAhead.h"
 #include "DisplayManager.h"
 #include "DvdNav.h"
 #include "OpticalMedia.h"
@@ -730,6 +731,7 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
     m_rawTracks.clear();
     m_detectWanted = false;
     m_learnedLoaded = false;
+    m_cacheKnown = false;
     m_governor.reset();
     m_governor.setLimits(Tuning::maxRenderLevel(m_profile, Tuning::hardware()), Tuning::kMaxDecodeLevel);
     updateTuningStatus();
@@ -2211,8 +2213,10 @@ void MpvController::tuneTick()
     m_tickPosition = m_position;
 
     const QVariantMap dec = m_decParams;
-    const QString learnKey = QStringLiteral("tuning/%1/%2").arg(m_profile.value("id").toString(),
-                                                                 Tuning::loadClass(dec.value("w").toInt(), dec.value("h").toInt(), m_containerFps));
+    // ("tuning2": Was bis 1.4.0 unter "tuning" gemerkt wurde, kann von Aussetzern des Laufwerks stammen
+    // statt von einer überforderten Maschine und gilt nicht mehr.)
+    const QString learnKey = QStringLiteral("tuning2/%1/%2").arg(m_profile.value("id").toString(),
+                                                                  Tuning::loadClass(dec.value("w").toInt(), dec.value("h").toInt(), m_containerFps));
     // Was diese Maschine bei solchem Material schon einmal nicht geschafft hat, gleich so beginnen
     if (adaptive && !m_learnedLoaded && dec.value("w").toInt() > 0 && m_containerFps > 1) {
         m_learnedLoaded = true;
@@ -2233,7 +2237,16 @@ void MpvController::tuneTick()
     s.fps = m_containerFps;
     s.software = m_hwdec.isEmpty() || m_hwdec == QLatin1String("no");
     s.pixelRate = dec.value("w").toDouble() * dec.value("h").toDouble() * m_containerFps;
-    s.steady = adaptive && advancing && !m_paused && !m_buffering && std::abs(m_speed - 1.0) < 0.01 && !m_castEncoder && !sequential;
+    // Hat die Quelle ausgesetzt (das Laufwerk stand, der Puffer lief leer), fehlen Bilder, die keine
+    // Stufe zurückbringt: Diese Sekunde und die folgenden nicht werten. Sonst nähme der Governor
+    // einer schnellen Maschine die Bildqualität, weil eine Disc stockt.
+    const DiscReadAhead::Stats io = DiscReadAhead::instance().takeStats();
+    // (der Puffer zählt nur, wo mpv ihn für diese Quelle überhaupt angibt)
+    const bool starved = io.sourceWorst >= 0.3 || (m_cacheKnown && advancing && !m_paused && !m_eof && m_cacheSeconds < 0.03);
+    if (starved)
+        holdGovernor(4);
+    s.steady = adaptive && advancing && !m_paused && !m_buffering && !starved && std::abs(m_speed - 1.0) < 0.01 && !m_castEncoder
+               && !sequential;
     // Der Renderer misst seine Durchgänge selbst. Nur im eigenen Fenster von mpv fragen: im
     // eingebetteten rendert dieser Thread, und die Frage bliebe hängen, bis mpv das Bild verwirft.
     if (s.steady && !m_window && !m_castRenderer) {
@@ -2266,6 +2279,18 @@ void MpvController::tuneTick()
                                     .arg(m_governor.decodeLevel())
                                     .arg(dec.value("w").toInt())
                                     .arg(dec.value("h").toInt());
+        // Quelle: wie lange ihr Lesen in dieser Sekunde stand, und was der Vorausleser vor ihr hält
+        if (io.streams > 0 || io.sourceBlocked > 0 || io.prefetched > 0)
+            qWarning().noquote() << QStringLiteral("Lumen: perf quelle gewartet=%1ms laengster=%2ms puffer=%3s vorsprung=%4/%5MiB strom=%6MB/s laufwerk=%7MB/s vorausgelesen=%8MiB laengster=%9ms")
+                                        .arg(io.sourceBlocked * 1000, 0, 'f', 0)
+                                        .arg(io.sourceWorst * 1000, 0, 'f', 0)
+                                        .arg(m_cacheSeconds, 0, 'f', 2)
+                                        .arg(io.leadBytes >> 20)
+                                        .arg(io.windowBytes >> 20)
+                                        .arg(io.consumeRate / 1e6, 0, 'f', 2)
+                                        .arg(io.driveRate / 1e6, 0, 'f', 1)
+                                        .arg(double(io.prefetched) / (1 << 20), 0, 'f', 1)
+                                        .arg(io.prefetchWorst * 1000, 0, 'f', 0);
     }
 
     const Tuning::Governor::Action action = m_governor.feed(s);
@@ -2647,7 +2672,11 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
         break;
     }
     case P_CACHEPAUSE: m_buffering = flag(); emit bufferingChanged(); break;
-    case P_CACHEDUR: m_cacheSeconds = dbl(); emit bufferingChanged(); break;
+    case P_CACHEDUR:
+        m_cacheSeconds = dbl();
+        m_cacheKnown |= m_cacheSeconds >= 0.2;
+        emit bufferingChanged();
+        break;
     }
 }
 

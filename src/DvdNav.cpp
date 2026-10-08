@@ -1,8 +1,10 @@
 #include "DvdNav.h"
+#include "DiscReadAhead.h"
 #include "Tr.h"
 
 #include <QDeadlineTimer>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -432,7 +434,12 @@ struct DvdNav::Session
             }
             int32_t ev = 0, len = 0;
             uchar *buf = block;
-            if (dvdnav_get_next_block(dvd, buf, &ev, &len) != DVDNAV_STATUS_OK) {
+            QElapsedTimer took;
+            took.start();
+            const dvdnav_status_t status = dvdnav_get_next_block(dvd, buf, &ev, &len);
+            // steht der Aufruf im Laufwerk, fehlen gleich darauf Bilder – nicht, weil die Maschine zu langsam wäre
+            DiscReadAhead::noteSourceRead(took.nsecsElapsed() / 1e9);
+            if (status != DVDNAV_STATUS_OK) {
                 const QString err = QString::fromUtf8(dvdnav_err_to_string(dvd));
                 post([n = nav, err] { n->setStatus(QStringLiteral("DVD-Lesefehler: ") + err); });
                 return -1;

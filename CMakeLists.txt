@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 1.4.0 LANGUAGES CXX)
+project(Lumen VERSION 1.4.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -176,6 +176,8 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/main.cpp
     src/MpvController.h     src/MpvController.cpp
     src/DriveManager.h      src/DriveManager.cpp
+    src/DriveHelpers.h      src/DriveHelpers.cpp
+    src/DiscReadAhead.h     src/DiscReadAhead.cpp   src/BlurayReadAhead.cpp
     src/DisplayManager.h    src/DisplayManager.cpp
     src/ProfileManager.h    src/ProfileManager.cpp
     src/DiscScanner.h       src/DiscScanner.cpp
@@ -506,7 +508,7 @@ if(LUMEN_BUILD_TESTS)
         target_link_libraries(iab_testgen PRIVATE lumen_iab)
     endif()
     # Test: DVD-Menüs mit echter mpv-Ausgabe (Test-DVD: tools/make_test_dvd.py)
-    add_executable(dvd_test tests/dvd_test.cpp src/DvdNav.cpp src/DvdNav.h)
+    add_executable(dvd_test tests/dvd_test.cpp src/DvdNav.cpp src/DvdNav.h src/DiscReadAhead.cpp src/DiscReadAhead.h)
     target_include_directories(dvd_test PRIVATE src)
     target_link_libraries(dvd_test PRIVATE Qt6::Core Qt6::Gui Qt6::OpenGL lumen_mpv)
     lumen_optional_libs(dvd_test)
@@ -570,6 +572,11 @@ if(LUMEN_BUILD_TESTS)
     target_include_directories(stereodetect_test PRIVATE src)
     target_link_libraries(stereodetect_test PRIVATE Qt6::Core PkgConfig::FFMPEG)
     # Anpassung an die Maschine: Grafikhardware einordnen, Stufen wählen, Governor
+    # Vorauslesen einer Disc: fortlaufende Ströme, Vorsprung, stehendes Laufwerk
+    add_executable(readahead_test tests/readahead_test.cpp src/DiscReadAhead.cpp src/DiscReadAhead.h)
+    target_include_directories(readahead_test PRIVATE src)
+    target_link_libraries(readahead_test PRIVATE Qt6::Core)
+
     add_executable(tuning_test tests/tuning_test.cpp src/Tuning.cpp src/Tuning.h)
     target_include_directories(tuning_test PRIVATE src)
     target_link_libraries(tuning_test PRIVATE Qt6::Core)
