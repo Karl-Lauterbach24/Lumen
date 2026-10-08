@@ -134,7 +134,7 @@ def main():
         return 0
     _, home, major, version = choice
     stamp = os.path.join(a.out, "lumen-jre.txt")
-    wanted = f"{version} {arch} {' '.join(MODULES)} v2\n"
+    wanted = f"{version} {arch} {' '.join(MODULES)} v3\n"
     try:
         if open(stamp, encoding="utf-8").read() == wanted:
             print(f"make_jre: {a.out} is up to date (Java {version})")
@@ -153,10 +153,12 @@ def main():
         print(f"make_jre: jlink of {home} failed - no Java runtime in the package\n{res.stdout}{res.stderr}")
         shutil.rmtree(a.out, ignore_errors=True)
         return 0
-    # the launchers are not needed: libbluray loads the VM as a library
+    # the launchers are not needed: libbluray loads the VM as a library. Programs only – on Windows
+    # the runtime's libraries are in bin too, and java.dll is one of them.
     bindir = os.path.join(a.out, "bin")
     for name in os.listdir(bindir):
-        if os.path.splitext(name)[0] in ("java", "javaw", "keytool", "rmiregistry", "jrunscript"):
+        stem, ext = os.path.splitext(name)
+        if ext.lower() in ("", ".exe") and stem in ("java", "javaw", "keytool", "rmiregistry", "jrunscript"):
             os.remove(os.path.join(bindir, name))
     if sys.platform.startswith("linux"):
         prune_linux(os.path.join(a.out, "lib"))

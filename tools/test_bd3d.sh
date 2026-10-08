@@ -70,10 +70,12 @@ if [ -x "$BUILD/tsremap_test" ] || [ -x "$BUILD/tsremap_test.exe" ]; then
     echo "playlist streams: $(grep -c '^OK' "$WORK/tsremap.log") checks passed"
 fi
 
-# BD-J menus: rides along because every CI platform calls this script. Report only, the packages are
-# built either way: where no Java is at hand the test skips itself, and a failure shows as a warning.
+# BD-J menus: rides along because every CI platform calls this script. The test runs the generated
+# disc with the Java runtime that goes into the package; where no runtime can be made (no JDK at
+# hand) it skips itself. A failure stops the build: a package whose disc menus cannot start is not
+# to be released. LUMEN_SKIP_BDJ=1 leaves it out.
 if [ -z "${LUMEN_SKIP_BDJ:-}" ]; then
-    bash "$HERE/tools/test_bdj.sh" "$BUILD" "$WORK/bdj" || echo "::warning::BD-J menu test failed on this platform"
+    bash "$HERE/tools/test_bdj.sh" "$BUILD" "$WORK/bdj"
 fi
 
 # Rides along because every CI platform (Windows too) calls this script: how fast the software
