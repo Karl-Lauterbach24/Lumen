@@ -327,13 +327,24 @@ bool MpvController::embeddedOnly()
     return true;
 #else
     // Entwickler-Hilfe: LUMEN_PLAYER_WINDOW=native|embedded erzwingt die Art des Player-Fensters
-    const QByteArray forced = qgetenv("LUMEN_PLAYER_WINDOW");
-    if (!forced.isEmpty())
-        return forced == "embedded";
-    // Wayland: mpvs eigenes Fenster bricht dort beim Start ab (Zusicherung in mpvs X11-Code, das
-    // Programm endet, bevor ein Fenster erscheint). Das Qt-Fenster mit der Render-API läuft überall,
-    // wo Qt läuft.
-    return QGuiApplication::platformName().startsWith(QLatin1String("wayland"));
+    return qgetenv("LUMEN_PLAYER_WINDOW") == "embedded";
+#endif
+}
+
+bool MpvController::embeddedByDefault()
+{
+    if (embeddedOnly())
+        return true;
+#if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
+    // Wayland-Sitzung (auch wenn Qt selbst über XWayland läuft: mpv nähme für sein Fenster Wayland).
+    // mpvs eigenes Fenster hängt dort davon ab, dass mpv selbst einen Grafikkontext bekommt; gelang
+    // das nicht, endete das Programm bis 1.3.2 beim Start (mpv 0.41 räumt den Wayland-Zustand nicht
+    // ab, tools/patches/mpv-wayland-egl-uninit.patch). Das Qt-Fenster mit der Render-API läuft
+    // überall, wo das Steuerfenster läuft – deshalb ist es dort die Vorgabe; "nativ" im Profil
+    // nimmt mpvs Fenster (HDR-Durchleitung).
+    return QGuiApplication::platformName().startsWith(QLatin1String("wayland")) || qEnvironmentVariableIsSet("WAYLAND_DISPLAY");
+#else
+    return false;
 #endif
 }
 
@@ -343,11 +354,15 @@ bool MpvController::wantsEmbedded(const QVariantMap &profile)
     if (embeddedOnly())
         return true;
 #ifndef Q_OS_MACOS
-    if (qEnvironmentVariableIsSet("LUMEN_PLAYER_WINDOW"))
+    if (qgetenv("LUMEN_PLAYER_WINDOW") == "native")
         return false;
 #endif
     const QString mode = profile.value("playerWindow", "auto").toString();
-    return mode == QLatin1String("embedded");
+    if (mode == QLatin1String("embedded"))
+        return true;
+    if (mode == QLatin1String("native"))
+        return false;
+    return embeddedByDefault();
 }
 
 MpvController::~MpvController()

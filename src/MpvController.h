@@ -103,10 +103,12 @@ public:
     ~MpvController() override;
 
     bool embedded() const { return m_window != nullptr; }
-    // "auto" -> eingebettet nur dort, wo libmpv kein eigenes Fenster öffnen kann
+    // Player-Fenster eines Profils: "embedded"/"native" wie gewählt, "auto" nach embeddedByDefault()
     static bool wantsEmbedded(const QVariantMap &profile);
-    // Auf diesem System gibt es nur das eingebettete Player-Fenster (macOS, Wayland)
+    // Auf diesem System gibt es nur das eingebettete Player-Fenster (macOS)
     Q_INVOKABLE static bool embeddedOnly();
+    // "Automatisch" heißt hier eingebettet (macOS, Wayland-Sitzungen)
+    Q_INVOKABLE static bool embeddedByDefault();
 
     bool casting() const { return m_castEncoder != nullptr; }
     void setCastOutput(CastEncoder *encoder, const QString &pcmPath = {}) override;

@@ -7,11 +7,12 @@ and the GPL-licensed ones through section 13 of the GPLv3/AGPLv3.
 | Component | Use | License |
 |-----------|-----|---------|
 | [Qt 6](https://www.qt.io) | UI, networking, XML | LGPL-3.0 |
-| [mpv / libmpv](https://mpv.io) | Playback. Built from source with three small changes, [`tools/patches`](tools/patches) | GPL-2.0-or-later |
+| [mpv / libmpv](https://mpv.io) | Playback. Built from source with four small changes, [`tools/patches`](tools/patches) | GPL-2.0-or-later |
 | [FFmpeg-mvc](https://github.com/tthayer93/FFmpeg-mvc) | FFmpeg with the Blu-ray 3D (MVC) decoder: decoding, and encoding the cast stream. Built with two changes (JPEG 2000: faster, and an option to leave out bit planes; MVC: slice threading and two decoding faults fixed), [`tools/patches`](tools/patches) | GPL-3.0-or-later (as configured) |
 | [x264](https://www.videolan.org/developers/x264.html) | H.264 encoder for casting | GPL-2.0-or-later |
 | [hls.js](https://github.com/video-dev/hls.js) | In the receiver page ([`receiver/`](receiver)), for browsers without built-in HLS | Apache-2.0 |
-| [libbluray](https://www.videolan.org/developers/libbluray.html) | Blu-ray navigation; its Java archive for BD-J menus ([`resources/bdj/`](resources/bdj), macOS and Windows packages) | LGPL-2.1-or-later |
+| [libbluray](https://www.videolan.org/developers/libbluray.html), [libudfread](https://code.videolan.org/videolan/libudfread) | Blu-ray navigation (Linux packages: built by `tools/build_deps.sh` where the system has an older version); libbluray's Java archive for BD-J menus ([`resources/bdj/`](resources/bdj)) | LGPL-2.1-or-later |
+| [OpenJDK](https://openjdk.org) runtime ([Eclipse Temurin](https://adoptium.net) build), cut down with jlink | Java VM for BD-J disc menus, in the folder `jre` of the packages; its licence texts are in `jre/legal` | GPL-2.0 with Classpath Exception |
 | [ASM](https://asm.ow2.io) | Inside libbluray's Java archive | BSD-3-Clause, © 2000–2011 INRIA, France Telecom ([resources/bdj/LICENSE.asm.txt](resources/bdj/LICENSE.asm.txt)) |
 | [libdvdnav / libdvdread](https://www.videolan.org/developers/libdvdnav.html) | DVD navigation | GPL-2.0-or-later |
 | [libcdio / libiso9660](https://www.gnu.org/software/libcdio/) | Video CD, audio CD | GPL-3.0-or-later |

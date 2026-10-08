@@ -15,25 +15,44 @@
 #endif
 
 #ifdef LUMEN_HAVE_BLURAY
-// Java-Laufzeit für BD-J-Menüs: libbluray nimmt JAVA_HOME und sucht sonst selbst. Die Pakete für
-// macOS und Windows bringen eine kleine Laufzeit mit (Ordner "jre", tools/make_jre.py); sie geht
-// einem installierten Java vor – mit ihr sind die Menüs geprüft. Fehlt sie (eigener Build): Unter
-// macOS findet libbluray nur das alte Browser-Plugin (sein Aufruf von /usr/libexec/java_home
-// scheitert in 1.5.0), unter Windows nur Registry-Einträge, die neuere OpenJDK-Installer nicht mehr
-// anlegen; dort sucht Lumen selbst. Linux kennt die Ordner der Distributionen.
+// Java-Laufzeit für BD-J-Menüs: libbluray nimmt JAVA_HOME und sucht sonst selbst. Die Pakete
+// bringen eine kleine Laufzeit mit (Ordner "jre", tools/make_jre.py); sie geht einem installierten
+// Java vor – mit ihr sind die Menüs geprüft. LUMEN_JAVA_HOME wählt ausdrücklich eine andere. Fehlt
+// die mitgelieferte (eigener Build): Unter macOS findet libbluray nur das alte Browser-Plugin (sein
+// Aufruf von /usr/libexec/java_home scheitert in 1.5.0), unter Windows nur Registry-Einträge, die
+// neuere OpenJDK-Installer nicht mehr anlegen; dort sucht Lumen selbst.
 static void findJavaRuntime()
 {
-    if (qEnvironmentVariableIsSet("JAVA_HOME"))
+    // ausdrücklich gewählt
+    if (qEnvironmentVariableIsSet("LUMEN_JAVA_HOME")) {
+        qputenv("JAVA_HOME", qgetenv("LUMEN_JAVA_HOME"));
         return;
+    }
+    // Die mitgelieferte Laufzeit geht einem JAVA_HOME der Umgebung vor: das zeigt oft auf ein Java, mit dem
+    // libbluray nichts anfangen kann (neuer als seine Version verträgt, ohne Grafikteil, anderer Prozessor).
+    QString bundled;
     QStringList homes;
     QStringList libs;
 #if defined(Q_OS_MACOS)
     libs = {QStringLiteral("lib/server/libjvm.dylib"), QStringLiteral("jre/lib/server/libjvm.dylib")};
-    homes << QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/jre");
-    if (QFileInfo::exists(homes.first() + QLatin1Char('/') + libs.first())) {
-        qputenv("JAVA_HOME", QDir::toNativeSeparators(QDir(homes.first()).absolutePath()).toLocal8Bit());
+    bundled = QCoreApplication::applicationDirPath() + QStringLiteral("/../Resources/jre");
+#elif defined(Q_OS_WIN)
+    libs = {QStringLiteral("bin/server/jvm.dll"), QStringLiteral("jre/bin/server/jvm.dll")};
+    bundled = QCoreApplication::applicationDirPath() + QStringLiteral("/jre"); // neben dem Programm
+#else
+    // Linux: die Pakete bringen die Laufzeit unter <prefix>/lib/lumen/jre mit (tools/build_deps.sh)
+    libs = {QStringLiteral("lib/server/libjvm.so")};
+    bundled = QCoreApplication::applicationDirPath() + QStringLiteral("/../lib/lumen/jre");
+    if (qEnvironmentVariableIsSet("LUMEN_DEPS_JRE")) // Tests aus dem Build-Ordner
+        bundled = qEnvironmentVariable("LUMEN_DEPS_JRE");
+#endif
+    if (QFileInfo::exists(bundled + QLatin1Char('/') + libs.first())) {
+        qputenv("JAVA_HOME", QDir::toNativeSeparators(QDir(bundled).absolutePath()).toLocal8Bit());
         return;
     }
+    if (qEnvironmentVariableIsSet("JAVA_HOME"))
+        return;
+#if defined(Q_OS_MACOS)
     QProcess p;
     p.start(QStringLiteral("/usr/libexec/java_home"), QStringList{});
     if (p.waitForFinished(3000) && p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0)
@@ -44,9 +63,6 @@ static void findJavaRuntime()
     homes << QStringLiteral("/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home")
           << QStringLiteral("/usr/local/opt/openjdk/libexec/openjdk.jdk/Contents/Home");
 #elif defined(Q_OS_WIN)
-    libs = {QStringLiteral("bin/server/jvm.dll"), QStringLiteral("jre/bin/server/jvm.dll")};
-    // die mitgelieferte Laufzeit: Ordner "jre" neben dem Programm
-    homes << QCoreApplication::applicationDirPath() + QStringLiteral("/jre");
     bool registry = false;
     for (const char *key : {"Java Runtime Environment", "JRE", "JDK"}) {
         const QSettings reg(QStringLiteral("HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\") + QLatin1String(key),
@@ -65,14 +81,8 @@ static void findJavaRuntime()
                 homes << dir.absoluteFilePath(e);
         }
     }
-#else
-    // Linux: die Pakete bringen die Laufzeit unter <prefix>/lib/lumen/jre mit (tools/build_deps.sh);
-    // ohne sie kennt libbluray die Ordner der Distributionen
-    libs = {QStringLiteral("lib/server/libjvm.so")};
-    homes << QCoreApplication::applicationDirPath() + QStringLiteral("/../lib/lumen/jre");
-    if (qEnvironmentVariableIsSet("LUMEN_DEPS_JRE")) // Tests aus dem Build-Ordner
-        homes.prepend(qEnvironmentVariable("LUMEN_DEPS_JRE"));
 #endif
+    // Linux ohne mitgelieferte Laufzeit: libbluray kennt die Ordner der Distributionen
     for (const QString &home : std::as_const(homes)) {
         if (home.isEmpty())
             continue;

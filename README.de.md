@@ -6,7 +6,7 @@
 
 Schneller, minimalistischer Player für Heimkinos, Vorführräume und kleine Kinos mit **zwei Fenstern**:
 
-- **Player-Fenster** – natives mpv-Fenster (gpu-next, D3D11/Vulkan/Wayland), fest auf ein Ausgabegerät legbar, HDR-Passthrough.
+- **Player-Fenster** – natives mpv-Fenster (gpu-next, D3D11/Vulkan), fest auf ein Ausgabegerät legbar, HDR-Passthrough; unter macOS und als Vorgabe in Wayland-Sitzungen Lumens eigenes Fenster (mpv-Render-API).
 - **Steuerfenster** – Qt Quick: Quelle, Transport, Titel, Kapitel, Ton, Untertitel, Bild, Kino, Ausgabeprofile.
 
 Spielt **Blu-ray / UHD / Blu-ray 3D, DVD-Video (mit Menüs), HD DVD, Video-CD / Super Video-CD, Audio-CD,
@@ -144,7 +144,7 @@ Doku und Beispiele: [plugins/README.md](plugins/README.md) (englisch).
 | Bereich | Umfang |
 |---|---|
 | Quellen | Optische Laufwerke (Auto-Erkennung, Hersteller/Modell/Firmware, Auswerfen, Autostart beim Einlegen), ISO (Blu-ray/DVD/HD DVD automatisch erkannt), CUE/BIN/NRG-Abbilder, Disc-Ordner (BDMV, VIDEO_TS, HVDVD_TS, MPEGAV/MPEG2), DCP-Ordner und Kino-Festplatten, alle Formate, die mpv abspielt |
-| Blu-ray | Disc-Menüs (HDMV; BD-J mit einer Java-Laufzeit, sonst läuft der Hauptfilm), Hauptfilm, Titel/Playlists mit Laufzeit, Video-/Tonformat, UHD- und 3D-Erkennung |
+| Blu-ray | Disc-Menüs (HDMV und BD-J, Java-Laufzeit inbegriffen), Hauptfilm, Titel/Playlists mit Laufzeit, Video-/Tonformat, UHD- und 3D-Erkennung |
 | **Blu-ray 3D** | **Beide Ansichten (MVC)**, Ausgabe als HDMI Frame Packing 1080p, Side-by-Side/Top-and-Bottom (Half/Full), Zeilenverschachtelt, Anaglyph oder 2D; Untertitel und Menüs je Auge mit einstellbarer Tiefe |
 | **DVD-Video** | **Disc-Menüs** über libdvdnav (Haupt-/Titel-/Ton-/Untertitelmenü, Buttons per Tastatur, Fernbedienung und Maus), Standbilder, eigener Subpicture-Dekoder mit Disc-Palette und Button-Hervorhebung, erzwungene Untertitel, Mehrfachwinkel, Sprachen aus der IFO, Region/Sprache aus den Systemeinstellungen, Titel- und Kapitelwahl |
 | **DCP** | SMPTE und Interop, OV/VF (Ergänzungspakete in Nachbarordnern), mehrrollige CPLs mit Einstiegspunkten, **JPEG 2000 (XYZ → Anzeigefarbraum)**, 24-Bit-PCM bis 16 Kanäle, **verschlüsselte DCPs (KDM, AES-128)**, Untertitel (Interop-XML und SMPTE Timed Text inkl. verschlüsseltem MXF und eingebetteten Schriften → positioniertes ASS), **CPL-Marker als Kapitel** (FFOC, LFOC, FFEC, FFMC …), **3D-DCPs**, Prüfsummen-Kontrolle gegen die PKL |
@@ -400,13 +400,14 @@ Medienbibliotheken. Optional und automatisch aktiv, wenn gefunden: **OpenSSL ≥
 
 **Medienbibliotheken.** `tools/build_deps.sh` baut x264, FFmpeg-mvc und mpv (und libdvdnav 7, wo das System
 eine ältere hat) aus festgelegten Quellen nach `3rdparty/prefix`; CMake findet dieses Präfix von selbst. Die
-Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt drei kleine Änderungen
+Versionen stehen oben im Skript, einmal für alle Plattformen. mpv bekommt vier kleine Änderungen
 ([`tools/patches`](tools/patches)): eine Korrektur an der Gewichtstabelle der Skalierer (uninitialisierte
 Füllwerte, mit OpenGL auf der CPU ein schwarzes Bild), und seine zeitgesteuerte Null-Tonausgabe kann die Samples zusätzlich in eine
 Pipe schreiben, mit dem Zeitpunkt, zu dem jeder Block gespielt wird. Das braucht die Übertragung; ein
 unverändertes libmpv spielt alles andere, der Knopf „Übertragen“ ist dann gesperrt. Die dritte lässt den Ton
 anlaufen, wenn ein Tongerät den Bitstream ablehnt: mpv weicht dann auf das Dekodieren aus, nur fragte niemand
-mehr den Decoder nach Daten, und die Wiedergabe blieb bei 0:00 stehen. FFmpeg bekommt zwei
+mehr den Decoder nach Daten, und die Wiedergabe blieb bei 0:00 stehen. Die vierte betrifft Wayland: Bekam mpv
+dort keinen EGL-Kontext, blieb sein Wayland-Zustand stehen, und der nächste Schritt beendete das ganze Programm. FFmpeg bekommt zwei
 Änderungen. Der JPEG-2000-Decoder (DCP) rechnet die Wavelet-Rücktransformation über benachbarten Speicher statt
 Spalte für Spalte, und der arithmetische Decoder ist in die Kodierdurchgänge eingebettet; die dekodierten
 Bilder sind Bit für Bit dieselben. Dazu kommt die Option `skip_planes` (siehe *Hardware und Leistung*). Der
@@ -456,6 +457,14 @@ cmake --build build --target lumen_dmg   # eigenständiges Lumen.app + Lumen.dmg
 ```
 libmpv kann unter macOS kein eigenes Fenster öffnen, deshalb ist das Player-Fenster dort immer das eingebettete
 (mpv-Render-API, OpenGL 3.2 Core, SDR); die Bildraten-Umschaltung läuft über CoreGraphics, HDR steuert macOS.
+
+In **Wayland**-Sitzungen (Standard bei Fedora, KDE Plasma und GNOME) ist das eingebettete Fenster ebenfalls die
+Vorgabe: Es läuft überall, wo das Steuerfenster läuft. mpvs eigenes Fenster hängt davon ab, dass mpv selbst einen
+Grafikkontext bekommt; gelang das nicht, endete Lumen bis 1.3.2 gleich beim Start (mpv 0.41 lässt seinen
+Wayland-Zustand stehen, worüber sein X11-Code stolpert; in Lumens Build behoben,
+`tools/patches/mpv-wayland-egl-uninit.patch`). *Player-Fenster: Nativ* im Ausgabeprofil wählt mpvs Fenster –
+nötig für HDR-Passthrough unter KDE Plasma. `LUMEN_PLAYER_WINDOW=native` oder `=embedded` erzwingt zum
+Ausprobieren eines der beiden.
 
 ### Einen Build prüfen
 
@@ -563,19 +572,22 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
   und gäbe DTS an den AC-3-Decoder. Ein solcher Strom bekommt eine eigene PID, in den Paketen und in der
   Programmtabelle (`TsRemap`), mpv sieht eine neue Spur, und Lumen wechselt auf die Spur, die die Disc
   vorsieht, wenn es die gewählte in der Playlist nicht mehr gibt.
-- **BD-J-Menüs** (die meisten neueren Filmdiscs) sind Java-Programme. Sie brauchen eine **Java-Laufzeit** auf
-  dem Rechner (JRE oder JDK ab Version 8, für denselben Prozessortyp wie Lumen) und das Java-Archiv von
-  libbluray in der Version der verwendeten libbluray (`libbluray-j2se-<Version>.jar`,
-  `libbluray-awt-j2se-<Version>.jar`).
-  - Das Archiv ist Teil der macOS- und Windows-Pakete ([`resources/bdj/`](resources/bdj)). Unter Linux bringt
-    es das Paket `libbluray-bdj` der Distribution mit, das die Lumen-Pakete empfehlen. Ein Ordner `bdj` in
-    Lumens Datenordner (`…/Lumen/Lumen/bdj`) mit dem passenden Archiv geht vor.
-  - Java: libbluray nimmt `JAVA_HOME`, wenn es gesetzt ist. Sonst sucht Lumen selbst eine Laufzeit – macOS:
-    `/usr/libexec/java_home`, dann `openjdk` von Homebrew; Windows: ein Ordner `jre` neben `lumen.exe`, die
-    Registry-Einträge der Java-Installer, dann die üblichen Ordner unter `Programme` (Eclipse Adoptium, Java,
-    Microsoft, Zulu, BellSoft, Amazon Corretto, OpenJDK). Linux: libbluray kennt die Ordner der Distributionen.
-- Lässt sich ein Menü nicht starten (kein Java, kein Archiv), läuft stattdessen der Hauptfilm; die Seite
-  *Titel* nennt den Grund.
+- **BD-J-Menüs** (die meisten neueren Filmdiscs) sind Java-Programme; libbluray führt sie in einer Java-VM aus.
+  Alles dafür bringen die Pakete mit, auf jedem System:
+  - das Java-Archiv von libbluray in der Version der verwendeten libbluray ([`resources/bdj/`](resources/bdj)) –
+    ein anderes lädt libbluray nicht. Linux-Pakete bringen deshalb eine eigene libbluray 1.5 mit
+    (`tools/build_deps.sh`), wo die Distribution eine ältere hat.
+  - eine kleine **Java-Laufzeit** (Java 17, mit `jlink` auf das für BD-J Nötige gekürzt, rund 45 MB): `jre` im
+    macOS-Bundle und neben `lumen.exe` (`tools/make_jre.py`), unter Linux `lib/lumen/jre` (sie lädt Javas
+    X11-Fensterbibliothek, daher hängen die Pakete von libXi, libXrender und libXtst ab; ein X-Server wird nicht benutzt). Das Java der
+    Distributionen taugt dafür nicht: Debians `libbluray-bdj` zieht eine Laufzeit ohne Grafikteil nach, Fedoras
+    Java ist neuer, als dessen libbluray es nutzen kann.
+  - Die Laufzeit des Pakets geht vor – auch einem `JAVA_HOME` der Umgebung, das oft auf ein Java zeigt, mit dem
+    libbluray nichts anfangen kann. `LUMEN_JAVA_HOME` wählt ausdrücklich eine andere. Ein eigener Build ohne
+    Laufzeit nimmt `JAVA_HOME`, dann ein installiertes Java: macOS `/usr/libexec/java_home` und `openjdk` von
+    Homebrew, Windows die Registry-Einträge der Java-Installer und die üblichen Ordner unter `Programme`. Ein
+    Ordner `bdj` in Lumens Datenordner mit dem passenden Archiv geht dem des Pakets vor.
+- Lässt sich ein Menü nicht starten, läuft stattdessen der Hauptfilm; die Seite *Titel* nennt den Grund.
 
 ## Einschränkungen / Stand
 
@@ -591,8 +603,8 @@ lumen film.mkv                 # jede Datei, die mpv abspielt
 | Video-CD | Die Wiedergabesteuerung (PBC) ist mit einer VCD 2.0 getestet, erstellt mit `vcdxbuild` (GNU VCDImager), unter Windows und macOS. Geprüft werden Auswahl per Ziffer, Default, Weiter/Zurück/Return, automatisches Weiterschalten, Einsprungpunkte und Segment-Menüs. Nicht unterstützt: erweiterte SVCD-Auswahlflächen (Mausbereiche) und Befehlslisten. **Noch nicht mit einer echten gepressten VCD getestet.** |
 | Frame Packing | Erfordert einen 1920×2205-Modus im Grafiktreiber; ob der Projektor ihn ohne HDMI-3D-InfoFrame als 3D erkennt, hängt vom Gerät ab. |
 | Dolby Vision | Erkannt (Profil 5/7/8), gpu-next wendet die RPU-Metadaten an; ein echtes DV-Signal über HDMI kann kein PC-Player ausgeben. |
-| Bildrate/HDR-Umschaltung | Windows: Bildrate + HDR · Linux X11: Bildrate (xrandr) · KDE Plasma: Bildrate + HDR · GNOME Wayland: nur Anzeige · macOS: Bildrate |
-| Eingebettetes Player-Fenster | Automatisch unter macOS, sonst per Profil; OpenGL-Render-API → nur SDR. |
+| Bildrate/HDR-Umschaltung | Windows: Bildrate + HDR · Linux X11: Bildrate (xrandr) · KDE Plasma: Bildrate + HDR (HDR braucht *Player-Fenster: Nativ*) · GNOME Wayland: nur Anzeige · macOS: Bildrate |
+| Eingebettetes Player-Fenster | Immer unter macOS, Vorgabe in Wayland-Sitzungen, sonst per Profil; OpenGL-Render-API → nur SDR. |
 
 ## Lizenz
 

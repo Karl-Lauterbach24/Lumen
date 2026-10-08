@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 1.3.2 LANGUAGES CXX)
+project(Lumen VERSION 1.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -658,12 +658,18 @@ if(UNIX AND NOT APPLE)
         set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS "${LUMEN_DEPS_PREFIX}/lib")
     endif()
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-templates, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtquick-dialogs, qml6-module-qtcore, qml6-module-qtqml, qml6-module-qtqml-models, qml6-module-qtqml-workerscript, qml6-module-qt-labs-folderlistmodel, qt6-svg-plugins")
-    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "yt-dlp")
+    # qt6-wayland: Qts Wayland-Plugin; ohne es läuft Lumen in einer Wayland-Sitzung nur über XWayland
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "yt-dlp, qt6-wayland")
 
     set(CPACK_RPM_FILE_NAME "Lumen-${PROJECT_VERSION}-linux-${_rpm_arch}.rpm")
     set(CPACK_RPM_PACKAGE_LICENSE "AGPL-3.0-or-later")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
-    set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtdeclarative, qt6-qtsvg")
+    set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtdeclarative, qt6-qtsvg, qt6-qtwayland")
+    if(EXISTS "${LUMEN_DEPS_PREFIX}/jre/lumen-jre.txt")
+        # Javas Fensterbibliothek (libawt_xawt.so) in der mitgelieferten Laufzeit; deren Dateien sind
+        # unten von der automatischen Suche ausgenommen (sie verlangen sich gegenseitig)
+        string(APPEND CPACK_RPM_PACKAGE_REQUIRES ", libX11, libXext, libXi, libXrender, libXtst")
+    endif()
     set(CPACK_RPM_PACKAGE_SUGGESTS "yt-dlp")
     # Ordner, die anderen Paketen gehören, nicht in die Dateiliste aufnehmen
     set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
@@ -674,7 +680,8 @@ if(UNIX AND NOT APPLE)
         # private Bibliotheken weder anbieten noch von außen verlangen
         string(APPEND CPACK_RPM_SPEC_MORE_DEFINE "
 %global __provides_exclude_from ^/usr/lib/lumen/.*$
-%global __requires_exclude ^lib(mpv|avcodec|avformat|avutil|avfilter|avdevice|swscale|swresample|x264|dvdnav|dvdread)[.]so.*$")
+%global __requires_exclude_from ^/usr/lib/lumen/jre/.*$
+%global __requires_exclude ^lib(mpv|avcodec|avformat|avutil|avfilter|avdevice|swscale|swresample|x264|dvdnav|dvdread|bluray|udfread)[.]so.*$")
     endif()
     include(CPack)
 endif()

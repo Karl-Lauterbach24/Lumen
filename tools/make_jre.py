@@ -103,17 +103,15 @@ def pick(arch, explicit):
 
 
 def prune_linux(lib):
-    """Linux: the runtime shall not depend on X11 or ALSA libraries of the system.
+    """Linux: what disc menus never use and what would pull in more system libraries.
 
     libbluray replaces Java's window toolkit by its own (pictures go to the player as an overlay), but
-    runs the VM as "not headless", and Java then loads libawt_xawt.so, which links to libX11, libXtst …
-    Nothing of it is called. The headless variant offers the same entry points without those
-    libraries: it takes the other one's place. Splash screen, the JAWT bridge and Java Sound are not
-    used by disc menus at all.
+    runs the VM as "not headless". Java then loads libawt_xawt.so and calls the start-up functions of
+    its window classes in it (java.awt.Component.initIDs …) – the headless variant does not have them,
+    so libawt_xawt.so stays, and with it the package's dependency on libX11, libXext, libXi,
+    libXrender and libXtst. No X server is contacted. Splash screen, the JAWT bridge and Java Sound
+    (ALSA) go.
     """
-    headless, xawt = os.path.join(lib, "libawt_headless.so"), os.path.join(lib, "libawt_xawt.so")
-    if os.path.isfile(headless):
-        shutil.copyfile(headless, xawt)
     for name in ("libsplashscreen.so", "libjawt.so", "libjsound.so"):
         try:
             os.remove(os.path.join(lib, name))
@@ -136,7 +134,7 @@ def main():
         return 0
     _, home, major, version = choice
     stamp = os.path.join(a.out, "lumen-jre.txt")
-    wanted = f"{version} {arch} {' '.join(MODULES)}\n"
+    wanted = f"{version} {arch} {' '.join(MODULES)} v2\n"
     try:
         if open(stamp, encoding="utf-8").read() == wanted:
             print(f"make_jre: {a.out} is up to date (Java {version})")

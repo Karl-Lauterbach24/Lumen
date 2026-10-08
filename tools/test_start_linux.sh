@@ -94,16 +94,24 @@ if have weston; then
             run wayland-play "$BUILD/lumen" "av://lavfi:testsrc2=size=1280x720:rate=24"
         if [ -s "$WORK/wayland-player.png" ]; then echo "start test [wayland-play]: player window rendered"
         else echo "::warning::start test [wayland-play]: no picture from the player window"; fi
-        # for the record: mpv's own window on Wayland (what Lumen did before 1.4) – where does it stop?
+        # mpv's own window on Wayland (profile choice "native"; the default until 1.3.2). It ended the
+        # program at start when mpv got no graphics context of its own (tools/patches/mpv-wayland-egl-uninit.patch);
+        # with the patch it must end normally, with or without a picture.
         if [ "${CI:-}" = "true" ] && [ "$(id -u)" = "0" ]; then
             have gdb || { have apt-get && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends gdb > /dev/null 2>&1; } \
                      || { have dnf && dnf install -y -q gdb > /dev/null 2>&1; } || true
-            if have gdb; then
-                echo "::group::start test: mpv's own window on Wayland (backtrace)"
-                LUMEN_PLAYER_WINDOW=native LUMEN_APP_NAME=LumenStartTest LUMEN_NO_DRIVES=1 LUMEN_QUIT_AFTER=8 WAYLAND_DISPLAY=lumen-test \
-                    QT_QPA_PLATFORM=wayland timeout 60 gdb -q -batch -ex "set pagination off" -ex "set debuginfod enabled off" \
-                    -ex run -ex "bt 16" --args "$BUILD/lumen" 2>&1 | grep -vE "^\[(New|Thread|Detaching)|warning:" | tail -30 | cut -c1-220
+        fi
+        if have gdb; then
+            LUMEN_PLAYER_WINDOW=native LUMEN_APP_NAME=LumenStartTest LUMEN_NO_DRIVES=1 LUMEN_QUIT_AFTER=8 WAYLAND_DISPLAY=lumen-test \
+                QT_QPA_PLATFORM=wayland timeout 60 gdb -q -batch -ex "set pagination off" -ex "set debuginfod enabled off" \
+                -ex run -ex "bt 16" --args "$BUILD/lumen" > "$WORK/wayland-native.log" 2>&1
+            if grep -qE "Assertion|SIGABRT|SIGSEGV|SIGBUS" "$WORK/wayland-native.log"; then
+                echo "::warning::start test [wayland-native]: mpv's own window ends the program"
+                echo "::group::start test [wayland-native] backtrace"
+                grep -vE "^\[(New|Thread|Detaching)|warning:|IconImage" "$WORK/wayland-native.log" | tail -30 | cut -c1-220
                 echo "::endgroup::"
+            else
+                echo "start test [wayland-native]: mpv's own window does not end the program ($(grep -cE 'exited normally|exited with code' "$WORK/wayland-native.log") normal exit)"
             fi
         fi
     else

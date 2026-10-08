@@ -1,0 +1,20 @@
+diff --git a/video/out/opengl/context_wayland.c b/video/out/opengl/context_wayland.c
+index 0ad855d..7ec682f 100644
+--- a/video/out/opengl/context_wayland.c
++++ b/video/out/opengl/context_wayland.c
+@@ -216,7 +216,14 @@ static bool wayland_egl_init(struct ra_ctx *ctx)
+ {
+     if (!vo_wayland_init(ctx->vo))
+         return false;
+-    return egl_create_context(ctx);
++    // Lumen: without this the Wayland state stays behind when no EGL context can be made. It shares
++    // its place in struct vo with the X11 state, so the next context to be probed (x11egl) aborts
++    // the program in vo_x11_init ("Assertion `!vo->x11' failed").
++    if (!egl_create_context(ctx)) {
++        wayland_egl_uninit(ctx);
++        return false;
++    }
++    return true;
+ }
+ 
+ const struct ra_ctx_fns ra_ctx_wayland_egl = {

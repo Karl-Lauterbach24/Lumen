@@ -8,14 +8,16 @@
 #   mpv         libmpv, linked against that FFmpeg, with Lumen's patches (tools/patches):
 #               audio tap on the timed null output, used for casting; scaler weight table
 #               without uninitialized padding (black picture with software OpenGL); sound starts
-#               after the fallback from refused bitstream output to decoding
+#               after the fallback from refused bitstream output to decoding; Wayland: no abort
+#               when no EGL context can be made (the Wayland state stayed behind and tripped X11)
 #   dvdnav      libdvdread + libdvdnav 7 (only where the system has an older one)
 #   bluray      libudfread + libbluray 1.5 (only where the system has an older one): the version
 #               whose Java classes Lumen ships (resources/bdj), so disc menus written in Java (BD-J)
 #               run on the same code everywhere
 #   jre         Linux: a small Java runtime for those menus, cut with jlink from an Eclipse Temurin
-#               JDK that is fetched for the build (the build containers have none). macOS and
-#               Windows take theirs from a JDK of the build machine when the package is made.
+#               JDK that is fetched for the build (the build containers have none), with Java's
+#               own X11 window library (libbluray runs the VM "not headless"; see make_jre.py).
+#               macOS and Windows take theirs from a JDK of the build machine when the package is made.
 #
 # All other libraries (Qt, libass, libplacebo, libcdio, OpenSSL, libxml2 ...) come from
 # the platform's package manager. The result is one prefix that CMake picks up automatically:
