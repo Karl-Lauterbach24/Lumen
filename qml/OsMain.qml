@@ -812,7 +812,10 @@ Window {
                 { label: qsTr("Blu-ray: Schlüsseldatenbank laden"), icon: "key", checked: wantKeys || state.keydb === "yes", run: () => wantKeys = !wantKeys },
                 { label: qsTr("DVD: libdvdcss einrichten"), icon: "disc", checked: wantDvd || state.dvdcss === "yes", run: () => wantDvd = !wantDvd },
                 { label: qsTr("MakeMKV laden und bauen"), icon: "download", checked: wantMakemkv || !!state.makemkv, run: () => wantMakemkv ? wantMakemkv = false : os.push(makemkvPage, { install: () => support.wantMakemkv = true }) },
-                { label: (wantKeys || wantDvd || wantMakemkv) ? qsTr("Einrichten und weiter") : qsTr("Weiter ohne"), icon: "right", run: () => (wantKeys || wantDvd || wantMakemkv) ? support.apply() : os.setupNext() }
+                // ("ohne" nur, solange nichts eingerichtet ist – nach einem Fehlschlag bei einem der drei stimmte es sonst nicht)
+                { label: (wantKeys || wantDvd || wantMakemkv) ? qsTr("Einrichten und weiter")
+                         : (state.keydb === "yes" || state.dvdcss === "yes" || !!state.makemkv) ? qsTr("Weiter") : qsTr("Weiter ohne"),
+                  icon: "right", run: () => (wantKeys || wantDvd || wantMakemkv) ? support.apply() : os.setupNext() }
             ] : [
                 { label: qsTr("Blu-ray: Schlüsseldatenbank"), icon: "key", checked: state.keydb === "yes",
                   detail: state.keydb_date || "",

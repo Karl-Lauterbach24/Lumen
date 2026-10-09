@@ -2,6 +2,7 @@
 # LumenOS: MakeMKV, when the user asks for it in the settings (Discs).
 #
 #   lumenos-makemkv install    load MakeMKV's two official packages from makemkv.com and build them here
+#   lumenos-makemkv version    the version that would be loaded
 #   lumenos-makemkv key <key>  enter a licence key
 #   lumenos-makemkv betakey    enter the beta key its author posts in MakeMKV's forum
 #
@@ -13,7 +14,9 @@ export LC_ALL=C DEBIAN_FRONTEND=noninteractive
 LOG=/var/log/lumenos-makemkv.log
 USER_NAME=lumen
 SITE="${LUMENOS_MAKEMKV_SITE:-https://www.makemkv.com}"
+LINUX_PAGE="${LUMENOS_MAKEMKV_LINUX_PAGE:-https://forum.makemkv.com/forum/viewtopic.php?f=3&t=224}"
 KEY_PAGE="${LUMENOS_MAKEMKV_KEY_PAGE:-https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053}"
+AGENT='Mozilla/5.0 (LumenOS)'
 
 die() { echo "$*" >&2; exit 1; }
 home() { getent passwd "$USER_NAME" | cut -d: -f6; }
@@ -32,12 +35,44 @@ set_key() {
     chmod 600 "$conf"
 }
 
+# The current version. MakeMKV's post for Linux in its forum names the two packages; the download
+# page names the installers for Windows and macOS, which carry the same number. Whichever answers.
+current_version() {
+    local page version="" reached=""
+    if page="$(curl -fsSL --max-time 40 -A "$AGENT" "$LINUX_PAGE" 2> /dev/null)"; then
+        reached=1
+        version="$(grep -o 'makemkv-oss-[0-9][0-9.]*\.tar\.gz' <<< "$page" | sed 's/makemkv-oss-//; s/\.tar\.gz//' | sort -V | tail -1)"
+    fi
+    if [ -z "$version" ] && page="$(curl -fsSL --max-time 40 -A "$AGENT" "$SITE/download/" 2> /dev/null)"; then
+        reached=1
+        version="$(grep -oE '(Setup_MakeMKV_v|makemkv_v)[0-9]+(\.[0-9]+)+' <<< "$page" | sed -E 's/^[^0-9]*//' | sort -V | tail -1)"
+    fi
+    [ -n "$reached" ] || die "makemkv.com cannot be reached"
+    [[ "$version" =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "makemkv.com names no current version"
+    echo "$version"
+}
+
+# what MakeMKV consists of on this system
+parts() { ls /usr/bin/makemkvcon /usr/lib/libmakemkv.so.* /usr/lib/libdriveio.so.* /usr/lib/libmmbd.so.* 2> /dev/null; }
+
+# The packages of the libraries these link to: marked as wanted, so that removing the build tools
+# (which brought some of them along) leaves them in place.
+keep_libraries() {
+    local lib packages
+    packages="$(for lib in $(parts | xargs -r ldd 2> /dev/null | awk '$2 == "=>" && $3 ~ /^\// { print $3 }' | sort -u); do
+        dpkg -S "$(readlink -f "$lib")" 2> /dev/null | cut -d: -f1
+    done | sort -u)"
+    [ -z "$packages" ] || apt-mark manual $packages
+}
+
+missing_libraries() { parts | xargs -r ldd 2> /dev/null | awk '/not found/ { print $1 }' | sort -u | tr '\n' ' ' | sed 's/ $//'; }
+
 case "${1:-}" in
+version)
+    current_version
+    ;;
 install)
-    # the current version is named on the download page for Linux
-    page="$(curl -fsSL --max-time 40 "$SITE/download/" 2> /dev/null)" || die "makemkv.com cannot be reached"
-    version="$(grep -o 'makemkv-oss-[0-9][0-9.]*\.tar\.gz' <<< "$page" | head -1 | sed 's/makemkv-oss-//; s/\.tar\.gz//')"
-    [[ "$version" =~ ^[0-9]+(\.[0-9]+)+$ ]] || die "the download page of makemkv.com names no version"
+    version="$(current_version)" || exit 1
     {
         echo "=== $(date) MakeMKV $version"
         apt-get update -q
@@ -65,9 +100,14 @@ install)
         ldconfig
     ) >> "$LOG" 2>&1 || die "the build failed (see $LOG)"
     command -v makemkvcon > /dev/null || die "the build left no makemkvcon (see $LOG)"
-    # the build tools are not needed any more
+    # the build tools are not needed any more – the libraries MakeMKV runs with are: they came along
+    # with the build packages and would leave with them
+    keep_libraries >> "$LOG" 2>&1
     apt-get purge -y -q build-essential libssl-dev libexpat1-dev zlib1g-dev libavcodec-dev >> "$LOG" 2>&1 || true
     apt-get autoremove -y -q >> "$LOG" 2>&1 || true
+    if missing="$(missing_libraries)" && [ -n "$missing" ]; then
+        die "MakeMKV is built, but libraries it needs are missing: $missing (see $LOG)"
+    fi
     echo "MakeMKV $version"
     ;;
 key)
@@ -82,6 +122,6 @@ betakey)
     echo "beta key entered"
     ;;
 *)
-    die "lumenos-makemkv install | key <key> | betakey"
+    die "lumenos-makemkv install | version | key <key> | betakey"
     ;;
 esac
