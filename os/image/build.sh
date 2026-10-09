@@ -120,6 +120,15 @@ cp "$here/grub.cfg" config/bootloaders/grub-pc/grub.cfg
 sed -i "s/@VERSION@/$version/g" config/bootloaders/grub-pc/grub.cfg
 
 echo "LumenOS $version ($arch): building, log in $work/build.log"
+# On an Apple machine's Linux, x86 programs are run by Rosetta – and Rosetta cannot start one where
+# /proc is not mounted, which live-build does at the beginning and at the end of its stages. For the
+# time of the build they are run by QEMU's emulator instead (qemu-user-static): slower, but everywhere.
+rosetta=/proc/sys/fs/binfmt_misc/rosetta
+if [ "$arch" = amd64 ] && [ "$(dpkg --print-architecture)" != amd64 ] && [ "$(head -1 "$rosetta" 2> /dev/null)" = enabled ]; then
+    [ -e /proc/sys/fs/binfmt_misc/qemu-x86_64 ] || { echo "install qemu-user-static: Rosetta alone cannot build this image"; exit 1; }
+    echo 0 > "$rosetta"
+    trap 'echo 1 > "$rosetta"' EXIT
+fi
 if ! lb build > "$work/build.log" 2>&1; then
     tail -40 "$work/build.log"
     exit 1

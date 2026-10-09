@@ -111,9 +111,12 @@ On Debian 13, with `live-build` installed and the Lumen package for the architec
 ```sh
 sudo os/image/build.sh amd64 Lumen-<version>-linux-amd64.deb out/
 sudo os/image/build.sh arm64 Lumen-<version>-linux-arm64.deb out/
+os/image/bundle.sh out/ Lumen-<version>-linux-amd64.deb Lumen-<version>-linux-arm64.deb   # LumenOS-update-<version>.zip
 ```
 
-Building the other architecture needs `qemu-user-static`. `os/image/packages.list` names what goes
+Building the other architecture needs `qemu-user-static` (on an Apple machine's Linux, where Rosetta
+runs x86 programs, too: Rosetta cannot work where `/proc` is not mounted, so the build switches it off
+for its duration). `os/image/packages.list` names what goes
 in besides Debian's minimal base. The two things the image carries for encrypted discs without
 installing them (`/usr/share/lumenos-optional`: the libdvdcss package, the key database of that day)
 are left out with `LUMENOS_NO_DVDCSS=1` and `LUMENOS_NO_KEYDB=1`; the device then builds or loads
