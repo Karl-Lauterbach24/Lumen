@@ -35,7 +35,7 @@ splash() {
     fi
     # an installed system: the kernel line gets "splash" once
     if [ -f /etc/default/grub ] && ! grep -q 'GRUB_CMDLINE_LINUX_DEFAULT=.*splash' /etc/default/grub; then
-        sed -i 's/^\(GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\)"/\1 splash"/' /etc/default/grub
+        sed -i 's/^\(GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\)"/\1 splash plymouth.ignore-serial-consoles"/' /etc/default/grub
         command -v update-grub > /dev/null 2>&1 && update-grub > /dev/null 2>&1 || true
     fi
     return 0
