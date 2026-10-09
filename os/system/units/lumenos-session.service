@@ -1,7 +1,8 @@
 [Unit]
 Description=LumenOS player
 Documentation=https://github.com/Karl-Lauterbach24/Lumen
-After=systemd-user-sessions.service plymouth-quit-wait.service systemd-logind.service
+# (not after plymouth-quit-wait: the player takes the screen over from the start picture itself, below)
+After=systemd-user-sessions.service plymouth-start.service systemd-logind.service
 # the first console is the player's; a login for maintenance is on the second (Ctrl+Alt+F2)
 Conflicts=getty@tty1.service
 After=getty@tty1.service
@@ -19,6 +20,9 @@ StandardOutput=journal
 StandardError=journal
 UtmpIdentifier=tty1
 UtmpMode=user
+# The start picture ends here and stays on the screen until the player draws: its first picture is the
+# same emblem in the same place. (+: as root; -: no plymouth, no harm)
+ExecStartPre=+-/usr/bin/plymouth quit --retain-splash
 ExecStart=/usr/share/lumen/os/lumenos-session
 # Lumen ended (it asked for a restart, or it fell over): start it again
 Restart=always

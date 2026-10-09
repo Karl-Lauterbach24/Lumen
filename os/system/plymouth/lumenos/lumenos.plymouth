@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=LumenOS
+Description=Lumen's emblem on the dark field of its interface, with three dots that breathe
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/lumenos
+ScriptFile=/usr/share/plymouth/themes/lumenos/lumenos.script

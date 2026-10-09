@@ -76,7 +76,7 @@ lb config \
     --iso-publisher "Lumen; https://github.com/Karl-Lauterbach24/Lumen" \
     --iso-volume "LumenOS $version" \
     --image-name "LumenOS" \
-    --bootappend-live "boot=live components quiet loglevel=3 vt.global_cursor_default=0 hostname=lumenos live-config.nocomponents=user-setup,sudo,xinit,gdm3,lightdm,sddm,login,x-session-manager" \
+    --bootappend-live "boot=live components quiet splash loglevel=3 vt.global_cursor_default=0 hostname=lumenos live-config.nocomponents=user-setup,sudo,xinit,gdm3,lightdm,sddm,login,x-session-manager" \
     "${extra[@]}" > "$work/config.log" 2>&1 || { tail -20 "$work/config.log"; exit 1; }
 
 # --- packages (one per line; lines ending in ":arch" only for that architecture)

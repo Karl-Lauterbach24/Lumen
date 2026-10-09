@@ -27,6 +27,8 @@ class OsBridge : public QObject
     Q_PROPERTY(bool live READ live CONSTANT)
     // kein Grafiktreiber: OpenGL rechnet der Prozessor (eine virtuelle Maschine, ein Gerät ohne Treiber)
     Q_PROPERTY(bool softwareGraphics READ softwareGraphics CONSTANT)
+    // Bildschirmschoner: Solange er läuft, weckt die erste Taste nur – sie tut sonst nichts
+    Q_PROPERTY(bool saver READ saver WRITE setSaver NOTIFY saverChanged)
     // die Oberfläche kommt aus einem Zip des Quelltexts (Aktualisierung ohne Netz), nicht aus dem Programm
     Q_PROPERTY(QString overlayVersion READ overlayVersion CONSTANT)
     // Der Bildschirm (und der Verstärker davor), wie er sich meldet, und was LumenOS daraus macht:
@@ -48,6 +50,9 @@ public:
     bool system() const;
     bool live() const;
     bool softwareGraphics() const;
+    bool saver() const { return m_saver; }
+    void setSaver(bool on);
+    bool eventFilter(QObject *watched, QEvent *event) override;
     QString overlayVersion() const;
 
     // Was die Oberfläche von diesem Programm verlangen darf. Jede Erweiterung, die die QML-Seiten
@@ -82,6 +87,9 @@ public:
     static bool isMedia(const QString &fileName);
 
 signals:
+    // jemand hat eine Taste gedrückt oder die Maus bewegt (höchstens einmal je Sekunde gemeldet)
+    void activity();
+    void saverChanged();
     void placesChanged();
     void displayChanged();
     void outputSettingsChanged();
@@ -111,6 +119,8 @@ private:
     QVariantMap m_info;
     QVariantMap m_update;
     QTimer m_poll;
+    bool m_saver = false;
+    qint64 m_lastActivity = 0;
 };
 
 // Der Hintergrund der Oberfläche ("image://lumenos/backdrop"): ein dunkler Verlauf mit zwei weichen

@@ -206,6 +206,7 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/Tuning.h            src/Tuning.cpp          src/HardwareProbe.cpp
     src/Edid.h              src/Edid.cpp
     src/KmsDisplay.h        src/KmsDisplay.cpp
+    src/UiAudio.h           src/UiAudio.cpp
     src/AudioTap.h          src/AudioTap.cpp
     src/CastStream.h        src/CastStream.cpp
     src/CastAudio.h         src/CastAudio.cpp
@@ -267,9 +268,9 @@ qt_add_qml_module(lumen
         icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg icons/help.svg icons/close.svg icons/cast.svg
         icons/language.svg icons/warning.svg icons/link.svg icons/film.svg
         icons/power.svg icons/wifi.svg icons/bluetooth.svg icons/usb.svg icons/remote.svg icons/download.svg
-        icons/check.svg icons/storage.svg icons/screen.svg icons/key.svg icons/network.svg icons/sparkle.svg
+        icons/check.svg icons/storage.svg icons/screen.svg icons/key.svg icons/network.svg icons/music.svg icons/sparkle.svg
         profiles/presets.json
-        resources/logo/lumen-emblem-small.png resources/logo/lumen-icon-256.png resources/logo/lumen-logo.png
+        resources/logo/lumen-emblem-small.png resources/logo/lumen-emblem-alpha.png resources/logo/lumen-icon-256.png resources/logo/lumen-logo.png
         i18n/en.json i18n/fr.json i18n/es.json i18n/it.json i18n/pt.json i18n/nl.json i18n/pl.json
         i18n/sv.json i18n/cs.json i18n/tr.json i18n/uk.json i18n/ru.json i18n/ja.json i18n/zh.json i18n/ko.json
 )
@@ -291,6 +292,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PkgConfig_FOUND)
         target_compile_definitions(lumen PRIVATE LUMEN_HAVE_LIBDRM=1)
         target_link_libraries(lumen PRIVATE PkgConfig::LIBDRM)
     endif()
+endif()
+
+# LumenOS: die Klänge der Oberfläche (src/UiAudio) – Dateien, mit FFmpeg gelesen, über ALSA ausgegeben
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PkgConfig_FOUND)
+    pkg_check_modules(UIAUDIO QUIET IMPORTED_TARGET alsa libswresample)
+    if(UIAUDIO_FOUND)
+        target_compile_definitions(lumen PRIVATE LUMEN_HAVE_ALSA=1)
+        target_link_libraries(lumen PRIVATE PkgConfig::UIAUDIO)
+    endif()
+    message(STATUS "Lumen: Klänge der Oberfläche (ALSA): ${UIAUDIO_FOUND}")
 endif()
 
 target_link_libraries(lumen PRIVATE
@@ -671,6 +682,7 @@ if(UNIX AND NOT APPLE)
     # LumenOS: what makes a Debian system into the player (session, updater, rules, helper). Part of
     # the package, so that an update of Lumen updates it too; it does nothing until lumenos-setup is run.
     install(DIRECTORY os/system/ DESTINATION ${CMAKE_INSTALL_DATADIR}/lumen/os USE_SOURCE_PERMISSIONS)
+    install(DIRECTORY resources/sounds/ DESTINATION ${CMAKE_INSTALL_DATADIR}/lumen/sounds FILES_MATCHING PATTERN "*.flac")
     install(FILES resources/logo/lumen-icon-256.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps RENAME lumen.png)
     install(FILES LICENSE THIRD_PARTY.md README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/lumen)
     # Plugin-Vorlagen (nur Daten/Skripte; aktiviert der Nutzer selbst). Suchpfad: <bin>/../lib/lumen/plugins

@@ -897,6 +897,7 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
 {
     if (!m_mpv)
         return;
+    emit aboutToLoad();
     if (m_kiosk) {
         // das Fenster kommt mit dem Laden, nicht erst mit dem ersten Bild (es rendert erst, wenn es da ist)
         m_kioskLoading = true;

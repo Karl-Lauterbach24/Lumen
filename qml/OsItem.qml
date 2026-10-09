@@ -13,21 +13,27 @@ Item {
     // ein Schalter: true/false zeigt ihn, undefined = kein Schalter
     property var checked: undefined
     property real u: 1
+    // Die Liste zeigt die gewählte Zeile mit einer Markierung, die von Zeile zu Zeile gleitet (OsPage):
+    // dann färbt sich die Zeile nicht selbst.
+    property bool ownHighlight: true
+    // 0 … 1: die Zeile kommt (beim Öffnen einer Seite, eine nach der anderen)
+    property real appear: 1
     signal clicked()
 
     implicitHeight: 92 * u
-    opacity: dimmed ? 0.4 : 1
+    opacity: (dimmed ? 0.4 : 1) * appear
+    transform: Translate { x: (1 - item.appear) * 54 * item.u }
 
     Rectangle {
         id: plate
         anchors.fill: parent
         radius: 20 * item.u
-        color: item.current ? os.focusColor : Qt.rgba(1, 1, 1, 0.045)
+        color: !item.current ? Qt.rgba(1, 1, 1, 0.045) : item.ownHighlight ? os.focusColor : "transparent"
         border.width: item.current ? 0 : 1
         border.color: Qt.rgba(1, 1, 1, 0.06)
-        scale: item.current ? 1.012 : 1
-        Behavior on color { ColorAnimation { duration: 110 } }
-        Behavior on scale { NumberAnimation { duration: 110; easing.type: Easing.OutCubic } }
+        scale: item.current && item.ownHighlight ? 1.012 : 1
+        Behavior on color { ColorAnimation { duration: 140 } }
+        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
     }
     RowLayout {
         anchors.fill: parent
@@ -39,6 +45,9 @@ Item {
             source: item.iconName ? Os.icon(item.iconName) : ""
             sourceSize.width: 40 * item.u; sourceSize.height: 40 * item.u
             opacity: item.current ? 1 : 0.7
+            scale: item.current ? 1.12 : 1
+            Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
+            Behavior on opacity { NumberAnimation { duration: 160 } }
         }
         ColumnLayout {
             Layout.fillWidth: true

@@ -1,0 +1,73 @@
+# LumenOS: what the screen shows while the system starts and stops.
+#
+# The emblem stands where Lumen's interface picks it up a moment later (qml/OsMain.qml, "Auftakt"):
+# on the same dark field, at the same size and place - so the start reads as one movement, from the
+# first picture to the home screen. Below it three dots breathe one after the other, the same sign
+# the interface uses while it is busy.
+
+# the field: the interface's backdrop, top to bottom (13,16,23 -> 7,8,11)
+Window.SetBackgroundTopColor(0.051, 0.063, 0.090);
+Window.SetBackgroundBottomColor(0.027, 0.031, 0.043);
+
+screen.w = Window.GetWidth();
+screen.h = Window.GetHeight();
+screen.x = Window.GetX();
+screen.y = Window.GetY();
+# one unit is a pixel of a picture 1080 lines high, as in the interface
+u = screen.h / 1080;
+
+emblem.source = Image("emblem.png");
+emblem.h = Math.Int(170 * u);
+emblem.w = Math.Int(emblem.source.GetWidth() * emblem.h / emblem.source.GetHeight());
+emblem.image = emblem.source.Scale(emblem.w, emblem.h);
+emblem.sprite = Sprite(emblem.image);
+emblem.sprite.SetX(screen.x + screen.w / 2 - emblem.w / 2);
+# (the interface centres emblem, gap and name together: the emblem's top is 128 units above the middle)
+emblem.sprite.SetY(screen.y + screen.h / 2 - Math.Int(128 * u));
+emblem.sprite.SetOpacity(0);
+
+dot.source = Image("dot.png");
+dot.size = Math.Int(16 * u);
+if (dot.size < 6) dot.size = 6;
+dot.image = dot.source.Scale(dot.size, dot.size);
+dot.gap = Math.Int(22 * u);
+for (i = 0; i < 3; i++) {
+    dots[i] = Sprite(dot.image);
+    dots[i].SetX(screen.x + screen.w / 2 + (i - 1) * (dot.size + dot.gap) - dot.size / 2);
+    dots[i].SetY(screen.y + screen.h / 2 + Math.Int(96 * u));
+    dots[i].SetOpacity(0);
+}
+
+tick = 0;
+leaving = 0;
+
+fun refresh() {
+    # called fifty times a second
+    tick++;
+    t = tick / 50;
+    # the emblem comes in over the first second
+    appear = t / 0.9;
+    if (appear > 1) appear = 1;
+    emblem.sprite.SetOpacity(appear * appear * (3 - 2 * appear));
+    for (i = 0; i < 3; i++) {
+        if (leaving) {
+            dots[i].SetOpacity(0);
+        } else {
+            # one after the other: a wave that takes 1.4 seconds
+            wave = Math.Sin((t - 0.6 - i * 0.22) * 6.2832 / 1.4);
+            level = 0.22 + 0.78 * (0.5 + 0.5 * wave);
+            start = (t - 0.5) / 0.6;
+            if (start < 0) start = 0;
+            if (start > 1) start = 1;
+            dots[i].SetOpacity(level * start);
+        }
+    }
+}
+Plymouth.SetRefreshFunction(refresh);
+
+# the interface takes over: the dots go, the emblem stays for it
+fun quit() {
+    leaving = 1;
+    for (i = 0; i < 3; i++) dots[i].SetOpacity(0);
+}
+Plymouth.SetQuitFunction(quit);

@@ -17,9 +17,13 @@ Item {
 
     width: (small ? 380 : 400) * u
     height: (small ? 132 : 290) * u
-    scale: current ? 1.06 : 1
+    scale: current ? 1.065 : 1
     z: current ? 2 : 1
-    Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+    Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutBack; easing.overshoot: 1.6 } }
+    // 0 … 1: die Kachel kommt (beim Start, eine nach der anderen)
+    property real appear: 1
+    opacity: appear
+    transform: Translate { y: (1 - card.appear) * 60 * card.u }
 
     // Schein um die gewählte Kachel
     Rectangle {
@@ -27,8 +31,16 @@ Item {
         anchors.margins: -10 * card.u
         radius: plate.radius + 10 * card.u
         color: os.focusColor
-        opacity: card.current ? 0.22 : 0
-        Behavior on opacity { NumberAnimation { duration: 140 } }
+        opacity: card.current ? halo.level : 0
+        Behavior on opacity { NumberAnimation { duration: 200 } }
+        // der Schein um die gewählte Kachel atmet
+        QtObject { id: halo; property real level: 0.22 }
+        SequentialAnimation {
+            running: card.current && !Os.softwareGraphics; loops: Animation.Infinite
+            NumberAnimation { target: halo; property: "level"; to: 0.32; duration: 1500; easing.type: Easing.InOutSine }
+            NumberAnimation { target: halo; property: "level"; to: 0.16; duration: 1500; easing.type: Easing.InOutSine }
+            onRunningChanged: if (!running) halo.level = 0.22
+        }
     }
     Rectangle {
         id: plate
@@ -58,6 +70,9 @@ Item {
         Rectangle {
             width: 92 * card.u; height: width; radius: width / 2
             color: card.current ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.06)
+            scale: card.current ? 1.08 : 1
+            Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutBack; easing.overshoot: 2.2 } }
+            Behavior on color { ColorAnimation { duration: 180 } }
             Image {
                 anchors.centerIn: parent
                 source: card.iconName ? Os.icon(card.iconName) : ""

@@ -27,6 +27,7 @@ FocusScope {
                   reveal: reveal ? qsTr("Verbergen") : qsTr("Zeigen"), ok: qsTr("Fertig") })[a]
     }
     function press() {
+        os.sound("key")
         if (row < 4) {
             const c = rows[row][column]
             text += shift ? c.toUpperCase() : c
@@ -57,10 +58,10 @@ FocusScope {
 
     Keys.onPressed: event => {
         event.accepted = true
-        if (event.key === Qt.Key_Left) move(-1, 0)
-        else if (event.key === Qt.Key_Right) move(1, 0)
-        else if (event.key === Qt.Key_Up) move(0, -1)
-        else if (event.key === Qt.Key_Down) move(0, 1)
+        if (event.key === Qt.Key_Left) { os.sound("move"); move(-1, 0) }
+        else if (event.key === Qt.Key_Right) { os.sound("move"); move(1, 0) }
+        else if (event.key === Qt.Key_Up) { os.sound("move"); move(0, -1) }
+        else if (event.key === Qt.Key_Down) { os.sound("move"); move(0, 1) }
         // OK einer Fernbedienung (kommt als "Auswählen") setzt das gewählte Zeichen; Enter einer Tastatur,
         // mit der geschrieben wurde, schließt ab
         else if (event.key === Qt.Key_Select) press()

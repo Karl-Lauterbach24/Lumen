@@ -50,12 +50,28 @@ Window {
         property bool rate: true         // Bildrate des Films übernehmen
         property bool bitstream: true    // Dolby und DTS unverändert an den Verstärker
         property string audioDevice: ""  // leer = der Ausgang am Bildschirm
+        // Oberfläche: Töne, Klangfläche in den Menüs, Bildschirmschoner
+        property bool sounds: true
+        property real soundsVolume: 0.7
+        property bool music: true
+        property real musicVolume: 0.7
+        property bool saver: true
     }
+    // Die Töne der Oberfläche (Dateien in resources/sounds; src/UiAudio spielt sie)
+    function sound(name) { if (Sounds.available) Sounds.play(name) }
+    Binding { target: Sounds; property: "effects"; value: osSettings.sounds }
+    Binding { target: Sounds; property: "effectsVolume"; value: osSettings.soundsVolume }
+    Binding { target: Sounds; property: "musicVolume"; value: osSettings.musicVolume }
+    // Die Klangfläche gehört den Menüs: nicht, solange etwas läuft, der Bildschirmschoner an ist oder eine
+    // Fernbedienung eingerichtet wird
+    Binding { target: Sounds; property: "music"; value: osSettings.music && Player.idle && !saver.active && os.introDone }
+    // der Auftakt beim Start ist vorbei (siehe unten)
+    property bool introDone: false
     function outputChanged() { osSettings.sync(); Os.outputSettingChanged() }
     readonly property var codecNames: ({ "ac3": "Dolby Digital", "eac3": "Dolby Digital Plus", "truehd": "Dolby TrueHD", "dts": "DTS", "dts-hd": "DTS-HD" })
 
     function push(component, properties) { stack.push(component, properties || {}) }
-    function back() { if (stack.depth > 1) stack.pop() }
+    function back() { if (stack.depth > 1) { sound("back"); stack.pop() } }
     function home() { stack.pop(null) }
     function openPage(name) {
         const pages = { disc: discPage, library: libraryPage, settings: settingsPage, power: powerPage }
@@ -219,10 +235,30 @@ Window {
     // dunkler Verlauf Ringe – auf einem Fernseher gut zu sehen.
     Image {
         anchors.fill: parent
-        source: "image://lumenos/backdrop"
+        source: "image://lumenos/backdrop/" + backdrop.below
         sourceSize: Qt.size(os.width, os.height)
         smooth: true
         asynchronous: true
+    }
+    // Das Licht wandert: Alle halbe Minute blendet die nächste Fassung der Fläche langsam über die vorige.
+    // (Nicht ohne Grafiktreiber – dort kostete jedes Bild des Übergangs den Prozessor die ganze Fläche.)
+    Image {
+        id: backdropNext
+        anchors.fill: parent
+        source: Os.softwareGraphics ? "" : "image://lumenos/backdrop/" + backdrop.above
+        sourceSize: Qt.size(os.width, os.height)
+        smooth: true
+        asynchronous: true
+        opacity: 0
+        visible: opacity > 0
+    }
+    QtObject { id: backdrop; property int below: 0; property int above: 1 }
+    SequentialAnimation {
+        running: !Os.softwareGraphics && Player.idle && os.visible
+        loops: Animation.Infinite
+        PauseAnimation { duration: 9000 }
+        NumberAnimation { target: backdropNext; property: "opacity"; from: 0; to: 1; duration: 16000; easing.type: Easing.InOutSine }
+        ScriptAction { script: { backdrop.below = backdrop.above; backdropNext.opacity = 0; backdrop.above = (backdrop.above + 1) % 3 } }
     }
 
     StackView {
@@ -231,15 +267,23 @@ Window {
         focus: true
         initialItem: homePage
         onCurrentItemChanged: if (currentItem) currentItem.forceActiveFocus()
+        // Seitenwechsel: Die neue Seite kommt von rechts und wird dabei scharf, die alte weicht ein Stück
+        // nach links und verblasst – zurück dasselbe in der anderen Richtung.
         pushEnter: Transition {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 160 }
-            NumberAnimation { property: "x"; from: 60 * os.u; to: 0; duration: 200; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 220; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "x"; from: 90 * os.u; to: 0; duration: 340; easing.type: Easing.OutQuart }
         }
-        pushExit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 110 } }
-        popEnter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 160 } }
+        pushExit: Transition {
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 160 }
+            NumberAnimation { property: "x"; from: 0; to: -50 * os.u; duration: 240; easing.type: Easing.OutCubic }
+        }
+        popEnter: Transition {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 220; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "x"; from: -50 * os.u; to: 0; duration: 320; easing.type: Easing.OutQuart }
+        }
         popExit: Transition {
-            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 110 }
-            NumberAnimation { property: "x"; from: 0; to: 60 * os.u; duration: 160; easing.type: Easing.InCubic }
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 150 }
+            NumberAnimation { property: "x"; from: 0; to: 90 * os.u; duration: 230; easing.type: Easing.InCubic }
         }
     }
 
@@ -249,8 +293,8 @@ Window {
         anchors.leftMargin: 96 * os.u; anchors.topMargin: 72 * os.u
         spacing: 18 * os.u
         Image {
-            source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-small.png"
-            height: 44 * os.u; width: height * 192 / 91
+            source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-alpha.png"
+            height: 44 * os.u; width: height * 658 / 312
             fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
             anchors.verticalCenter: parent.verticalCenter
         }
@@ -299,6 +343,148 @@ Window {
             }
         }
     }
+    // ------------------------------------------------------------------ Bildschirmschoner
+    // Fünf Minuten ohne Eingabe, und nichts läuft: Die Oberfläche weicht einer dunklen Fläche, auf der die Uhr
+    // langsam wandert – ein OLED-Fernseher behält sonst die Kacheln im Bild. Die Taste, die ihn weckt, tut
+    // sonst nichts (OsBridge verschluckt sie).
+    Item {
+        id: saver
+        property bool active: false
+        anchors.fill: parent
+        z: 90
+        visible: cover.opacity > 0
+        onActiveChanged: Os.saver = active
+        function wake() { active = false; saverTimer.restart() }
+        Timer {
+            id: saverTimer
+            interval: 300000
+            running: osSettings.saver && Player.idle && !saver.active && !Remotes.wizardActive && !Rip.running && os.introDone
+            onTriggered: saver.active = true
+        }
+        Connections {
+            target: Os
+            function onActivity() { if (saver.active) saver.wake(); else saverTimer.restart() }
+        }
+        Connections {
+            target: Player
+            function onIdleChanged() { saver.wake() }
+        }
+        Rectangle {
+            id: cover
+            anchors.fill: parent
+            color: "#000000"
+            opacity: saver.active ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: saver.active ? 1600 : 350; easing.type: Easing.InOutSine } }
+        }
+        Column {
+            id: drift
+            visible: saver.active
+            spacing: 14 * os.u
+            x: 0.5 * (os.width - width); y: 0.4 * os.height
+            opacity: 0
+            Text {
+                id: saverClock
+                color: "#8d93a6"
+                font.family: Theme.font; font.pixelSize: 150 * os.u; font.weight: Font.Light
+                function tick() { text = Qt.formatTime(new Date(), "hh:mm") }
+                Component.onCompleted: tick()
+                Timer { interval: 5000; running: saver.active; repeat: true; triggeredOnStart: true; onTriggered: saverClock.tick() }
+            }
+            Row {
+                spacing: 14 * os.u
+                opacity: 0.55
+                Image {
+                    source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-alpha.png"
+                    height: 30 * os.u; width: height * 658 / 312
+                    fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                Text {
+                    text: Qt.formatDate(new Date(), Qt.locale(I18n.effective), "dddd, d. MMMM")
+                    color: "#8d93a6"; font.family: Theme.font; font.pixelSize: 26 * os.u
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+            // Alle vierzig Sekunden an eine andere Stelle: ausblenden, versetzen, einblenden
+            SequentialAnimation {
+                running: saver.active
+                loops: Animation.Infinite
+                ScriptAction { script: {
+                    drift.x = (0.08 + 0.84 * Math.random()) * (os.width - drift.width)
+                    drift.y = (0.10 + 0.78 * Math.random()) * (os.height - drift.height)
+                } }
+                NumberAnimation { target: drift; property: "opacity"; to: 1; duration: 2400; easing.type: Easing.InOutSine }
+                PauseAnimation { duration: 36000 }
+                NumberAnimation { target: drift; property: "opacity"; to: 0; duration: 2400; easing.type: Easing.InOutSine }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Auftakt
+    // Beim Start steht das Zeichen dort, wo es der Startbildschirm des Systems zuletzt gezeigt hat – in der
+    // Mitte, auf derselben dunklen Fläche. Es leuchtet auf, der Schriftzug kommt dazu, dann gibt die Fläche
+    // die Oberfläche frei, deren Kacheln eine nach der anderen erscheinen.
+    Rectangle {
+        id: intro
+        anchors.fill: parent
+        z: 100
+        color: "#0a0c11"
+        visible: opacity > 0
+        Image {
+            anchors.fill: parent
+            source: "image://lumenos/backdrop/0"
+            sourceSize: Qt.size(os.width, os.height)
+            opacity: 0.0
+            id: introLight
+        }
+        Column {
+            anchors.centerIn: parent
+            spacing: 34 * os.u
+            Image {
+                id: introEmblem
+                anchors.horizontalCenter: parent.horizontalCenter
+                source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-alpha.png"
+                height: 170 * os.u; width: height * 658 / 312
+                fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
+                opacity: 0.0
+                scale: 0.9
+            }
+            Text {
+                id: introWord
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("LUMEN")
+                color: Theme.text
+                font.family: Theme.font; font.pixelSize: 44 * os.u; font.weight: Font.Bold; font.letterSpacing: 22 * os.u
+                opacity: 0
+                // (der Sperrsatz hängt hinter dem letzten Buchstaben: um die Hälfte nach rechts, damit er mittig steht)
+                leftPadding: 22 * os.u
+            }
+        }
+        SequentialAnimation {
+            running: true
+            PauseAnimation { duration: 120 }
+            ScriptAction { script: os.sound("start") }
+            ParallelAnimation {
+                NumberAnimation { target: introEmblem; property: "opacity"; to: 1; duration: 520; easing.type: Easing.OutCubic }
+                NumberAnimation { target: introEmblem; property: "scale"; to: 1; duration: 900; easing.type: Easing.OutCubic }
+                NumberAnimation { target: introLight; property: "opacity"; to: 1; duration: 900 }
+                SequentialAnimation {
+                    PauseAnimation { duration: 320 }
+                    ParallelAnimation {
+                        NumberAnimation { target: introWord; property: "opacity"; to: 1; duration: 520 }
+                        NumberAnimation { target: introWord; property: "font.letterSpacing"; from: 34 * os.u; to: 22 * os.u; duration: 900; easing.type: Easing.OutCubic }
+                    }
+                }
+            }
+            PauseAnimation { duration: 520 }
+            ScriptAction { script: os.introDone = true }
+            ParallelAnimation {
+                NumberAnimation { target: intro; property: "opacity"; to: 0; duration: 560; easing.type: Easing.InOutSine }
+                NumberAnimation { target: introEmblem; property: "scale"; to: 1.12; duration: 560; easing.type: Easing.InCubic }
+            }
+        }
+    }
+
     // Ohne Grafiktreiber (Os.softwareGraphics) zeigte der Bildschirm ein einzelnes neues Bild – die Uhr,
     // eine Disc, die das Laufwerk verlassen hat – manchmal erst, wenn ein weiteres folgte: Qt hatte es
     // übergeben, der Compositor es bestätigt, zu sehen war es nicht. Ein Bildpunkt in der dunklen Ecke
@@ -427,6 +613,7 @@ Window {
                 { label: qsTr("Bluetooth"), icon: "bluetooth", dimmed: !Os.system, run: () => os.push(bluetoothPage) },
                 { label: qsTr("Wiedergabe"), icon: "play", detail: Profiles.current.name || "", run: () => os.push(playbackPage) },
                 { label: qsTr("Bild und Ton"), icon: "screen", detail: Os.display.name || "", dimmed: !Os.system, run: () => os.push(outputPage) },
+                { label: qsTr("Oberfläche"), icon: "sparkle", detail: [osSettings.sounds ? qsTr("Töne") : "", osSettings.music ? qsTr("Musik") : ""].filter(x => x).join(", "), run: () => os.push(interfacePage) },
                 { label: qsTr("Sprache"), icon: "language", detail: I18n.languages.find(l => l.code === I18n.effective).name, run: () => os.push(languagePage) },
                 { label: qsTr("Discs"), icon: "disc", dimmed: !Os.system, run: () => os.push(discSupportPage) },
                 { label: qsTr("Aktualisierung"), icon: "download", detail: qsTr("Lumen %1").arg(Os.info.version), dimmed: !Os.system, run: () => os.push(updatePage) },
@@ -646,6 +833,31 @@ Window {
                 .concat(Player.audioDevices.filter(a => a.name !== "auto").map(a => ({
                     label: a.description || a.name, detail: a.name === osSettings.audioDevice ? qsTr("aktiv") : "",
                     run: () => { osSettings.audioDevice = a.name; os.outputChanged(); os.back() } })))
+        }
+    }
+    // ------------------------------------------------------------------ Oberfläche: Töne, Musik, Bildschirmschoner
+    Component {
+        id: interfacePage
+        OsPage {
+            icon: "sparkle"
+            title: qsTr("Oberfläche")
+            note: Sounds.available ? qsTr("Töne begleiten, was du tust; in den Menüs liegt leise Musik darunter. Beides schweigt, sobald ein Film läuft.")
+                                   : qsTr("Auf diesem Gerät gibt es keinen Ton für die Oberfläche.")
+            function level(v) { return v < 0.5 ? qsTr("leise") : v < 0.85 ? qsTr("mittel") : qsTr("laut") }
+            function next(v) { return v < 0.5 ? 0.7 : v < 0.85 ? 1.0 : 0.4 }
+            entries: [
+                { label: qsTr("Töne der Oberfläche"), icon: "volume", checked: osSettings.sounds && Sounds.available, dimmed: !Sounds.available,
+                  run: () => osSettings.sounds = !osSettings.sounds },
+                { label: qsTr("Lautstärke der Töne"), icon: "volume", detail: level(osSettings.soundsVolume), dimmed: !Sounds.available || !osSettings.sounds,
+                  run: () => { osSettings.soundsVolume = next(osSettings.soundsVolume); os.sound("select") } },
+                { label: qsTr("Musik in den Menüs"), icon: "music", checked: osSettings.music && Sounds.available, dimmed: !Sounds.available,
+                  run: () => osSettings.music = !osSettings.music },
+                { label: qsTr("Lautstärke der Musik"), icon: "music", detail: level(osSettings.musicVolume), dimmed: !Sounds.available || !osSettings.music,
+                  run: () => osSettings.musicVolume = next(osSettings.musicVolume) },
+                { label: qsTr("Bildschirmschoner"), icon: "screen", checked: osSettings.saver, detail: qsTr("nach fünf Minuten ohne Eingabe"),
+                  run: () => osSettings.saver = !osSettings.saver }
+            ]
+            footer: qsTr("Eigene Töne und eigene Musik: Dateien mit den Namen der mitgelieferten in /etc/lumenos/sounds legen (siehe os/README.md).")
         }
     }
     Component {

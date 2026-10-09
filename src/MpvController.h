@@ -322,6 +322,8 @@ signals:
     void bufferingChanged();
     void lastErrorChanged();
     void profileApplied();
+    // gleich wird etwas geladen (noch ist kein Ausgang offen): wer den Tonausgang hält, gibt ihn jetzt frei
+    void aboutToLoad();
     void fileLoaded();
     // script-message "lumen-plugin" … von einem mpv-Skript (Plugin-System)
     void pluginMessage(const QStringList &args);

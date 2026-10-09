@@ -41,6 +41,7 @@
 #include "Edid.h"
 #include "KmsDisplay.h"
 #include "OsBridge.h"
+#include "UiAudio.h"
 #include "RipManager.h"
 #include "Updater.h"
 #include "I18n.h"
@@ -309,7 +310,8 @@ int main(int argc, char *argv[])
     }
     // Was das Gerät bestimmt: Tonausgang, durchgereichte Tonformate, HDR (Einstellungen › Bild und Ton)
     const bool directSetUp = player.direct();
-    const auto applyOutput = [&player, &os, &kms, directPossible, directSetUp] {
+    UiAudio *soundsRef = nullptr; // (entsteht weiter unten; applyOutput nennt ihm den Ausgang)
+    const auto applyOutput = [&player, &os, &kms, &soundsRef, directPossible, directSetUp] {
         if (!os.active() || !os.system())
             return;
         QSettings s;
@@ -346,6 +348,8 @@ int main(int argc, char *argv[])
             }
         }
         o["audio-device"] = device.isEmpty() ? QStringLiteral("auto") : device;
+        if (soundsRef)
+            soundsRef->setDevice(device);
         // Was der Bildschirm (oder der Verstärker davor) selbst entschlüsselt, steht in seinem EDID – es
         // gilt also nur für den Ausgang, an dem er hängt, nicht für Kopfhörerbuchse oder Lautsprecher.
         // (Entwickler-Hilfe: mit LUMEN_OS_EDID gilt der gewählte Ausgang als dieser.)
@@ -562,6 +566,18 @@ int main(int argc, char *argv[])
     // LumenOS: Fernbedienungen und Gamepads (alles außer Tastatur und Maus), nach ihrer Einrichtung.
     // Läuft etwas, steuern ihre Tasten die Wiedergabe; sonst kommen sie als Tasten bei der Oberfläche an.
     InputMapper remotes(osMode);
+    // LumenOS: die Klänge der Oberfläche. Der Film bekommt den Tonausgang für sich – sie schweigen, bevor
+    // er ihn öffnet, und kommen wieder, wenn er ihn geschlossen hat.
+    UiAudio sounds(os.kiosk());
+    QObject::connect(&player, &MpvController::aboutToLoad, &sounds, &UiAudio::suspend, Qt::DirectConnection);
+    QObject::connect(&player, &MpvController::idleChanged, &sounds, [&player, &sounds] {
+        if (player.idle())
+            QTimer::singleShot(900, &sounds, [&player, &sounds] { if (player.idle()) sounds.resume(); });
+    });
+    if (os.kiosk())
+        app.installEventFilter(&os);
+    soundsRef = &sounds;
+    applyOutput();
     QObject::connect(&player, &MpvController::displayHeldChanged, &remotes, [&player, &remotes] { remotes.setKeyboards(player.displayHeld()); });
     RipManager rip;
     QObject::connect(&remotes, &InputMapper::action, &app, [&](const QString &name, bool repeat) {
@@ -674,6 +690,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Cast", &cast);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Os", &os);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Remotes", &remotes);
+    qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Sounds", &sounds);
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Rip", &rip);
     Updater updater;
     qmlRegisterSingletonInstance("Lumen.Core", 1, 0, "Updater", &updater);

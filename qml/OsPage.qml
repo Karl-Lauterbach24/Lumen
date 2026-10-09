@@ -23,16 +23,25 @@ FocusScope {
     property int currentIndex: 0
     readonly property real u: os.u
 
+    // die Seite ist eben erschienen: ihre Zeilen kommen eine nach der anderen
+    property bool entering: true
+    Timer { interval: 620; running: true; onTriggered: page.entering = false }
+
     function activate(i) {
         const e = entries[i]
-        if (e && e.run && !e.dimmed && !busy) e.run()
+        if (e && e.run && !e.dimmed && !busy) {
+            os.sound(e.checked === undefined ? "select" : e.checked ? "off" : "on")
+            e.run()
+        }
     }
 
     function select(i) {
+        const before = currentIndex
         // (eine leere Liste – ein Auftrag läuft – vergisst die Stelle nicht)
         if (entries.length > 0)
             currentIndex = Math.max(0, Math.min(i, entries.length - 1))
         list.currentIndex = currentIndex
+        if (currentIndex !== before && !entering) os.sound("move")
     }
     onCurrentIndexChanged: list.currentIndex = currentIndex
     onEntriesChanged: Qt.callLater(() => select(currentIndex))
@@ -58,8 +67,17 @@ FocusScope {
         width: parent.width * 0.33
 
         Column {
+            id: headColumn
             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
             spacing: 22 * page.u
+            // Titel und Erklärung kommen von links herein, wenn die Seite erscheint
+            opacity: 0
+            transform: Translate { id: headShift; x: -36 * page.u }
+            ParallelAnimation {
+                running: true
+                NumberAnimation { target: headColumn; property: "opacity"; to: 1; duration: 340; easing.type: Easing.OutCubic }
+                NumberAnimation { target: headShift; property: "x"; to: 0; duration: 420; easing.type: Easing.OutCubic }
+            }
             Rectangle {
                 visible: page.icon.length > 0
                 width: 112 * page.u; height: width; radius: width / 2
@@ -144,17 +162,48 @@ FocusScope {
     ListView {
         id: list
         anchors.left: left.right; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
-        anchors.leftMargin: 72 * page.u
-        anchors.rightMargin: 96 * page.u
-        anchors.topMargin: 190 * page.u
-        anchors.bottomMargin: 70 * page.u
+        // (ringsum zwölf Einheiten Luft innerhalb der Liste: Der Schein um die gewählte Zeile reicht über sie
+        // hinaus und würde am Rand der Liste abgeschnitten)
+        anchors.leftMargin: 60 * page.u
+        anchors.rightMargin: 84 * page.u
+        anchors.topMargin: 178 * page.u
+        anchors.bottomMargin: 58 * page.u
+        leftMargin: 12 * page.u; rightMargin: 12 * page.u
+        topMargin: 12 * page.u; bottomMargin: 12 * page.u
         focus: true
         clip: true
         spacing: 14 * page.u
         // Die Liste weiß nur, wie viele Zeilen es sind; jede Zeile liest ihren Stand aus page.entries.
         // Ändert sich der Stand bei gleicher Länge, wird so nichts neu aufgebaut.
         model: page.entries.length
-        highlightMoveDuration: 140
+        highlightMoveDuration: 190
+        highlightResizeDuration: 0
+        highlightFollowsCurrentItem: true
+        // Die Markierung der gewählten Zeile: eine Fläche, die von Zeile zu Zeile gleitet
+        highlight: Item {
+            visible: list.count > 0 && page.StackView.status === StackView.Active
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -7 * page.u
+                radius: 26 * page.u
+                color: os.focusColor
+                opacity: 0.16
+                SequentialAnimation on opacity {
+                    running: !Os.softwareGraphics; loops: Animation.Infinite
+                    NumberAnimation { to: 0.26; duration: 1500; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.12; duration: 1500; easing.type: Easing.InOutSine }
+                }
+            }
+            Rectangle {
+                anchors.fill: parent
+                radius: 20 * page.u
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0; color: "#5f79f5" }
+                    GradientStop { position: 1; color: "#4155d2" }
+                }
+            }
+        }
         preferredHighlightBegin: height * 0.2
         preferredHighlightEnd: height * 0.8
         highlightRangeMode: ListView.ApplyRange
@@ -163,13 +212,22 @@ FocusScope {
         delegate: OsItem {
             required property int index
             readonly property var entry: page.entries[index] || ({})
-            width: list.width
+            width: list.width - 24 * page.u
             u: page.u
             label: entry.label || ""
             detail: entry.detail || ""
             iconName: entry.icon || ""
             dimmed: !!entry.dimmed
             checked: entry.checked
+            ownHighlight: false
+            appear: 0
+            NumberAnimation on appear {
+                id: rowEnter
+                running: false
+                to: 1; duration: 300; easing.type: Easing.OutCubic
+            }
+            Timer { id: rowDelay; interval: Math.min(index, 9) * 34; onTriggered: rowEnter.start() }
+            Component.onCompleted: { if (page.entering) rowDelay.start(); else appear = 1 }
             // (nicht activeFocus: das hängt daran, ob das Fenster gerade das aktive des Systems ist)
             current: page.currentIndex === index && page.StackView.status === StackView.Active
             onClicked: { page.select(index); page.activate(index) }

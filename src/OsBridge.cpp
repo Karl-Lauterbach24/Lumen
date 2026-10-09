@@ -1,5 +1,8 @@
 #include "OsBridge.h"
 
+#include <QDateTime>
+#include <QEvent>
+
 #include "MpvController.h"
 #include "Tuning.h"
 
@@ -578,8 +581,39 @@ void OsBridge::listFolder(const QString &path)
     }).detach();
 }
 
-QImage OsBackdrop::requestImage(const QString &, QSize *size, const QSize &requestedSize)
+void OsBridge::setSaver(bool on)
 {
+    if (m_saver == on)
+        return;
+    m_saver = on;
+    emit saverChanged();
+}
+
+// Jede Taste und jede Bewegung der Maus zählt als "jemand ist da". Läuft der Bildschirmschoner, wird die
+// Taste, die ihn weckt, verschluckt: Wer den Fernseher weckt, will nicht nebenbei etwas öffnen.
+bool OsBridge::eventFilter(QObject *watched, QEvent *event)
+{
+    const QEvent::Type type = event->type();
+    if (type == QEvent::KeyPress || type == QEvent::MouseMove || type == QEvent::MouseButtonPress || type == QEvent::Wheel) {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const bool swallow = m_saver && type == QEvent::KeyPress;
+        if (m_saver || now - m_lastActivity > 1000) {
+            m_lastActivity = now;
+            emit activity();
+        }
+        if (swallow)
+            return true;
+    } else if (type == QEvent::KeyRelease && m_saver) {
+        return true;
+    }
+    return QObject::eventFilter(watched, event);
+}
+
+// id: "backdrop" oder "backdrop/<n>" – dieselbe Fläche mit den Lichtflecken an anderer Stelle; die
+// Oberfläche blendet langsam von einer zur nächsten, so wandert das Licht.
+QImage OsBackdrop::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
+{
+    const int variant = id.section(QLatin1Char('/'), 1, 1).toInt();
     // nicht größer als Full HD gerechnet: der Verlauf ist weich, ein 4K-Bildschirm vergrößert ihn
     QSize s = requestedSize.isEmpty() ? QSize(1920, 1080) : requestedSize;
     if (s.width() > 1920 || s.height() > 1080)
@@ -591,7 +625,12 @@ QImage OsBackdrop::requestImage(const QString &, QSize *size, const QSize &reque
         double color[3];
         double alpha;        // Deckkraft in der Mitte
     };
-    static const Glow glows[] = {{0.12, 0.02, 0.85, {96, 122, 255}, 0.20}, {0.95, 1.02, 0.75, {160, 96, 255}, 0.11}};
+    static const Glow sets[3][2] = {
+        {{0.12, 0.02, 0.85, {96, 122, 255}, 0.20}, {0.95, 1.02, 0.75, {160, 96, 255}, 0.11}},
+        {{0.34, -0.04, 0.80, {84, 140, 255}, 0.17}, {0.78, 1.06, 0.82, {176, 92, 240}, 0.13}},
+        {{0.02, 0.22, 0.90, {110, 110, 255}, 0.18}, {1.04, 0.80, 0.78, {128, 104, 255}, 0.12}},
+    };
+    const Glow *glows = sets[((variant % 3) + 3) % 3];
     static const double top[3] = {13, 16, 23}, bottom[3] = {7, 8, 11};
     quint32 seed = 0x9e3779b9u;
     const auto noise = [&seed] { // -1 … 1, zur Mitte hin häufiger
@@ -612,7 +651,8 @@ QImage OsBackdrop::requestImage(const QString &, QSize *size, const QSize &reque
             double c[3];
             for (int i = 0; i < 3; ++i)
                 c[i] = top[i] + (bottom[i] - top[i]) * t;
-            for (const Glow &g : glows) {
+            for (int k = 0; k < 2; ++k) {
+                const Glow &g = glows[k];
                 const double dx = x - g.x * w, dy = y - g.y * h;
                 const double far = std::sqrt(dx * dx + dy * dy) / (g.radius * h);
                 if (far >= 1.0)

@@ -43,10 +43,15 @@ FocusScope {
     // an ihrem Stand etwas ändert (Netz, Datenträger, Disc), und die Liste finge dann wieder vorn an.
     property int card: 0
     function selectCard(i) {
+        const before = card
         if (cards.length > 0)
             card = Math.max(0, Math.min(i, cards.length - 1))
         top.currentIndex = card
+        if (card !== before && shown && !entering) os.sound("move")
     }
+    // beim ersten Erscheinen kommen die Kacheln eine nach der anderen (nach dem Auftakt, siehe OsMain)
+    property bool entering: true
+    Timer { interval: os.introDone ? 700 : 2600; running: true; onTriggered: home.entering = false }
     onCardsChanged: Qt.callLater(() => selectCard(card))
     // eine eingelegte Disc bringt ihre Kachel nach vorn: dort steht dann auch die Auswahl
     Connections {
@@ -55,15 +60,16 @@ FocusScope {
     }
 
     function activate() {
+        os.sound("select")
         if (row === 0) { const c = cards[card]; if (c) c.run() }
         else { const r = recents[bottom.currentIndex]; if (r) os.openPath(r.path) }
     }
     Keys.onPressed: event => {
         event.accepted = true
-        if (event.key === Qt.Key_Left) { if (row === 0) selectCard(card - 1); else bottom.decrementCurrentIndex() }
-        else if (event.key === Qt.Key_Right) { if (row === 0) selectCard(card + 1); else bottom.incrementCurrentIndex() }
-        else if (event.key === Qt.Key_Down && recents.length > 0) row = 1
-        else if (event.key === Qt.Key_Up) row = 0
+        if (event.key === Qt.Key_Left) { if (row === 0) selectCard(card - 1); else { const i = bottom.currentIndex; bottom.decrementCurrentIndex(); if (bottom.currentIndex !== i) os.sound("move") } }
+        else if (event.key === Qt.Key_Right) { if (row === 0) selectCard(card + 1); else { const i = bottom.currentIndex; bottom.incrementCurrentIndex(); if (bottom.currentIndex !== i) os.sound("move") } }
+        else if (event.key === Qt.Key_Down && recents.length > 0) { if (row !== 1) os.sound("move"); row = 1 }
+        else if (event.key === Qt.Key_Up) { if (row !== 0) os.sound("move"); row = 0 }
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Select || event.key === Qt.Key_Space) activate()
         else event.accepted = false
     }
@@ -83,6 +89,9 @@ FocusScope {
             color: home.trouble ? Theme.bad : Theme.text
             font.family: Theme.font; font.pixelSize: (home.trouble ? 30 : 58) * home.u; font.weight: Font.DemiBold
             elide: Text.ElideRight
+            // ein neuer Satz blendet herein
+            onTextChanged: headlineIn.restart()
+            NumberAnimation on opacity { id: headlineIn; from: 0; to: 1; duration: 420; easing.type: Easing.OutCubic }
         }
         ListView {
             id: top
@@ -109,6 +118,10 @@ FocusScope {
                 iconName: entry.icon || ""
                 current: home.row === 0 && home.card === index && home.shown
                 onClicked: { home.row = 0; home.selectCard(index); home.activate() }
+                appear: 0
+                NumberAnimation on appear { id: cardEnter; running: false; to: 1; duration: 460; easing.type: Easing.OutCubic }
+                Timer { id: cardDelay; interval: (os.introDone ? 60 : 1850) + index * 70; onTriggered: cardEnter.start() }
+                Component.onCompleted: { if (home.entering) cardDelay.start(); else appear = 1 }
             }
         }
         Text {

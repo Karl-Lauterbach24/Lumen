@@ -30,6 +30,7 @@ rfkill
 util-linux
 unattended-upgrades
 initramfs-tools
+plymouth
 zstd
 unzip
 
