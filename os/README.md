@@ -69,8 +69,12 @@ possible:
   10 bits, its own curve, the mastering data it carries – and the display does the rest. Otherwise, or
   with the switch off, mpv converts the film to SDR. An HLG film on a display that knows only HDR10 is
   converted to HDR10. **Dolby Vision and HDR10+** films carry the PQ curve: mpv reads what they say
-  about each scene, and the display gets HDR10 – neither format's own signalling can be sent from
-  Linux.
+  about each scene, and the display gets HDR10. Their own signalling to the display travels in HDMI
+  packets that Linux gives programs no way to send (and Dolby Vision needs Dolby's licensed processing
+  in the player), so the display's "Dolby Vision" or "HDR10+" sign stays off. *Update HDR data scene by
+  scene (experimental)* is the nearest thing: the brightness these films name for each scene is sent
+  as HDR10 data that changes from scene to scene. Some displays then treat each scene on its own;
+  others take no notice or go dark for a moment at every change – hence off unless you turn it on.
 - **The film's frame rate.** The display is switched to a mode that fits the film – 23.976 for cinema
   films, 50 or 59.94 for the rest, in the display's preferred resolution – and back when the film ends.
 - **Dolby and DTS unchanged.** What the display or the receiver in front of it says it decodes itself

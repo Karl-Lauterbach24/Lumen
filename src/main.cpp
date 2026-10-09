@@ -319,7 +319,7 @@ int main(int argc, char *argv[])
         // (oder abgeschaltet) rechnet mpv auf SDR um
         const bool hdrOut = player.direct() && kms.hdrMetadata && kms.colorspace && edid.bt2020
                             && s.value(QStringLiteral("os/hdr"), true).toBool();
-        player.setDirectHdr(hdrOut && edid.hdr10, hdrOut && edid.hlg);
+        player.setDirectHdr(hdrOut && edid.hdr10, hdrOut && edid.hlg, s.value(QStringLiteral("os/scene"), false).toBool());
         player.setDirectRateMatching(s.value(QStringLiteral("os/rate"), true).toBool());
         QString device = s.value(QStringLiteral("os/audioDevice")).toString();
         const QVariantList known = player.audioDevices();

@@ -292,7 +292,10 @@ support-status)
     ls "$OPTIONAL"/libdvdcss2_*.deb > /dev/null 2>&1 && echo dvdcss_bundled=yes || echo dvdcss_bundled=no
     ldconfig -p | grep -q 'libdvdcss\.so' && echo dvdcss=yes || echo dvdcss=no
     if command -v makemkvcon > /dev/null 2>&1; then
-        echo "makemkv=$(makemkvcon --version 2> /dev/null | head -1 | sed 's/^MakeMKV //; s/ .*//' | cut -c1-20)"
+        # the version the setup noted (makemkvcon is not asked: it would look at the drives);
+        # "yes" for a MakeMKV that came another way
+        version="$(head -c 20 /var/lib/lumenos/makemkv-version 2> /dev/null | tr -cd '0-9.')"
+        echo "makemkv=${version:-yes}"
     else
         echo makemkv=
     fi

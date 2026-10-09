@@ -377,14 +377,16 @@ void MpvController::setDirect(const KmsOutput &output, DisplayClaim claim)
     connect(&m_directRelease, &QTimer::timeout, this, &MpvController::releaseDisplay, Qt::UniqueConnection);
 }
 
-void MpvController::setDirectHdr(bool pq, bool hlg)
+void MpvController::setDirectHdr(bool pq, bool hlg, bool perScene)
 {
-    if (m_hdrPq == pq && m_hdrHlg == hlg)
+    if (m_hdrPq == pq && m_hdrHlg == hlg && m_hdrPerScene == perScene)
         return;
     m_hdrPq = pq;
     m_hdrHlg = hlg;
+    m_hdrPerScene = perScene;
     if (m_mpv && m_direct) {
         setOptionRaw(QStringLiteral("target-colorspace-hint"), pq || hlg ? QStringLiteral("yes") : QStringLiteral("no"), false);
+        setOptionRaw(QStringLiteral("target-colorspace-hint-mode"), perScene ? QStringLiteral("source-dynamic") : QStringLiteral("target"), false);
         applyDirectColor();
     }
 }
@@ -1786,6 +1788,9 @@ QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
         // (ein Fenstersystem, dessen Farbraum vorginge, gibt es hier nicht: das Ziel gilt, wie es hier steht –
         // sonst bliebe es bei den Grundfarben von SDR, bis mpv dem Bildschirm das erste Bild angekündigt hat)
         o["target-colorspace-hint-strict"] = QStringLiteral("no");
+        // "target": die Angaben des Films, wie er sie für sein Ganzes macht (einen Bildschirm, dessen eigene
+        // vorgingen, kennt mpv hier nicht). "source-dynamic": die Helligkeit jeder Szene, wo der Film sie nennt.
+        o["target-colorspace-hint-mode"] = m_hdrPerScene ? QStringLiteral("source-dynamic") : QStringLiteral("target");
         const bool hdrOut = !m_directTrc.isEmpty() && m_directTrc != QLatin1String("auto");
         o["target-trc"] = hdrOut ? m_directTrc : QStringLiteral("auto");
         o["target-prim"] = hdrOut ? QStringLiteral("bt.2020") : QStringLiteral("auto");

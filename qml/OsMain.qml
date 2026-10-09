@@ -46,6 +46,7 @@ Window {
         // Bild und Ton (das Programm liest sie: os/hdr, os/rate, os/bitstream, os/audioDevice)
         property bool direct: true       // Filme direkt auf den Bildschirm (wo das Gerät es hergibt)
         property bool hdr: true          // HDR an den Bildschirm durchreichen
+        property bool scene: false       // … und was Dolby Vision und HDR10+ je Szene angeben, als HDR10-Angabe mitschicken
         property bool rate: true         // Bildrate des Films übernehmen
         property bool bitstream: true    // Dolby und DTS unverändert an den Verstärker
         property string audioDevice: ""  // leer = der Ausgang am Bildschirm
@@ -617,6 +618,9 @@ Window {
                 { label: qsTr("HDR an den Bildschirm durchreichen"), icon: "sparkle", checked: osSettings.hdr && hdrPossible, dimmed: !hdrPossible,
                   detail: !d.direct ? "" : hdrFormats.length === 0 ? qsTr("der Bildschirm meldet kein HDR") : !d.hdrSignal ? qsTr("die Grafik kann es nicht ankündigen") : hdrFormats.join(", "),
                   run: () => { osSettings.hdr = !osSettings.hdr; os.outputChanged() } },
+                { label: qsTr("HDR-Angaben je Szene nachführen (Versuch)"), icon: "sparkle", checked: osSettings.scene && osSettings.hdr && hdrPossible,
+                  dimmed: !(hdrPossible && osSettings.hdr), detail: qsTr("für Filme in Dolby Vision und HDR10+"),
+                  run: () => { osSettings.scene = !osSettings.scene; os.outputChanged() } },
                 { label: qsTr("Bildrate des Films übernehmen"), icon: "film", checked: osSettings.rate && !!d.direct, dimmed: !d.direct,
                   run: () => { osSettings.rate = !osSettings.rate; os.outputChanged() } },
                 { label: qsTr("Dolby und DTS unverändert ausgeben"), icon: "volume", checked: osSettings.bitstream && (d.bitstream || []).length > 0, dimmed: (d.bitstream || []).length === 0,
@@ -628,7 +632,7 @@ Window {
                   run: () => os.push(audioOutputPage) }
             ]
             footer: d.direct && (d.dolbyVision || d.hdr10plus || d.hdr10)
-                ? qsTr("Filme in Dolby Vision und HDR10+ kommen als HDR10 beim Bildschirm an.") : ""
+                ? qsTr("Filme in Dolby Vision und HDR10+ kommen als HDR10 beim Bildschirm an. Mit den Angaben je Szene erfährt der Bildschirm dabei die Helligkeit jeder Szene; manche werden bei jedem Wechsel kurz dunkel.") : ""
         }
     }
     Component {
@@ -883,7 +887,7 @@ Window {
                 { label: qsTr("DVD: libdvdcss"), icon: "disc", checked: state.dvdcss === "yes",
                   run: () => state.dvdcss === "yes" ? support.run("remove-dvdcss", [], qsTr("Entferne libdvdcss …")) : support.run("install-dvdcss", [], qsTr("Richte libdvdcss ein …")) },
                 { label: state.makemkv ? qsTr("MakeMKV neu einrichten") : qsTr("MakeMKV einrichten (Abspielen und Kopieren)"), icon: "download",
-                  detail: state.makemkv ? state.makemkv : "",
+                  detail: state.makemkv && state.makemkv !== "yes" ? state.makemkv : "",
                   run: () => os.push(makemkvPage, { install: () => support.run("install-makemkv", [], qsTr("Lade und baue MakeMKV … (zehn Minuten und mehr)")) }) },
                 { label: qsTr("MakeMKV: Beta-Schlüssel aus dessen Forum eintragen"), icon: "key", dimmed: !state.makemkv,
                   run: () => support.run("makemkv-betakey", [], qsTr("Lese den Schlüssel aus dem MakeMKV-Forum …")) },

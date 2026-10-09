@@ -17,6 +17,8 @@ SITE="${LUMENOS_MAKEMKV_SITE:-https://www.makemkv.com}"
 LINUX_PAGE="${LUMENOS_MAKEMKV_LINUX_PAGE:-https://forum.makemkv.com/forum/viewtopic.php?f=3&t=224}"
 KEY_PAGE="${LUMENOS_MAKEMKV_KEY_PAGE:-https://forum.makemkv.com/forum/viewtopic.php?f=5&t=1053}"
 AGENT='Mozilla/5.0 (LumenOS)'
+VERSION_FILE=/var/lib/lumenos/makemkv-version
+BEFORE=/var/lib/lumenos/makemkv-before
 
 die() { echo "$*" >&2; exit 1; }
 home() { getent passwd "$USER_NAME" | cut -d: -f6; }
@@ -65,6 +67,25 @@ keep_libraries() {
     [ -z "$packages" ] || apt-mark manual $packages
 }
 
+# The build tools are not needed any more. What the build step added is marked as "came along", the
+# libraries MakeMKV runs with as wanted, and then everything of the added that nothing wanted depends
+# on is removed – also what is merely recommended by something else (a compiler recommended by a
+# packaging tool would stay otherwise). Packages that were there before are not touched.
+remove_build_tools() {
+    local added removable mine
+    added="$(dpkg-query -W -f '${Package}\n' | sort -u | comm -13 "$BEFORE" -)"
+    rm -f "$BEFORE"
+    [ -n "$added" ] || return 0
+    apt-mark auto $added > /dev/null
+    keep_libraries
+    removable="$(apt-get -s -o APT::AutoRemove::RecommendsImportant=false -o APT::AutoRemove::SuggestsImportant=false autoremove 2> /dev/null \
+        | awk '$1 == "Remv" { sub(/:.*/, "", $2); print $2 }' | sort -u)"
+    mine="$(comm -12 <(echo "$removable") <(echo "$added"))"
+    [ -z "$mine" ] || apt-get purge -y -q $mine || true
+    # the downloaded package files
+    apt-get clean
+}
+
 missing_libraries() { parts | xargs -r ldd 2> /dev/null | awk '/not found/ { print $1 }' | sort -u | tr '\n' ' ' | sed 's/ $//'; }
 
 case "${1:-}" in
@@ -73,6 +94,9 @@ version)
     ;;
 install)
     version="$(current_version)" || exit 1
+    # what is installed before the build tools come: afterwards exactly what they added goes again
+    mkdir -p "$(dirname "$BEFORE")"
+    dpkg-query -W -f '${Package}\n' | sort -u > "$BEFORE"
     {
         echo "=== $(date) MakeMKV $version"
         apt-get update -q
@@ -100,11 +124,10 @@ install)
         ldconfig
     ) >> "$LOG" 2>&1 || die "the build failed (see $LOG)"
     command -v makemkvcon > /dev/null || die "the build left no makemkvcon (see $LOG)"
-    # the build tools are not needed any more – the libraries MakeMKV runs with are: they came along
-    # with the build packages and would leave with them
-    keep_libraries >> "$LOG" 2>&1
-    apt-get purge -y -q build-essential libssl-dev libexpat1-dev zlib1g-dev libavcodec-dev >> "$LOG" 2>&1 || true
-    apt-get autoremove -y -q >> "$LOG" 2>&1 || true
+    # (makemkvcon has no switch that names its version; asking it any other way makes it look at the drives)
+    mkdir -p "$(dirname "$VERSION_FILE")"
+    echo "$version" > "$VERSION_FILE"
+    remove_build_tools >> "$LOG" 2>&1
     if missing="$(missing_libraries)" && [ -n "$missing" ]; then
         die "MakeMKV is built, but libraries it needs are missing: $missing (see $LOG)"
     fi

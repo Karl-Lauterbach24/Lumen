@@ -124,7 +124,9 @@ public:
     void setDirectRateMatching(bool on) { m_directRate = on; }
     // HDR durchreichen: mit welchen Kennlinien der Bildschirm es annimmt (PQ: HDR10, HDR10+, Dolby
     // Vision; HLG). Beides aus: jeder Film wird auf SDR umgerechnet.
-    void setDirectHdr(bool pq, bool hlg);
+    // perScene: was Dolby Vision und HDR10+ über jede Szene sagen, geht als HDR10-Angabe mit, die sich
+    // von Szene zu Szene ändert (deren eigene Übertragung gibt es unter Linux nicht).
+    void setDirectHdr(bool pq, bool hlg, bool perScene = false);
     // mpv kann direkt ausgeben (mit libdrm und GBM gebaut)
     static bool directSupported();
     // LumenOS: Optionen, die das Gerät bestimmt und nicht das Ausgabeprofil – der Tonausgang am
@@ -454,6 +456,7 @@ private:
     bool m_directRate = true;
     bool m_hdrPq = false;
     bool m_hdrHlg = false;
+    bool m_hdrPerScene = false;
     QString m_directTrc;            // die Kennlinie, in der gerade ausgegeben wird ("auto": SDR)
     int m_directFlipErrors = 0;     // Bilder in Folge, die der Treiber nicht annahm
     void applyDirectColor();
