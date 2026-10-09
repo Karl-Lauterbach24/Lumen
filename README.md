@@ -134,6 +134,9 @@ for PCs and `LumenOS-<version>-arm64.iso` for ARM machines with UEFI – and are
   for; keyboard and mouse work at once.
 - **Discs** from any SATA or USB drive, **films** from the internal disk, USB storage and SMB/NFS
   shares; **copying discs** to any of these with MakeMKV, if you set that up.
+- **Picture and sound as on a disc player**, where the machine has a graphics driver: a film gets the
+  display to itself – HDR10 and HLG are passed through (Dolby Vision and HDR10+ arrive as HDR10), the
+  display follows the film's frame rate, and Dolby and DTS go to a receiver unchanged.
 - **Updates itself** from the latest release, checked against its checksums, and only while nothing is
   playing – or from a USB stick without a network: the package, the update zip, or the source code as
   GitHub's zip for interface, translations and scripts.

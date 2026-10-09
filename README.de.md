@@ -133,6 +133,10 @@ werden auf einen USB-Stick geschrieben.
   Taste drückt, nach der Lumen fragt; Tastatur und Maus funktionieren sofort.
 - **Discs** aus jedem SATA- oder USB-Laufwerk, **Filme** vom internen Speicher, von USB-Datenträgern und
   SMB-/NFS-Freigaben; **Discs kopieren** auf jeden dieser Orte mit MakeMKV, wenn man es einrichtet.
+- **Bild und Ton wie von einem Disc-Spieler**, wo das Gerät einen Grafiktreiber hat: Der Film bekommt
+  den Bildschirm für sich – HDR10 und HLG werden durchgereicht (Dolby Vision und HDR10+ kommen als
+  HDR10 an), der Bildschirm übernimmt die Bildrate des Films, und Dolby und DTS gehen unverändert an
+  einen Verstärker.
 - **Aktualisiert sich selbst** aus dem neuesten Release, gegen dessen Prüfsummen geprüft und nur, wenn
   nichts läuft – oder ohne Netz von einem USB-Stick: das Paket, das Update-Zip oder der Quelltext als
   Zip von GitHub für Oberfläche, Übersetzungen und Skripte.
