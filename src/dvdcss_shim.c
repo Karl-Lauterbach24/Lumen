@@ -65,10 +65,12 @@ static void load_real(void)
     const char *path;
     if (g_real.tried)
         return;
-    g_real.tried = 1;
+    /* Ist (noch) keine Bibliothek genannt oder lässt sie sich (noch) nicht laden, wird beim nächsten
+     * Öffnen wieder nachgesehen: LumenOS richtet libdvdcss ein, während Lumen läuft. */
     path = getenv("LUMEN_DVDCSS_LIBRARY");
     if (!path || !*path)
         return;
+    g_real.tried = 1;
 #ifdef _WIN32
     {
         wchar_t wpath[MAX_PATH * 2];
@@ -76,8 +78,10 @@ static void load_real(void)
         if (!MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH * 2))
             return;
         h = LoadLibraryW(wpath);
-        if (!h)
+        if (!h) {
+            g_real.tried = 0;
             return;
+        }
         g_real.open = (open_fn)(void *)GetProcAddress(h, "dvdcss_open");
         g_real.open_stream = (open_stream_fn)(void *)GetProcAddress(h, "dvdcss_open_stream");
         g_real.close = (close_fn)(void *)GetProcAddress(h, "dvdcss_close");
@@ -89,8 +93,10 @@ static void load_real(void)
 #else
     {
         void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-        if (!h)
+        if (!h) {
+            g_real.tried = 0;
             return;
+        }
         g_real.open = (open_fn)dlsym(h, "dvdcss_open");
         g_real.open_stream = (open_stream_fn)dlsym(h, "dvdcss_open_stream");
         g_real.close = (close_fn)dlsym(h, "dvdcss_close");

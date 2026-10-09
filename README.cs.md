@@ -41,6 +41,7 @@ Všechny balíčky obsahují stejné multimediální knihovny (FFmpeg s dekodér
 - **Zvukové CD:** názvy stop z CD-Textu nebo, s pluginem *Disc identification*, z MusicBrainz.
 - **Každodenní používání:** seznam naposledy přehraných s pokračováním, přetažení myší, externí soubory s titulky, klávesové zkratky (F1).
 - **Rozhraní v 16 jazycích**, volitelné v záhlaví okna (symbol zeměkoule).
+- **LumenOS:** Lumen jako samostatný přehrávač – obraz pro flash disk USB (x86-64 a ARM64), který se spustí rovnou do Lumenu na televizi, ovládá se dálkovým ovladačem, sám se aktualizuje a kopíruje disky na svůj disk, disk USB nebo NAS. Viz [os/README.md](os/README.md).
 
 ## Ochrana proti kopírování
 

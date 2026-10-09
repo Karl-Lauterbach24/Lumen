@@ -33,30 +33,32 @@ FocusScope {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 80 * setup.u
-        anchors.topMargin: 64 * setup.u
+        anchors.leftMargin: 96 * setup.u; anchors.rightMargin: 96 * setup.u
+        anchors.topMargin: 180 * setup.u; anchors.bottomMargin: 60 * setup.u
         spacing: 20 * setup.u
 
         Text {
             Layout.fillWidth: true
             text: qsTr("%1 einrichten").arg(Remotes.wizardDevice)
-            color: Theme.text; font.pixelSize: 52 * setup.u; font.weight: Font.DemiBold; elide: Text.ElideRight
+            color: Theme.text; font.family: Theme.font; font.pixelSize: 52 * setup.u; font.weight: Font.DemiBold; elide: Text.ElideRight
         }
         Text {
             Layout.fillWidth: true
             text: qsTr("Drücke auf dem Gerät die Taste für:")
-            color: Theme.textDim; font.pixelSize: 30 * setup.u
+            color: Theme.textDim; font.family: Theme.font; font.pixelSize: 30 * setup.u
         }
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 190 * setup.u
-            radius: 20 * setup.u
-            color: Theme.raised
-            border.color: Theme.accent; border.width: 3 * setup.u
+            radius: 26 * setup.u
+            gradient: Gradient {
+                GradientStop { position: 0; color: "#6f86f7" }
+                GradientStop { position: 1; color: "#3f56d4" }
+            }
             Text {
                 anchors.centerIn: parent
                 text: setup.label(setup.current.id)
-                color: Theme.text; font.pixelSize: 76 * setup.u; font.weight: Font.Bold
+                color: Theme.text; font.family: Theme.font; font.pixelSize: 76 * setup.u; font.weight: Font.Bold
             }
         }
         Text {
@@ -65,7 +67,7 @@ FocusScope {
                 : setup.current.optional ? qsTr("Wahlfrei: Die Taste für „Zurück“ lässt diese Funktion aus, die Taste für „OK“ schließt die Einrichtung ab.")
                 : qsTr("Schritt %1 von %2").arg(setup.step + 1).arg(Remotes.requiredSteps)
             color: Remotes.wizardTaken ? Theme.warn : Theme.textDim
-            font.pixelSize: 26 * setup.u; wrapMode: Text.WordWrap
+            font.family: Theme.font; font.pixelSize: 26 * setup.u; wrapMode: Text.WordWrap
         }
         // Übersicht: was schon zugeordnet ist
         Flow {
@@ -87,7 +89,7 @@ FocusScope {
                         anchors.centerIn: parent
                         text: (modelData.done ? "✓ " : "") + setup.label(modelData.id)
                         color: modelData.done ? Theme.good : index === setup.step ? Theme.text : Theme.textDim
-                        font.pixelSize: 22 * setup.u
+                        font.family: Theme.font; font.pixelSize: 22 * setup.u
                     }
                 }
             }
@@ -96,7 +98,7 @@ FocusScope {
         Text {
             Layout.fillWidth: true
             text: qsTr("Ohne Eingabe endet die Einrichtung nach anderthalb Minuten. Mit einer Tastatur: Esc bricht ab, die Leertaste lässt eine wahlfreie Funktion aus.")
-            color: Theme.textFaint; font.pixelSize: 22 * setup.u; wrapMode: Text.WordWrap
+            color: Theme.textFaint; font.family: Theme.font; font.pixelSize: 22 * setup.u; wrapMode: Text.WordWrap
         }
     }
 }

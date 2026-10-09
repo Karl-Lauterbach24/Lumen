@@ -10,8 +10,13 @@
 #
 # What is in the image: Debian's base system and kernel with firmware, a compositor for one
 # program (cage), sound (PipeWire), network (NetworkManager), Bluetooth (BlueZ), and Lumen from the
-# package given – which brings LumenOS's own part (share/lumen/os) with it. No keys and no
-# decryption code for discs: see os/README.md.
+# package given – which brings LumenOS's own part (share/lumen/os) with it.
+#
+# For encrypted discs the image carries two things that are not installed until the user says yes
+# in the setup (see os/README.md): libdvdcss as a package built while the image is made, and the
+# Blu-ray key database of its community as it is on that day. Leave them out with
+#   LUMENOS_NO_DVDCSS=1   LUMENOS_NO_KEYDB=1
+# (the device then builds or loads them itself when asked, which needs a network).
 set -euo pipefail
 arch="${1:?architecture: amd64 or arm64}"
 deb="$(readlink -f "${2:?the Lumen package for that architecture}")"
@@ -91,6 +96,22 @@ cp "$here/setup.hook" config/hooks/normal/9000-lumenos.hook.chroot
 chmod +x config/hooks/normal/9000-lumenos.hook.chroot
 printf 'LUMENOS_IMAGE=%s\nLUMENOS_ARCH=%s\nLUMENOS_BUILT=%s\n' "$version" "$arch" "$(date -u +%Y-%m-%d)" > config/includes.chroot/etc/lumenos/image
 
+# --- carried along, not installed: what the setup offers for encrypted discs
+optional=config/includes.chroot/usr/share/lumenos-optional
+mkdir -p "$optional"
+[ -n "${LUMENOS_NO_DVDCSS:-}" ] || touch "$optional/.dvdcss"   # setup.hook builds it and removes the mark
+if [ -z "${LUMENOS_NO_KEYDB:-}" ]; then
+    keydb="${LUMENOS_KEYDB_URL:-http://fvonline-db.bplaced.net/export/keydb_eng.zip}"
+    # (a zip names its files in plain text: enough to tell the database from an error page, and the
+    # machine that builds needs no unzip for it)
+    if curl -fsSL --retry 2 --max-time 600 -o "$optional/keydb.zip" "$keydb" && [ "$(head -c 2 "$optional/keydb.zip")" = PK ] && grep -aqi 'keydb\.cfg' "$optional/keydb.zip"; then
+        echo "key database of $(date -u +%Y-%m-%d): $(du -h "$optional/keydb.zip" | cut -f1)"
+    else
+        rm -f "$optional/keydb.zip"
+        echo "the key database could not be loaded from $keydb - the image goes without (the device loads it when asked)"
+    fi
+fi
+
 # --- the boot menu
 # (live-build keeps the menu of both loaders, BIOS and UEFI, in "grub-pc")
 mkdir -p config/bootloaders
@@ -105,6 +126,8 @@ if ! lb build > "$work/build.log" 2>&1; then
 fi
 iso="$(ls "$work"/LumenOS-*.iso "$work"/*.hybrid.iso 2> /dev/null | head -1)"
 [ -f "$iso" ] || { echo "no image came out"; tail -30 "$work/build.log"; exit 1; }
+echo "carried along: $(ls "$work/chroot/usr/share/lumenos-optional" 2> /dev/null | tr '\n' ' ')"
+grep -a 'LumenOS: ' "$work/build.log" | tail -3 || true
 target="$out/LumenOS-$version-$arch.iso"
 mv "$iso" "$target"
 ( cd "$out" && sha256sum "$(basename "$target")" > "$(basename "$target").sha256" )

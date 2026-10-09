@@ -28,7 +28,15 @@ const Language kLanguages[] = {
 QHash<QString, QString> JsonTranslator::read(const QString &language)
 {
     QHash<QString, QString> map;
+    // LumenOS: Übersetzungen aus einem Zip des Quelltexts gehen denen des Programms vor
+    // (LUMEN_OS_OVERLAY bzw. /var/lib/lumenos/overlay, siehe OsBridge::overlayDir)
     QFile f(QStringLiteral(":/qt/qml/Lumen/i18n/%1.json").arg(language));
+    if (qEnvironmentVariableIsSet("LUMEN_OS_ACTIVE")) {
+        const QString overlay = qEnvironmentVariable("LUMEN_OS_OVERLAY", QStringLiteral("/var/lib/lumenos/overlay"))
+                                + QStringLiteral("/i18n/%1.json").arg(language);
+        if (QFile::exists(overlay))
+            f.setFileName(overlay);
+    }
     if (!f.open(QIODevice::ReadOnly))
         return map;
     const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();

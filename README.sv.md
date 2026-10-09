@@ -41,6 +41,7 @@ Alla paket innehåller samma mediebibliotek (FFmpeg med Blu-ray 3D-avkodare, lib
 - **Ljud-cd:** spårnamn från CD-Text eller, med pluginet *Disc identification*, från MusicBrainz.
 - **I vardagen:** lista över senast spelade med återupptagning, dra och släpp, externa undertextfiler, kortkommandon (F1).
 - **Gränssnitt på 16 språk**, väljs i fönstrets rubrikrad (jordglobssymbolen).
+- **LumenOS:** Lumen som fristående spelare – en avbild för USB-sticka (x86-64 och ARM64) som startar direkt i Lumen på tv:n, styrs med fjärrkontroll, uppdaterar sig själv och kopierar skivor till sin disk, en USB-disk eller en NAS. Se [os/README.md](os/README.md).
 
 ## Kopieringsskydd
 

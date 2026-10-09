@@ -75,17 +75,17 @@ FocusScope {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 80 * kb.u
-        anchors.topMargin: 64 * kb.u
-        spacing: 26 * kb.u
+        anchors.leftMargin: 96 * kb.u; anchors.rightMargin: 96 * kb.u
+        anchors.topMargin: 180 * kb.u; anchors.bottomMargin: 60 * kb.u
+        spacing: 22 * kb.u
 
-        Text { text: kb.title; color: Theme.text; font.pixelSize: 44 * kb.u; font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+        Text { text: kb.title; color: Theme.text; font.family: Theme.font; font.pixelSize: 44 * kb.u; font.weight: Font.DemiBold; Layout.fillWidth: true; wrapMode: Text.WordWrap }
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 92 * kb.u
-            radius: 14 * kb.u
-            color: Theme.raised
-            border.color: Theme.accent; border.width: 2 * kb.u
+            radius: 20 * kb.u
+            color: Qt.rgba(1, 1, 1, 0.06)
+            border.color: os.focusColor; border.width: 3 * kb.u
             Text {
                 anchors.fill: parent
                 anchors.leftMargin: 28 * kb.u; anchors.rightMargin: 28 * kb.u
@@ -109,12 +109,15 @@ FocusScope {
                     Rectangle {
                         required property int index
                         readonly property bool current: kb.row === line.index && kb.column === index
-                        width: 104 * kb.u; height: 88 * kb.u; radius: 12 * kb.u
-                        color: current ? Theme.accent : Theme.raised
+                        width: 104 * kb.u; height: 84 * kb.u; radius: 16 * kb.u
+                        color: current ? os.focusColor : Qt.rgba(1, 1, 1, 0.06)
+                        scale: current ? 1.08 : 1
+                        Behavior on scale { NumberAnimation { duration: 90 } }
                         Text {
                             anchors.centerIn: parent
                             text: { const c = kb.rows[line.index][parent.index]; return kb.shift ? c.toUpperCase() : c }
-                            color: parent.current ? Theme.bg : Theme.text
+                            color: Theme.text
+                            font.family: Theme.font
                             font.pixelSize: 34 * kb.u
                         }
                         MouseArea { anchors.fill: parent; onClicked: { kb.row = line.index; kb.column = parent.index; kb.press() } }
@@ -133,12 +136,13 @@ FocusScope {
                     readonly property bool current: kb.row === 4 && kb.column === index
                     readonly property bool on: (modelData === "shift" && kb.shift) || (modelData === "symbols" && kb.symbols)
                     visible: modelData !== "reveal" || kb.password
-                    width: (modelData === "space" ? 330 : modelData === "ok" ? 220 : 160) * kb.u; height: 88 * kb.u; radius: 12 * kb.u
-                    color: current ? Theme.accent : on ? Theme.hover : Theme.raised
+                    width: (modelData === "space" ? 330 : modelData === "ok" ? 220 : 160) * kb.u; height: 84 * kb.u; radius: 16 * kb.u
+                    color: current ? os.focusColor : on ? Qt.rgba(1, 1, 1, 0.16) : Qt.rgba(1, 1, 1, 0.06)
                     Text {
                         anchors.centerIn: parent
                         text: kb.actionLabel(parent.modelData)
-                        color: parent.current ? Theme.bg : parent.modelData === "ok" ? Theme.accent : Theme.text
+                        color: !parent.current && parent.modelData === "ok" ? Theme.accent : Theme.text
+                        font.family: Theme.font
                         font.pixelSize: 28 * kb.u
                     }
                     MouseArea { anchors.fill: parent; onClicked: { kb.row = 4; kb.column = parent.index; kb.press() } }
@@ -149,7 +153,7 @@ FocusScope {
         Text {
             Layout.fillWidth: true
             text: qsTr("Pfeiltasten wählen ein Zeichen, OK setzt es. „Fertig“ übernimmt die Eingabe, Zurück verwirft sie.")
-            color: Theme.textFaint; font.pixelSize: 22 * kb.u; wrapMode: Text.WordWrap
+            color: Theme.textFaint; font.family: Theme.font; font.pixelSize: 21 * kb.u; wrapMode: Text.WordWrap
         }
     }
 }

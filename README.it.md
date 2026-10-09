@@ -41,6 +41,7 @@ Tutti i pacchetti contengono le stesse librerie multimediali (FFmpeg con decodif
 - **CD audio:** nomi delle tracce dal CD-Text oppure, con il plugin *Disc identification*, da MusicBrainz.
 - **Uso quotidiano:** elenco dei contenuti riprodotti di recente con ripresa, trascinamento, file di sottotitoli esterni, scorciatoie da tastiera (F1).
 - **Interfaccia in 16 lingue**, selezionabile nell'intestazione della finestra (simbolo del globo).
+- **LumenOS:** Lumen come lettore autonomo – un'immagine per chiavetta USB (x86-64 e ARM64) che si avvia direttamente in Lumen sul televisore, si usa con il telecomando, si aggiorna da sola e copia i dischi sul proprio disco, su un disco USB o su un NAS. Vedi [os/README.md](os/README.md).
 
 ## Protezione anticopia
 

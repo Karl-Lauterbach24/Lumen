@@ -41,6 +41,7 @@ Todos os pacotes contêm as mesmas bibliotecas multimédia (FFmpeg com descodifi
 - **CD de áudio:** nomes das faixas a partir do CD-Text ou, com o plugin *Disc identification*, do MusicBrainz.
 - **No dia a dia:** lista de reproduzidos recentemente com retoma, arrastar e largar, ficheiros de legendas externos, atalhos de teclado (F1).
 - **Interface em 16 idiomas**, selecionável no cabeçalho da janela (símbolo do globo).
+- **LumenOS:** o Lumen como reprodutor autônomo – uma imagem para pendrive (x86-64 e ARM64) que inicia direto no Lumen na televisão, é operada com o controle remoto, atualiza-se sozinha e copia discos para o seu disco, um disco USB ou um NAS. Veja [os/README.md](os/README.md).
 
 ## Proteção contra cópia
 

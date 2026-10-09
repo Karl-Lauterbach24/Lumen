@@ -41,6 +41,7 @@ Tüm paketler aynı medya kitaplıklarını içerir (Blu-ray 3D kod çözücül�
 - **Ses CD'si:** parça adları CD-Text'ten veya *Disc identification* eklentisiyle MusicBrainz'den.
 - **Günlük kullanım:** kaldığı yerden sürdürmeli son oynatılanlar listesi, sürükle-bırak, harici altyazı dosyaları, klavye kısayolları (F1).
 - **16 dilde arayüz**, pencerenin üst kısmındaki küre simgesinden seçilir.
+- **LumenOS:** bağımsız bir oynatıcı olarak Lumen – USB bellek için bir kalıp (x86-64 ve ARM64); televizyonda doğrudan Lumen'e açılır, kumandayla kullanılır, kendini günceller ve diskleri kendi diskine, bir USB diske veya NAS'a kopyalar. Bkz. [os/README.md](os/README.md).
 
 ## Kopya koruması
 

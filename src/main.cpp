@@ -11,6 +11,7 @@
 #include <QScreen>
 #include <QSet>
 #include <QSettings>
+#include <QSurfaceFormat>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QUrl>
@@ -182,6 +183,18 @@ private:
 int main(int argc, char *argv[])
 {
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    // Acht Bit je Farbe verlangen. Ohne Angabe nimmt Qt die erste Darstellung, die der Grafiktreiber
+    // anbietet, und unter Wayland kann das RGB565 sein (gesehen mit Mesa/llvmpipe unter cage): dann
+    // zeigen Verläufe Ringe – in der Oberfläche und, im eigenen Fenster, auch im Bild des Films.
+    {
+        QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+        format.setRedBufferSize(8);
+        format.setGreenBufferSize(8);
+        format.setBlueBufferSize(8);
+        QSurfaceFormat::setDefaultFormat(format);
+    }
+#endif
     QGuiApplication app(argc, argv);
     QGuiApplication::setOrganizationName(QStringLiteral("Lumen"));
     // Entwickler-Hilfe: LUMEN_APP_NAME=<name> hält Einstellungen, Profile und Verlauf eines
@@ -319,13 +332,27 @@ int main(int argc, char *argv[])
             return QFileInfo::exists(player.path()) ? player.path() : QString();
         return player.device();
     };
+    // Name einer Disc für die Liste: ihr eigener (aus ihren Metadaten), sonst der ihres Datenträgers.
+    // Der Ordner, unter dem sie eingehängt ist ("disc-sr0" unter LumenOS), sagt niemandem etwas.
+    auto discTitle = [&]() -> QString {
+        const QString name = scanner.info().value("discName").toString();
+        if (!name.isEmpty())
+            return name;
+        const QVariantList all = drives.drives();
+        for (const QVariant &v : all) {
+            const QVariantMap d = v.toMap();
+            if (d.value("path").toString() == player.device() && !d.value("label").toString().isEmpty())
+                return d.value("label").toString();
+        }
+        return QString();
+    };
     // mpv meldet "Datei geladen" und den Pfad unabhängig voneinander – beides abwarten
     auto noteCurrent = [&] {
         // nur, was sich auch öffnen ließ: eine unlesbare Datei gehört nicht in die Liste
         if (player.idle() || !player.fileReady())
             return;
         const bool file = player.sourceKind() == QLatin1String("file");
-        recent.note(recentKey(), player.sourceKind(), file ? QString() : scanner.info().value("discName").toString());
+        recent.note(recentKey(), player.sourceKind(), file ? QString() : discTitle());
     };
     QObject::connect(&player, &MpvController::fileLoaded, &recent, noteCurrent);
     QObject::connect(&player, &MpvController::mediaChanged, &recent, noteCurrent);
@@ -518,9 +545,21 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     i18n.setEngine(&engine);
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
-                     [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
-    engine.loadFromModule("Lumen", osMode ? "OsMain" : "Main");
+    // LumenOS: Die Oberfläche kann aus einem Zip des Quelltexts stammen (Aktualisierung ohne Netz).
+    // Lässt sie sich nicht laden, gilt wieder die des Programms.
+    if (osMode)
+        engine.addImageProvider(QStringLiteral("lumenos"), new OsBackdrop); // gehört danach dem QML-Kern
+    const QString overlay = osMode ? OsBridge::overlayDir() : QString();
+    if (!overlay.isEmpty()) {
+        engine.load(QUrl::fromLocalFile(overlay + QStringLiteral("/qml/OsMain.qml")));
+        if (engine.rootObjects().isEmpty())
+            qWarning("Lumen: Oberfläche aus %s lässt sich nicht laden – nehme die eingebaute", qPrintable(overlay));
+    }
+    if (engine.rootObjects().isEmpty()) {
+        QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
+                         [] { QCoreApplication::exit(-1); }, Qt::QueuedConnection);
+        engine.loadFromModule("Lumen", osMode ? "OsMain" : "Main");
+    }
 
     // Mehrere Bildschirme: Steuerfenster auf den kleinsten, Wiedergabe auf den größten
     auto placeControl = [&] {

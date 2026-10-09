@@ -10,6 +10,8 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 HERE=/usr/share/lumen/os
 USER_NAME=lumen
 SHARES=/etc/lumenos/shares
+# what the image carries without installing it: the user is asked first (Settings › Discs)
+OPTIONAL=/usr/share/lumenos-optional
 
 die() { echo "$*" >&2; exit 1; }
 name_ok() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,60}$ ]]; }
@@ -63,6 +65,25 @@ update-auto)
         ;;
     *) die "update-auto on|off|status" ;;
     esac
+    ;;
+
+offline-scan)
+    "$HERE/lumenos-offline" scan
+    ;;
+offline-install)
+    "$HERE/lumenos-offline" install "${1:-}" || exit 1
+    ;;
+
+# ------------------------------------------------------------------ first start
+setup-info)
+    # what the setup needs to know: started from an image? a network there?
+    [ -f /run/live/medium/live/filesystem.squashfs ] && echo live=yes || echo live=no
+    if nmcli -t -f CONNECTIVITY general 2> /dev/null | grep -q full || curl -fsI --max-time 6 https://api.github.com > /dev/null 2>&1; then echo online=yes; else echo online=no; fi
+    ;;
+set-timezone)
+    zone="${1:-}"
+    [ -f "/usr/share/zoneinfo/$zone" ] && [[ "$zone" =~ ^[A-Za-z0-9_+/-]+$ ]] || die "set-timezone <zone>"
+    timedatectl set-timezone "$zone"
     ;;
 
 # ------------------------------------------------------------------ network
@@ -227,13 +248,52 @@ cec-setup)
 support-status)
     home="$(user_home)"
     ldconfig -p | grep -q 'libaacs\.so' && echo aacs=yes || echo aacs=no
-    [ -s "$home/.config/aacs/KEYDB.cfg" ] && echo keydb=yes || echo keydb=no
+    if [ -s "$home/.config/aacs/KEYDB.cfg" ]; then
+        echo keydb=yes
+        echo "keydb_date=$(date -r "$home/.config/aacs/KEYDB.cfg" +%Y-%m-%d)"
+    else
+        echo keydb=no
+    fi
+    systemctl is-enabled lumenos-keydb.timer > /dev/null 2>&1 && echo keydb_auto=yes || echo keydb_auto=no
+    [ -s "$OPTIONAL/keydb.zip" ] && echo keydb_bundled=yes || echo keydb_bundled=no
+    ls "$OPTIONAL"/libdvdcss2_*.deb > /dev/null 2>&1 && echo dvdcss_bundled=yes || echo dvdcss_bundled=no
     ldconfig -p | grep -q 'libdvdcss\.so' && echo dvdcss=yes || echo dvdcss=no
     if command -v makemkvcon > /dev/null 2>&1; then
         echo "makemkv=$(makemkvcon --version 2> /dev/null | head -1 | sed 's/^MakeMKV //; s/ .*//' | cut -c1-20)"
     else
         echo makemkv=
     fi
+    ;;
+keydb-fetch)
+    # The key database for Blu-rays that its community keeps (the address stands in
+    # /etc/lumenos/keydb.url). Asked for by the user in the setup or in the settings; kept current
+    # once a week from then on (lumenos-keydb.timer).
+    url="$(grep -v '^#' /etc/lumenos/keydb.url 2> /dev/null | head -1)"
+    [ -n "$url" ] || url="http://fvonline-db.bplaced.net/export/keydb_eng.zip"
+    home="$(user_home)"
+    work="$(mktemp -d /var/tmp/lumenos-keydb.XXXXXX)"
+    trap 'rm -rf "$work"' EXIT
+    from="$url"
+    if ! curl -fsSL --retry 2 --max-time 600 -o "$work/keydb.zip" "$url"; then
+        # No network: the image carries the database as it was on the day the image was made
+        # (not installed until asked for). An installed one is left alone - it is not older.
+        [ -s "$home/.config/aacs/KEYDB.cfg" ] && die "the key database could not be refreshed (no network?)"
+        [ -s "$OPTIONAL/keydb.zip" ] || die "the key database could not be loaded (no network?)"
+        cp "$OPTIONAL/keydb.zip" "$work/keydb.zip"
+        from="the image"
+    fi
+    unzip -q -o "$work/keydb.zip" -d "$work" 2> /dev/null || cp "$work/keydb.zip" "$work/keydb.cfg"
+    cfg="$(find "$work" -maxdepth 2 -iname 'keydb.cfg' | head -1)"
+    [ -s "$cfg" ] && grep -qm1 '|' "$cfg" || die "what came from $from is not a key database"
+    install -d -o "$USER_NAME" -g "$USER_NAME" "$home/.config/aacs"
+    install -o "$USER_NAME" -g "$USER_NAME" -m 600 "$cfg" "$home/.config/aacs/KEYDB.cfg"
+    systemctl enable --now lumenos-keydb.timer > /dev/null 2>&1 || true
+    echo "keys for $(grep -c '^0x' "$home/.config/aacs/KEYDB.cfg") discs"
+    ;;
+keydb-remove)
+    home="$(user_home)"
+    systemctl disable --now lumenos-keydb.timer > /dev/null 2>&1 || true
+    rm -f "$home/.config/aacs/KEYDB.cfg"
     ;;
 keydb-import)
     # the user's own key file from a storage device he plugged in
@@ -248,23 +308,38 @@ keydb-import)
     die "no KEYDB.cfg in the top folder of a plugged-in storage device"
     ;;
 install-dvdcss)
-    # Debian's own way: its package libdvd-pkg loads the source of libdvdcss from VideoLAN and builds
-    # it on this machine
     export DEBIAN_FRONTEND=noninteractive
+    log=/tmp/lumenos-dvdcss.log
+    # The image carries the library as a package that is not installed (built when the image was made);
+    # asked for, it is installed from there – no network needed.
+    bundled="$(ls "$OPTIONAL"/libdvdcss2_*.deb 2> /dev/null | head -1)"
+    if [ -n "$bundled" ]; then
+        if dpkg -i "$bundled" > "$log" 2>&1; then
+            ldconfig
+            exit 0
+        fi
+        # not a package this system takes: nothing stays half installed, and the long way is tried
+        dpkg -P libdvdcss2 >> "$log" 2>&1 || true
+    fi
+    # Without it, Debian's own way: its package libdvd-pkg loads the source of libdvdcss from VideoLAN
+    # and builds it on this machine
     grep -rqs '\bcontrib\b' /etc/apt/sources.list /etc/apt/sources.list.d/ || die "the package source 'contrib' is not enabled"
-    apt-get update -q > /dev/null 2>&1
+    apt-get update -q >> "$log" 2>&1 || die "libdvdcss has to be loaded, and there is no network"
     echo 'libdvd-pkg libdvd-pkg/first-install note' | debconf-set-selections
     echo 'libdvd-pkg libdvd-pkg/post-invoke_hook-install boolean true' | debconf-set-selections
     echo 'libdvd-pkg libdvd-pkg/build boolean true' | debconf-set-selections
-    apt-get install -y -q libdvd-pkg > /tmp/lumenos-dvdcss.log 2>&1 || die "$(tail -1 /tmp/lumenos-dvdcss.log)"
-    dpkg-reconfigure -f noninteractive libdvd-pkg >> /tmp/lumenos-dvdcss.log 2>&1 || die "$(tail -1 /tmp/lumenos-dvdcss.log)"
+    apt-get install -y -q libdvd-pkg >> "$log" 2>&1 || die "libdvdcss could not be set up (see $log)"
+    dpkg-reconfigure -f noninteractive libdvd-pkg >> "$log" 2>&1 || die "libdvdcss could not be built (see $log)"
     ldconfig
-    ldconfig -p | grep -q 'libdvdcss\.so' || die "libdvdcss was not built (see /tmp/lumenos-dvdcss.log)"
-    systemctl --no-block try-restart lumenos-session.service
+    ldconfig -p | grep -q 'libdvdcss\.so' || die "libdvdcss was not built (see $log)"
     ;;
 install-makemkv)
     "$HERE/lumenos-makemkv" install || exit 1
-    systemctl --no-block try-restart lumenos-session.service
+    ;;
+remove-dvdcss)
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get purge -y -q libdvdcss2 libdvd-pkg > /dev/null 2>&1 || dpkg -P libdvdcss2 > /dev/null 2>&1
+    ldconfig
     ;;
 makemkv-key)
     key="${1:-}"

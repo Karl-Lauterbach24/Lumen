@@ -25,6 +25,7 @@
 "f_cd": "**CD de audio:** nombres de las pistas desde CD-Text o, con el plugin *Disc identification*, desde MusicBrainz.",
 "f_comfort": "**Uso diario:** lista de reproducidos recientemente con reanudación, arrastrar y soltar, archivos de subtítulos externos, atajos de teclado (F1).",
 "f_languages": "**Interfaz en 16 idiomas**, seleccionable en la cabecera de la ventana (símbolo del globo).",
+"f_os": "**LumenOS:** Lumen como reproductor independiente: una imagen para memoria USB (x86-64 y ARM64) que arranca directamente en Lumen en el televisor, se maneja con el mando, se actualiza sola y copia discos a su disco, a un disco USB o a un NAS. Véase [os/README.md](os/README.md).",
 "h_protection": "Protección anticopia",
 "protection_text": "Lumen **no** contiene ningún mecanismo para eludir la protección anticopia. Los discos protegidos (AACS, BD+, CSS) solo se reproducen si añades tú mismo las bibliotecas necesarias mediante un plugin; eres responsable de comprobar que sea legal en tu país.",
 "h_plugins": "Plugins",

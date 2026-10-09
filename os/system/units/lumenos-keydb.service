@@ -1,0 +1,9 @@
+[Unit]
+Description=LumenOS: refresh the Blu-ray key database the user asked for
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/share/lumen/os/lumenos-admin keydb-fetch
+Nice=10

@@ -25,6 +25,7 @@
 "f_cd": "**Audio-cd:** tracknamen uit cd-tekst of, met de plug-in *Disc identification*, van MusicBrainz.",
 "f_comfort": "**Dagelijks gebruik:** lijst met onlangs afgespeelde items met hervatten, slepen en neerzetten, externe ondertitelbestanden, sneltoetsen (F1).",
 "f_languages": "**Interface in 16 talen**, te kiezen in de kopbalk van het venster (wereldbol).",
+"f_os": "**LumenOS:** Lumen als zelfstandige speler – een image voor een USB-stick (x86-64 en ARM64) die direct in Lumen op de televisie start, met een afstandsbediening wordt bediend, zichzelf bijwerkt en schijven kopieert naar de eigen schijf, een USB-schijf of een NAS. Zie [os/README.md](os/README.md).",
 "h_protection": "Kopieerbeveiliging",
 "protection_text": "Lumen bevat **geen** omzeiling van kopieerbeveiliging. Beveiligde schijven (AACS, BD+, CSS) spelen alleen af als je de benodigde bibliotheken zelf via een plug-in toevoegt; je bent er zelf verantwoordelijk voor dat dit in jouw land is toegestaan.",
 "h_plugins": "Plug-ins",

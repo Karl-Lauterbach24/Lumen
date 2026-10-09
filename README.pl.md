@@ -41,6 +41,7 @@ Wszystkie pakiety zawierają te same biblioteki multimedialne (FFmpeg z dekodere
 - **Audio CD:** nazwy utworów z CD-Text lub, dzięki wtyczce *Disc identification*, z MusicBrainz.
 - **Na co dzień:** lista ostatnio odtwarzanych ze wznawianiem, przeciąganie i upuszczanie, zewnętrzne pliki napisów, skróty klawiszowe (F1).
 - **Interfejs w 16 językach**, do wyboru w nagłówku okna (symbol globusa).
+- **LumenOS:** Lumen jako samodzielny odtwarzacz – obraz na pendrive'a (x86-64 i ARM64), który uruchamia się prosto do Lumen na telewizorze, jest obsługiwany pilotem, sam się aktualizuje i kopiuje płyty na swój dysk, dysk USB lub NAS. Zobacz [os/README.md](os/README.md).
 
 ## Zabezpieczenia przed kopiowaniem
 

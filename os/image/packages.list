@@ -31,6 +31,7 @@ util-linux
 unattended-upgrades
 initramfs-tools
 zstd
+unzip
 
 # --- firmware (network, graphics, sound) and microcode
 firmware-linux-free

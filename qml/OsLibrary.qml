@@ -9,6 +9,8 @@ OsPage {
     property string name: ""
     property var listing: null     // null = wird gelesen
 
+    icon: path === "" ? "folder" : ""
+    kicker: path === "" ? "" : qsTr("Mediathek")
     title: path === "" ? qsTr("Mediathek") : name
     busy: path !== "" && listing === null
     note: path === "" && Os.places.length <= 1 ? qsTr("Filme liegen im internen Speicher, auf einem angeschlossenen USB-Datenträger oder auf einem Netzlaufwerk (Einstellungen › Netzlaufwerke).")
@@ -20,7 +22,7 @@ OsPage {
         function onFolderListed(folder, entries) { if (folder === lib.path) lib.listing = entries }
     }
 
-    function placeIcon(kind) { return kind === "network" ? "link" : kind === "disc" ? "disc" : "folder" }
+    function placeIcon(kind) { return kind === "network" ? "network" : kind === "disc" ? "disc" : kind === "usb" ? "usb" : "storage" }
     function open(entry) {
         if (entry.dir) os.push(libraryPage, { path: entry.path, name: entry.name })
         else os.openPath(entry.path)

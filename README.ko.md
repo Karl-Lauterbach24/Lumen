@@ -41,6 +41,7 @@ Lumen은 **Blu-ray / UHD / Blu-ray 3D, 메뉴가 있는 DVD-Video, HD DVD, 비�
 - **오디오 CD:** 트랙 이름은 CD-Text에서, 또는 *Disc identification* 플러그인으로 MusicBrainz에서 가져옵니다.
 - **일상 사용:** 이어 보기가 되는 최근 재생 목록, 끌어다 놓기, 외부 자막 파일, 키보드 단축키(F1).
 - **16개 언어 인터페이스**, 창 위쪽의 지구본 아이콘에서 선택할 수 있습니다.
+- **LumenOS:** 독립형 플레이어로서의 Lumen – USB 메모리용 이미지(x86-64, ARM64)로, TV에서 바로 Lumen으로 시작하고, 리모컨으로 조작하며, 스스로 업데이트하고, 디스크를 내부 디스크·USB 디스크·NAS에 복사합니다. [os/README.md](os/README.md) 참고.
 
 ## 복사 방지
 

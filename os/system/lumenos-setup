@@ -3,6 +3,7 @@
 #
 #   lumenos-setup install   once, when the image is built (or on a plain Debian with Lumen installed)
 #   lumenos-setup refresh   after every update of Lumen: units, rules and rights from the new version
+#   lumenos-setup boot      early at every start (lumenos-boot.service): the machine's name and name resolution
 #
 # Everything LumenOS adds to the system comes from the Lumen package (this folder), so an update of
 # Lumen updates the system's part too.
@@ -22,12 +23,37 @@ refresh() {
     chmod 440 /etc/sudoers.d/lumenos
     # /run/lumenos exists from the start of every boot
     printf '%s\n' 'd /run/lumenos 0755 root root -' 'd /run/lumenos/storage 0755 root root -' > /etc/tmpfiles.d/lumenos.conf
+    # (a unit that a later version brings is switched on here, on systems that are already installed too)
+    systemctl enable lumenos-boot.service > /dev/null 2>&1 || true
     [ -d /run/systemd/system ] || return 0
     systemd-tmpfiles --create /etc/tmpfiles.d/lumenos.conf 2> /dev/null || true
     systemctl daemon-reload || true
     udevadm control --reload 2> /dev/null || true
 }
 
+# The program that builds the image empties /etc/hosts and /etc/resolv.conf when it finishes, and a
+# system installed from the image inherits them like that. Without the first the machine does not
+# know its own name; without the second no name on the network resolves - no update, no key
+# database, no MakeMKV. Put right at every start, before the network comes up; what is there is kept.
+boot() {
+    name="$(cat /etc/hostname 2> /dev/null || true)"
+    if [ -z "$name" ]; then
+        name=lumenos
+        echo "$name" > /etc/hostname
+        hostname "$name" 2> /dev/null || true
+    fi
+    grep -qs '^127\.0\.0\.1[[:space:]]' /etc/hosts || printf '127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\n' >> /etc/hosts
+    grep -qs "[[:space:]]$name\$" /etc/hosts || printf '127.0.1.1\t%s\n' "$name" >> /etc/hosts
+    # names on the network: systemd-resolved answers, NetworkManager hands it the servers it was given
+    if [ ! -L /etc/resolv.conf ] && [ ! -s /etc/resolv.conf ] && [ -x /usr/lib/systemd/systemd-resolved ]; then
+        ln -sf ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+    fi
+}
+
+if [ "$mode" = boot ]; then
+    boot
+    exit 0
+fi
 if [ "$mode" = refresh ]; then
     refresh
     exit 0
@@ -50,7 +76,7 @@ refresh
 [ -f /etc/lumenos/session.env ] || printf '%s\n' '# environment of the player session (read by lumenos-session), e.g. LUMEN_MPV_LOG=v' > /etc/lumenos/session.env
 
 # --- services
-systemctl enable lumenos-session.service lumenos-update.timer lumenos-cec.service > /dev/null 2>&1 || true
+systemctl enable lumenos-session.service lumenos-update.timer lumenos-cec.service systemd-resolved.service > /dev/null 2>&1 || true
 systemctl disable getty@tty1.service > /dev/null 2>&1 || true
 systemctl set-default graphical.target > /dev/null 2>&1 || true
 for service in NetworkManager.service bluetooth.service systemd-timesyncd.service; do

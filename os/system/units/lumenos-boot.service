@@ -1,0 +1,14 @@
+[Unit]
+Description=LumenOS: the machine's name and name resolution, before the network comes up
+DefaultDependencies=no
+After=systemd-remount-fs.service local-fs.target
+Before=systemd-resolved.service NetworkManager.service network-pre.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/share/lumen/os/lumenos-setup boot
+
+[Install]
+WantedBy=sysinit.target

@@ -26,6 +26,11 @@ esac
 media="$(udevadm info --query=property --name="$dev" 2> /dev/null | sed -n 's/^ID_CDROM_MEDIA=//p')"
 fstype="$(udevadm info --query=property --name="$dev" 2> /dev/null | sed -n 's/^ID_FS_TYPE=//p')"
 
+# the medium the system itself was started from is not a disc to play
+label="$(udevadm info --query=property --name="$dev" 2> /dev/null | sed -n 's/^ID_FS_LABEL=//p')"
+case "$label" in LumenOS*) exit 0 ;; esac
+if awk -v d="$dev" '$1 == d && $2 ~ /^\/run\/live/ { found = 1 } END { exit !found }' /proc/mounts; then exit 0; fi
+
 if [ "$media" = 1 ] && [ -n "$fstype" ]; then
     mounted && exit 0
     mkdir -p "$dir"

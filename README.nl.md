@@ -41,6 +41,7 @@ Alle pakketten bevatten dezelfde mediabibliotheken (FFmpeg met Blu-ray 3D-decode
 - **Audio-cd:** tracknamen uit cd-tekst of, met de plug-in *Disc identification*, van MusicBrainz.
 - **Dagelijks gebruik:** lijst met onlangs afgespeelde items met hervatten, slepen en neerzetten, externe ondertitelbestanden, sneltoetsen (F1).
 - **Interface in 16 talen**, te kiezen in de kopbalk van het venster (wereldbol).
+- **LumenOS:** Lumen als zelfstandige speler – een image voor een USB-stick (x86-64 en ARM64) die direct in Lumen op de televisie start, met een afstandsbediening wordt bediend, zichzelf bijwerkt en schijven kopieert naar de eigen schijf, een USB-schijf of een NAS. Zie [os/README.md](os/README.md).
 
 ## Kopieerbeveiliging
 

@@ -16,7 +16,10 @@ CONF=/etc/lumenos/update.conf
 mkdir -p "$STATE" "$CACHE"
 
 now=0
+file=""
 [ "${1:-}" = "--now" ] && now=1
+# --file <package>: from a storage device instead of the network (lumenos-offline)
+[ "${1:-}" = "--file" ] && { file="${2:?package}"; now=1; }
 AUTO=on
 [ -r "$CONF" ] && . "$CONF"
 
@@ -35,6 +38,16 @@ fail() { status error "$1"; echo "lumenos-update: $1" >&2; exit 1; }
 exec 9> "$STATE/update.lock"
 flock -n 9 || exit 0
 
+if [ -n "$file" ]; then
+    [ "$(dpkg-deb -f "$file" Package 2> /dev/null)" = lumen-player ] || fail "not a package of Lumen: $(basename "$file")"
+    [ "$(dpkg-deb -f "$file" Architecture)" = "$(dpkg --print-architecture)" ] || fail "this package is for another kind of machine"
+    latest="$(dpkg-deb -f "$file" Version)"
+    [ -z "$current" ] || ! dpkg --compare-versions "$latest" lt "$current" || fail "the package ($latest) is older than what is installed ($current)"
+    deb="$file"
+    name="$(basename "$file")"
+fi
+
+if [ -z "$file" ]; then
 status checking
 release="$(curl -fsSL --retry 2 --max-time 40 -H 'Accept: application/vnd.github+json' "$API")" || fail "no connection to the release server"
 tag="$(printf '%s' "$release" | jq -r '.tag_name // empty')"
@@ -71,6 +84,7 @@ if [ "$have" != "$expected" ]; then
     [ "$have" = "$expected" ] || { rm -f "$deb.part"; fail "the package does not match its checksum"; }
     mv "$deb.part" "$deb"
 fi
+fi # from the network
 
 # Not under a running film or a copy: Lumen says in a file of its session whether it is busy
 busy() {
@@ -89,12 +103,16 @@ done
 
 status installing
 export DEBIAN_FRONTEND=noninteractive
-if ! apt-get install -y -q --no-install-recommends "$deb" > "$STATE/update.log" 2>&1; then
+# (--reinstall: a package of the version that is installed, handed over on a stick, is installed
+# all the same - apt would otherwise call it "already the newest" and leave everything as it is)
+if ! apt-get install -y -q --reinstall --no-install-recommends "$deb" > "$STATE/update.log" 2>&1; then
     # packages the new version needs, and the lists here are old: once more with fresh lists
     apt-get update -q >> "$STATE/update.log" 2>&1
-    apt-get install -y -q --no-install-recommends "$deb" >> "$STATE/update.log" 2>&1 || fail "the package could not be installed (see $STATE/update.log)"
+    apt-get install -y -q --reinstall --no-install-recommends "$deb" >> "$STATE/update.log" 2>&1 || fail "the package could not be installed (see $STATE/update.log)"
 fi
 current="$latest"
+# a package is whole: what a zip of the code had laid over the old one is not needed any more
+rm -rf /var/lib/lumenos/overlay /usr/share/lumen/os/API.overlay
 # the new version brings its own units, rules and scripts
 /usr/share/lumen/os/lumenos-setup refresh >> "$STATE/update.log" 2>&1 || true
 find "$CACHE" -name 'Lumen-*.deb' ! -name "$name" -delete 2> /dev/null

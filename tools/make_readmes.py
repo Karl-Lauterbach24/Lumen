@@ -67,6 +67,7 @@ TEMPLATE = """<p align="center"><img src="resources/logo/lumen-logo.png" width="
 - {f_cd}
 - {f_comfort}
 - {f_languages}
+- {f_os}
 
 ## {h_protection}
 

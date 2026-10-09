@@ -41,6 +41,7 @@ Lumen 可播放 **Blu-ray / UHD / Blu-ray 3D、带菜单的 DVD-Video、HD DVD�
 - **音乐 CD：**曲目名称来自 CD-Text，或通过 *Disc identification* 插件从 MusicBrainz 获取。
 - **日常使用：**可续播的“最近播放”列表、拖放、外挂字幕文件、键盘快捷键 (F1)。
 - **16 种界面语言**，可在窗口顶部的地球图标处选择。
+- **LumenOS：**把 Lumen 做成独立的播放机：一个用于 U 盘的映像（x86-64 和 ARM64），在电视上直接启动进入 Lumen，用遥控器操作，自动更新，并可把光盘复制到本机硬盘、USB 硬盘或 NAS。参见 [os/README.md](os/README.md)。
 
 ## 复制保护
 

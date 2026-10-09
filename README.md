@@ -122,6 +122,24 @@ With the output set to *Automatic* (the default), Lumen assigns screens itself:
 
 Plugging screens in or out updates the assignment. You can switch this off in the *Output* tab.
 
+## LumenOS
+
+Lumen as a player of its own: a small Debian system that starts straight into Lumen on the television
+and is operated with a remote. The images are attached to the releases – `LumenOS-<version>-amd64.iso`
+for PCs and `LumenOS-<version>-arm64.iso` for ARM machines with UEFI – and are written to a USB stick.
+
+- **Setup on the first start**, in 16 languages: language, remote, installing to the machine's disk,
+  network, update, and what the device gets for encrypted discs (nothing unless you switch it on).
+- **Remotes and gamepads** over USB, Bluetooth or HDMI-CEC are set up by pressing the button Lumen asks
+  for; keyboard and mouse work at once.
+- **Discs** from any SATA or USB drive, **films** from the internal disk, USB storage and SMB/NFS
+  shares; **copying discs** to any of these with MakeMKV, if you set that up.
+- **Updates itself** from the latest release, checked against its checksums, and only while nothing is
+  playing – or from a USB stick without a network: the package, the update zip, or the source code as
+  GitHub's zip for interface, translations and scripts.
+
+[os/README.md](os/README.md) has the details and how the image is built.
+
 ## Plugin store
 
 The *Plugins* tab installs plugins from the official store
@@ -165,6 +183,7 @@ Documentation and examples: [plugins/README.md](plugins/README.md).
 | Everyday use | **Recently played** on the start page (files resume where you stopped), **drag and drop** of files, folders and links, help dialog with all shortcuts (F1), window title shows what is playing |
 | Picture | Aspect ratio, pan & scan, zoom, brightness/contrast/saturation/gamma, automatic deinterlacing, **automatic 3D detection for files** (side-by-side, top-and-bottom, MVC in MKV) or a format chosen by hand |
 | Output profiles | Target device, fullscreen, refresh-rate matching, automatic system HDR, HDR passthrough or tone mapping, **reference scaling** (EWA Lanczos 4, error diffusion, HDR contrast recovery), **calibration** (system/own ICC profile, 3D LUT `.cube`, native contrast, dither depth, GLSL shaders), sync, 3D output format, audio device, expert options |
+| **LumenOS** | Lumen as a standalone player system for a USB stick or the internal disk (x86-64, ARM64): setup in 16 languages, remotes by pressing their buttons, discs, USB and network storage, copying with MakeMKV, self-updating – see [LumenOS](#lumenos) |
 
 Presets: *Desktop*, *1080p DLP 3D projector* (half SBS), *1080p DLP 3D projector (Frame Packing)*,
 **Cinema projector DCI-P3 (gamma 2.6, 48 cd/m²)**, **Mastering monitor P3-D65**,

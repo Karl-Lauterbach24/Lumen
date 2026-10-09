@@ -18,6 +18,42 @@ rm -f /etc/network/interfaces.d/* 2> /dev/null || true
 # Debian's security updates install themselves
 printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' > /etc/apt/apt.conf.d/20auto-upgrades
 
+# libdvdcss, for DVDs: built here the way Debian provides for (libdvd-pkg loads VideoLAN's source and
+# makes a package of it) and carried along as a package that is NOT installed. The setup asks the
+# user; saying yes installs it from here, without a network. Everything the build needed leaves again.
+optional=/usr/share/lumenos-optional
+if [ -e "$optional/.dvdcss" ]; then
+    rm -f "$optional/.dvdcss"
+    export DEBIAN_FRONTEND=noninteractive
+    dpkg-query -W -f='${Package}\n' | sort > /tmp/lumenos-before
+    (
+        echo 'libdvd-pkg libdvd-pkg/first-install note' | debconf-set-selections
+        echo 'libdvd-pkg libdvd-pkg/post-invoke_hook-install boolean false' | debconf-set-selections
+        echo 'libdvd-pkg libdvd-pkg/build boolean true' | debconf-set-selections
+        apt-get install -y -q libdvd-pkg && dpkg-reconfigure -f noninteractive libdvd-pkg
+    ) > /tmp/lumenos-dvdcss.log 2>&1 || true
+    if ls /usr/src/libdvd-pkg/libdvdcss2_*.deb > /dev/null 2>&1; then
+        # The package says it needs the tool that built it (libdvd-pkg, and with it a compiler). On the
+        # device it needs the C library and nothing else: packed again without that line.
+        for deb in /usr/src/libdvd-pkg/libdvdcss2_*.deb; do
+            rm -rf /tmp/lumenos-repack
+            dpkg-deb -R "$deb" /tmp/lumenos-repack
+            sed -i -e '/^Depends:/ { s/libdvd-pkg[^,]*, *//; s/, *libdvd-pkg[^,]*//; s/^Depends: *libdvd-pkg[^,]*$/Depends: libc6/; }' /tmp/lumenos-repack/DEBIAN/control
+            dpkg-deb -b /tmp/lumenos-repack "$optional/$(basename "$deb")" > /dev/null
+            rm -rf /tmp/lumenos-repack
+        done
+        echo "LumenOS: carrying $(basename "$optional"/libdvdcss2_*.deb) ($(dpkg-deb -f "$optional"/libdvdcss2_*.deb Depends))"
+    else
+        echo "LumenOS: libdvdcss was NOT built - the device will build it itself when asked:"
+        tail -15 /tmp/lumenos-dvdcss.log
+    fi
+    dpkg-query -W -f='${Package}\n' | sort > /tmp/lumenos-after
+    extra="$(comm -13 /tmp/lumenos-before /tmp/lumenos-after | tr '\n' ' ')"
+    # shellcheck disable=SC2086
+    [ -z "$extra" ] || apt-get purge -y -q $extra > /dev/null 2>&1 || true
+    rm -rf /usr/src/libdvd-pkg /tmp/lumenos-before /tmp/lumenos-after /tmp/lumenos-dvdcss.log
+fi
+
 # what a player does not need
 systemctl mask systemd-networkd-wait-online.service > /dev/null 2>&1 || true
 systemctl disable ModemManager.service > /dev/null 2>&1 || true

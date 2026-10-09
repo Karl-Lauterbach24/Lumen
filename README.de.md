@@ -119,6 +119,26 @@ Ist als Ausgabe *Automatisch* eingestellt (Standard), ordnet Lumen die Bildschir
 
 Beim Ein- und Ausstecken von Bildschirmen passt Lumen die Zuordnung an. Abschalten lässt sich das im Reiter *Ausgabe*.
 
+## LumenOS
+
+Lumen als eigenes Abspielgerät: ein kleines Debian-System, das direkt in Lumen auf dem Fernseher
+startet und mit der Fernbedienung bedient wird. Die Abbilder hängen an den Releases –
+`LumenOS-<Version>-amd64.iso` für PCs und `LumenOS-<Version>-arm64.iso` für ARM-Geräte mit UEFI – und
+werden auf einen USB-Stick geschrieben.
+
+- **Einrichtung beim ersten Start**, in 16 Sprachen: Sprache, Fernbedienung, Installation auf die Platte
+  des Geräts, Netz, Aktualisierung und was das Gerät für verschlüsselte Discs bekommt (nichts, solange
+  man es nicht einschaltet).
+- **Fernbedienungen und Gamepads** über USB, Bluetooth oder HDMI-CEC werden eingerichtet, indem man die
+  Taste drückt, nach der Lumen fragt; Tastatur und Maus funktionieren sofort.
+- **Discs** aus jedem SATA- oder USB-Laufwerk, **Filme** vom internen Speicher, von USB-Datenträgern und
+  SMB-/NFS-Freigaben; **Discs kopieren** auf jeden dieser Orte mit MakeMKV, wenn man es einrichtet.
+- **Aktualisiert sich selbst** aus dem neuesten Release, gegen dessen Prüfsummen geprüft und nur, wenn
+  nichts läuft – oder ohne Netz von einem USB-Stick: das Paket, das Update-Zip oder der Quelltext als
+  Zip von GitHub für Oberfläche, Übersetzungen und Skripte.
+
+Einzelheiten und der Bau des Abbilds stehen in [os/README.md](os/README.md) (englisch).
+
 ## Plugin-Store
 
 Der Reiter *Plugins* installiert Plugins aus dem offiziellen Store
@@ -156,6 +176,7 @@ Doku und Beispiele: [plugins/README.md](plugins/README.md) (englisch).
 | Untertitel | Spurwahl (PGS/SRT/ASS/VobSub/DCP), nur erzwungene, Verzögerung, Größe, Position (Cinemascope-Leinwand) |
 | Bild | Seitenverhältnis, Pan & Scan, Zoom, Helligkeit/Kontrast/Sättigung/Gamma, automatisches Deinterlacing, **automatische 3D-Erkennung für Dateien** (Side-by-Side, Top-and-Bottom, MVC in MKV) oder ein von Hand gewähltes Format |
 | Ausgabeprofile | Zielgerät, Vollbild, Bildraten-Anpassung, System-HDR automatisch, HDR-Passthrough oder Tonemapping, **Referenz-Skalierung** (EWA Lanczos 4, Error Diffusion, HDR-Kontrastrückgewinnung), **Kalibrierung** (System-/eigenes ICC-Profil, 3D-LUT `.cube`, nativer Kontrast, Dither-Tiefe, GLSL-Shader), Sync, 3D-Ausgabeformat, Audiogerät, Experten-Optionen |
+| **LumenOS** | Lumen als eigenständiges Abspielgerät für USB-Stick oder interne Platte (x86-64, ARM64): Einrichtung in 16 Sprachen, Fernbedienungen per Tastendruck, Discs, USB- und Netzspeicher, Kopieren mit MakeMKV, aktualisiert sich selbst – siehe [LumenOS](#lumenos) |
 
 Vorlagen: *Desktop*, *1080p DLP 3D-Beamer* (Half-SBS), *1080p DLP 3D-Beamer (Frame Packing)*,
 **Kino-Projektor DCI-P3 (Gamma 2.6, 48 cd/m²)**, **Mastering-Monitor P3-D65**,

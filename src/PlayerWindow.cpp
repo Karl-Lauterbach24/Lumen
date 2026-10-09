@@ -87,6 +87,8 @@ PlayerWindow::PlayerWindow(mpv_handle *mpv)
     m_cursorTimer.setSingleShot(true);
     m_cursorTimer.setInterval(900);
     connect(&m_cursorTimer, &QTimer::timeout, this, [this] { setCursor(Qt::BlankCursor); });
+    // Über dem Bild steht kein Zeiger, bis die Maus sich bewegt (das Fenster erscheint oft unter ihm)
+    setCursor(Qt::BlankCursor);
     connect(this, &QWindow::screenChanged, this, [this] {
         updatePixelSize();
         syncContextWithWindow();

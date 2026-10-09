@@ -25,6 +25,7 @@
 "f_cd": "**Zvukové CD:** názvy stop z CD-Textu nebo, s pluginem *Disc identification*, z MusicBrainz.",
 "f_comfort": "**Každodenní používání:** seznam naposledy přehraných s pokračováním, přetažení myší, externí soubory s titulky, klávesové zkratky (F1).",
 "f_languages": "**Rozhraní v 16 jazycích**, volitelné v záhlaví okna (symbol zeměkoule).",
+"f_os": "**LumenOS:** Lumen jako samostatný přehrávač – obraz pro flash disk USB (x86-64 a ARM64), který se spustí rovnou do Lumenu na televizi, ovládá se dálkovým ovladačem, sám se aktualizuje a kopíruje disky na svůj disk, disk USB nebo NAS. Viz [os/README.md](os/README.md).",
 "h_protection": "Ochrana proti kopírování",
 "protection_text": "Lumen **neobsahuje** žádné obcházení ochrany proti kopírování. Chráněné disky (AACS, BD+, CSS) se přehrají jen tehdy, když si potřebné knihovny přidáte sami pomocí pluginu; za soulad s právem vaší země odpovídáte vy.",
 "h_plugins": "Pluginy",

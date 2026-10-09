@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 1.4.1 LANGUAGES CXX)
+project(Lumen VERSION 1.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -237,6 +237,8 @@ set(LUMEN_QML
     qml/HelpDialog.qml
     qml/CastDialog.qml
     qml/OsMain.qml
+    qml/OsHome.qml
+    qml/OsCard.qml
     qml/OsPage.qml
     qml/OsItem.qml
     qml/OsLibrary.qml
@@ -262,6 +264,8 @@ qt_add_qml_module(lumen
         icons/frame-back.svg icons/frame-fwd.svg icons/refresh.svg
         icons/menu.svg icons/up.svg icons/down.svg icons/left.svg icons/right.svg icons/help.svg icons/close.svg icons/cast.svg
         icons/language.svg icons/warning.svg icons/link.svg icons/film.svg
+        icons/power.svg icons/wifi.svg icons/bluetooth.svg icons/usb.svg icons/remote.svg icons/download.svg
+        icons/check.svg icons/storage.svg icons/screen.svg icons/key.svg icons/network.svg icons/sparkle.svg
         profiles/presets.json
         resources/logo/lumen-emblem-small.png resources/logo/lumen-icon-256.png resources/logo/lumen-logo.png
         i18n/en.json i18n/fr.json i18n/es.json i18n/it.json i18n/pt.json i18n/nl.json i18n/pl.json

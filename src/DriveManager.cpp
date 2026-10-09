@@ -132,6 +132,22 @@ QString readSys(const QString &p)
     QFile f(p);
     return f.open(QIODevice::ReadOnly) ? QString::fromLatin1(f.readAll()).trimmed() : QString();
 }
+
+// Liegt eine Disc im Laufwerk? Die Größe unter /sys taugt dafür nicht: für ein leeres Laufwerk nennt
+// der Kern einen Platzhalter (0x1fffff Sektoren, "1024M"), und das leere Laufwerk erschiene als Disc.
+// Gefragt wird das Laufwerk selbst; ohne Zugriff darauf bleibt die Größe, den Platzhalter ausgenommen.
+bool discPresent(const QString &block)
+{
+    const int fd = ::open(QFile::encodeName(QStringLiteral("/dev/") + block).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (fd >= 0) {
+        const int status = ::ioctl(fd, CDROM_DRIVE_STATUS, CDSL_CURRENT);
+        ::close(fd);
+        if (status >= 0 && status != CDS_NO_INFO)
+            return status == CDS_DISC_OK;
+    }
+    const qlonglong sectors = readSys(QStringLiteral("/sys/block/%1/size").arg(block)).toLongLong();
+    return sectors > 0 && sectors != 0x1fffff;
+}
 #endif
 
 } // namespace
@@ -252,7 +268,7 @@ QVariantList DriveManager::scan()
         d["vendor"] = readSys(QStringLiteral("/sys/block/%1/device/vendor").arg(b));
         d["model"] = readSys(QStringLiteral("/sys/block/%1/device/model").arg(b));
         d["firmware"] = readSys(QStringLiteral("/sys/block/%1/device/rev").arg(b));
-        d["hasDisc"] = readSys(QStringLiteral("/sys/block/%1/size").arg(b)).toLongLong() > 0;
+        d["hasDisc"] = discPresent(b);
         d["path"] = d["device"]; // libbluray liest ungemountete Discs direkt via UDF
         for (const QStorageInfo &v : volumes) {
             if (QString::fromLocal8Bit(v.device()) == d["device"].toString()) {

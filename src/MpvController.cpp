@@ -731,10 +731,13 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
 {
     if (!m_mpv)
         return;
-    if (m_kiosk && !m_kioskShow) {
+    if (m_kiosk) {
         // das Fenster kommt mit dem Laden, nicht erst mit dem ersten Bild (es rendert erst, wenn es da ist)
-        m_kioskShow = true;
-        placeEmbeddedWindow();
+        m_kioskLoading = true;
+        if (!m_kioskShow) {
+            m_kioskShow = true;
+            placeEmbeddedWindow();
+        }
     }
     if (m_window && !m_window->ready()) {
         // vo=libmpv kann erst nach dem Render-Kontext ein Bild ausgeben
@@ -2375,12 +2378,22 @@ void MpvController::handleEvent(mpv_event *ev)
         // vorübergehend und keine Störung der Wiedergabe
         const QByteArray prefix(m->prefix);
         // … ebenso wenig Meldungen von FFmpeg ohne Bezug zu einer Spur (Geräte, die es nicht gibt)
-        const bool transient = prefix == "ad" || prefix == "vd" || prefix == "ffmpeg" || prefix.startsWith("ffmpeg/");
+        bool transient = prefix == "ad" || prefix == "vd" || prefix == "ffmpeg" || prefix.startsWith("ffmpeg/");
+        // … und was die Suche nach einem Decoder der Grafikkarte meldet, wenn es keinen gibt (ein Gerät
+        // ohne VA-API oder VDPAU): mpv rechnet dann selbst, die Wiedergabe läuft
+        if (prefix == "vaapi" || prefix == "vdpau" || prefix.startsWith("hwdec") || text.startsWith(QLatin1String("libva:")))
+            transient = true;
+        // Der Strom einer Disc mit Menü lässt sich mit Absicht nicht spulen (das tut die Disc-Bibliothek).
+        // Wechselt eine Spur, versucht mpv es trotzdem und meldet das – ohne Folgen
+        if (prefix == "cplayer" && (m_path.startsWith(QLatin1String("lumenbd://")) || m_path.startsWith(QLatin1String("lumendvd://")))
+            && (text.contains(QLatin1String("Cannot seek in this stream")) || text.contains(QLatin1String("force-seekable"))))
+            transient = true;
         if (m->log_level <= MPV_LOG_LEVEL_ERROR && !transient && !m_endFileError)
             setError(text);
         break;
     }
     case MPV_EVENT_START_FILE:
+        m_kioskLoading = false; // ab hier meldet mpv selbst, ob etwas läuft
         m_bdOpenStarted = true;
         m_fileReady = false;
         m_endFileError = false;
@@ -2388,6 +2401,11 @@ void MpvController::handleEvent(mpv_event *ev)
     case MPV_EVENT_END_FILE: {
         m_primedStart = false;
         m_fileReady = false;
+        // LumenOS: Ließ sich nichts laden, war mpv nie beschäftigt und meldet es darum auch nicht
+        if (m_kiosk && m_idle && m_kioskShow && !m_kioskLoading) {
+            m_kioskShow = false;
+            placeEmbeddedWindow();
+        }
         // das Ende der vorigen Datei kommt vor dem Start der neuen: dann läuft das Öffnen noch
         if (m_bdOpenStarted)
             releaseBdOpenLock();
@@ -2538,8 +2556,14 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
             m_positionBucket = -1;
             emit positionChanged();
         }
-        if (m_kiosk && m_idle && m_kioskShow && m_pendingUrl.isEmpty()) {
-            m_kioskShow = false; // nichts läuft mehr: der Bildschirm gehört wieder der Oberfläche
+        // LumenOS: Läuft etwas, liegt das Player-Fenster vorn; läuft nichts mehr, gehört der Bildschirm
+        // wieder der Oberfläche. (mpv meldet "läuft nichts" auch einmal gleich nach dem Start, wenn das
+        // Laden schon abgeschickt ist: dann bleibt das Fenster.)
+        if (m_kiosk && !m_idle && !m_kioskShow) {
+            m_kioskShow = true;
+            placeEmbeddedWindow();
+        } else if (m_kiosk && m_idle && m_kioskShow && !m_kioskLoading && m_pendingUrl.isEmpty()) {
+            m_kioskShow = false;
             placeEmbeddedWindow();
         }
         emit idleChanged();
@@ -2623,7 +2647,10 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     case P_FULLSCREEN:
         m_fullscreen = flag();
         holdGovernor(3);
-        if (m_window) // vo=libmpv: Vollbild setzt das Qt-Fenster um
+        // vo=libmpv: Vollbild setzt das Qt-Fenster um. LumenOS: dort füllt das Fenster den Bildschirm
+        // ohnehin und ist nur da, solange etwas läuft (placeEmbeddedWindow) – mpvs erste Meldung
+        // "kein Vollbild" brächte es sonst schon beim Start vor die Oberfläche.
+        if (m_window && !m_kiosk)
             m_window->setFullscreen(m_fullscreen);
         emit fullscreenChanged();
         break;
@@ -2679,6 +2706,10 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
             QMetaObject::invokeMethod(this, &MpvController::advanceQueue, Qt::QueuedConnection);
         if (eof && !m_eof && m_vcd && m_vcd->active())
             QMetaObject::invokeMethod(m_vcd, [this] { m_vcd->itemFinished(); }, Qt::QueuedConnection);
+        // LumenOS: am Ende des Films nicht auf dem letzten Bild stehen bleiben (wie im Fenster am
+        // Rechner), sondern zurück zur Oberfläche
+        else if (eof && !m_eof && m_kiosk && !m_queueActive)
+            QMetaObject::invokeMethod(this, &MpvController::stop, Qt::QueuedConnection);
         m_eof = eof;
         break;
     }

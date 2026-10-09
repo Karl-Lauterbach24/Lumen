@@ -1,0 +1,141 @@
+#!/bin/bash
+# LumenOS: updates without a network, from a storage device.
+#
+#   lumenos-offline scan            what the plugged-in storage offers: kind, version, file, note (tabs)
+#   lumenos-offline install <file>  install one of them
+#
+# Three things are understood, lying in the top folder of a stick (or in a folder "Lumen" on it):
+#   package  Lumen-<version>-linux-<arch>.deb from a release – the whole player
+#   bundle   a zip with such packages in it (LumenOS-update-<version>.zip from a release)
+#   source   the code of Lumen as GitHub hands it out (Code › Download ZIP, or "Source code" of a
+#            release). It holds no compiled program, so it cannot replace the player's core; what it
+#            does bring is everything that is text: the interface for the television, the
+#            translations, the icons and LumenOS's own scripts and rules. That is taken – if the
+#            code does not ask more of the core than the installed one can do (os/system/API).
+set -u
+export LC_ALL=C
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+HERE=/usr/share/lumen/os
+OVERLAY=/var/lib/lumenos/overlay
+arch="$(dpkg --print-architecture)"
+current="$(dpkg-query -W -f='${Version}' lumen-player 2> /dev/null || echo 0)"
+
+die() { echo "$*" >&2; exit 1; }
+
+# a zip that is Lumen's code: prints the folder inside it that holds the code
+source_top() {
+    unzip -Z1 "$1" 2> /dev/null | awk -F/ '$0 ~ /(^|\/)os\/system\/API$/ { sub(/os\/system\/API$/, ""); print; exit }'
+}
+source_version() { # zip, top
+    unzip -p "$1" "${2}CMakeLists.txt" 2> /dev/null | sed -n 's/^project(Lumen VERSION \([0-9.]*\).*/\1/p' | head -1
+}
+
+case "${1:-}" in
+scan)
+    for dir in /media/*/ /media/*/Lumen/ /media/*/lumen/; do
+        [ -d "$dir" ] || continue
+        case "$dir" in /media/disc-*) continue ;; esac
+        for f in "$dir"*.deb; do
+            [ -f "$f" ] || continue
+            [ "$(dpkg-deb -f "$f" Package 2> /dev/null)" = lumen-player ] || continue
+            v="$(dpkg-deb -f "$f" Version 2> /dev/null)"
+            a="$(dpkg-deb -f "$f" Architecture 2> /dev/null)"
+            [ "$a" = "$arch" ] || continue
+            note=newer
+            dpkg --compare-versions "$v" gt "$current" || note=same
+            dpkg --compare-versions "$v" lt "$current" && note=older
+            printf 'package\t%s\t%s\t%s\n' "$v" "$f" "$note"
+        done
+        for f in "$dir"*.zip; do
+            [ -f "$f" ] || continue
+            inner="$(unzip -Z1 "$f" 2> /dev/null | grep -E "(^|/)Lumen-[0-9.]+-linux-$arch\.deb$" | head -1)"
+            if [ -n "$inner" ]; then
+                v="$(printf '%s' "$inner" | sed -E 's/.*Lumen-([0-9.]+)-linux-.*/\1/')"
+                note=newer
+                dpkg --compare-versions "$v" gt "$current" || note=same
+                dpkg --compare-versions "$v" lt "$current" && note=older
+                printf 'bundle\t%s\t%s\t%s\n' "$v" "$f" "$note"
+                continue
+            fi
+            top="$(source_top "$f")"
+            # (an empty answer with the file present means: the code lies at the top of the zip)
+            unzip -Z1 "$f" 2> /dev/null | grep -qE "(^|/)os/system/API$" || continue
+            v="$(source_version "$f" "$top")"
+            need="$(unzip -p "$f" "${top}os/system/API" 2> /dev/null | tr -dc '0-9')"
+            have="$(tr -dc '0-9' < "$HERE/API" 2> /dev/null)"
+            note=interface
+            [ "${need:-999}" -le "${have:-0}" ] || note=needs-package
+            printf 'source\t%s\t%s\t%s\n' "${v:-?}" "$f" "$note"
+        done
+    done
+    ;;
+
+install)
+    file="$(readlink -f "${2:-}")"
+    case "$file" in /media/*) ;; *) die "not on a plugged-in storage device: ${2:-}" ;; esac
+    [ -f "$file" ] || die "no such file: $file"
+    case "$file" in
+    *.deb)
+        exec "$HERE/lumenos-update" --file "$file"
+        ;;
+    *.zip)
+        work="$(mktemp -d /var/tmp/lumenos-offline.XXXXXX)"
+        trap 'rm -rf "$work"' EXIT
+        inner="$(unzip -Z1 "$file" 2> /dev/null | grep -E "(^|/)Lumen-[0-9.]+-linux-$arch\.deb$" | head -1)"
+        if [ -n "$inner" ]; then
+            unzip -q -j -o "$file" "$inner" -d "$work" || die "the zip could not be read"
+            # checksums in the zip are used when they are there
+            sums="$(unzip -Z1 "$file" 2> /dev/null | grep -E '(^|/)SHA256SUMS.txt$' | head -1)"
+            deb="$work/$(basename "$inner")"
+            if [ -n "$sums" ]; then
+                unzip -q -j -o "$file" "$sums" -d "$work"
+                want="$(awk -v n="$(basename "$inner")" '{ f = $2; sub(/^\*/, "", f); if (f == n) print $1 }' "$work/SHA256SUMS.txt" | head -1)"
+                [ -z "$want" ] || [ "$want" = "$(sha256sum "$deb" | cut -d' ' -f1)" ] || die "the package in the zip does not match its checksum"
+            fi
+            mkdir -p /var/cache/lumenos
+            mv "$deb" /var/cache/lumenos/
+            trap - EXIT; rm -rf "$work"
+            exec "$HERE/lumenos-update" --file "/var/cache/lumenos/$(basename "$inner")"
+        fi
+        unzip -Z1 "$file" 2> /dev/null | grep -qE "(^|/)os/system/API$" || die "this zip holds neither a package nor Lumen's code"
+        top="$(source_top "$file")"
+        need="$(unzip -p "$file" "${top}os/system/API" | tr -dc '0-9')"
+        have="$(tr -dc '0-9' < "$HERE/API")"
+        [ "${need:-999}" -le "${have:-0}" ] || die "this code needs a newer player than the one installed: take the package Lumen-<version>-linux-$arch.deb from the release instead"
+        unzip -q -o "$file" "${top}qml/*" "${top}i18n/*" "${top}icons/*" "${top}os/system/*" "${top}CMakeLists.txt" -d "$work" || die "the zip could not be read"
+        src="$work/$top"
+        [ -f "$src/qml/OsMain.qml" ] || die "this code has no interface for LumenOS"
+        new="$OVERLAY.new"
+        rm -rf "$new"
+        mkdir -p "$new/qml" "$new/i18n" "$new/icons"
+        cp "$src"/qml/*.qml "$new/qml/"
+        cp "$src"/i18n/*.json "$new/i18n/" 2> /dev/null || true
+        cp "$src"/icons/*.svg "$new/icons/" 2> /dev/null || true
+        # the one type every page shares has to be named for files that are not part of the program
+        printf 'singleton Theme 1.0 Theme.qml\n' > "$new/qml/qmldir"
+        printf '%s\n' "$need" > "$new/API"
+        printf '%s\n' "$(source_version "$file" "$top") ($(date -u +%Y-%m-%d), $(basename "$file"))" > "$new/VERSION"
+        chmod -R a+rX "$new"
+        rm -rf "$OVERLAY.old"
+        [ -d "$OVERLAY" ] && mv "$OVERLAY" "$OVERLAY.old"
+        mv "$new" "$OVERLAY"
+        rm -rf "$OVERLAY.old"
+        # LumenOS's own part: scripts, units, rules
+        for f in "$src"/os/system/*; do
+            [ -f "$f" ] || continue
+            case "$(basename "$f")" in API) install -m 644 "$f" "$HERE/API.overlay" ;; *) install -m 755 "$f" "$HERE/" ;; esac
+        done
+        mkdir -p "$HERE/units" "$HERE/udev"
+        cp "$src"/os/system/units/* "$HERE/units/" 2> /dev/null || true
+        cp "$src"/os/system/udev/* "$HERE/udev/" 2> /dev/null || true
+        "$HERE/lumenos-setup" refresh > /dev/null 2>&1 || true
+        echo "interface and system part taken from $(basename "$file")"
+        systemctl --no-block try-restart lumenos-session.service
+        ;;
+    *) die "a .deb or a .zip, please" ;;
+    esac
+    ;;
+*)
+    die "lumenos-offline scan | install <file>"
+    ;;
+esac

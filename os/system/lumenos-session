@@ -10,16 +10,16 @@ export QT_WAYLAND_DISABLE_WINDOWDECORATION=1
 export LUMEN_OS=1
 # no pointer on the television until a mouse moves
 export XCURSOR_SIZE=32
-[ -r /etc/lumenos/session.env ] && . /etc/lumenos/session.env
-
-# Disc libraries the user has set up on this device (settings, "Discs"). Lumen brings none itself.
-dvdcss="$(/sbin/ldconfig -p 2> /dev/null | awk '/libdvdcss\.so\.2/ { print $NF; exit }')"
-[ -n "$dvdcss" ] && export LUMEN_DVDCSS_LIBRARY="$dvdcss"
-# Blu-ray: with a key file of the user the system's libaacs reads it; without one, MakeMKV's
-# library takes that place if MakeMKV was set up
-if [ ! -s "${HOME:-/home/lumen}/.config/aacs/KEYDB.cfg" ] && [ -e /usr/lib/libmmbd.so.0 ]; then
-    export LIBAACS_PATH=/usr/lib/libmmbd LIBBDPLUS_PATH=/usr/lib/libmmbd
+# /etc/lumenos/session.env: NAME=value lines for the player (LUMEN_MPV_LOG=v, LUMEN_PERF_LOG=1 …)
+if [ -r /etc/lumenos/session.env ]; then
+    set -a
+    . /etc/lumenos/session.env
+    set +a
 fi
+
+# The disc libraries the user has set up on this device (settings, "Discs") are found by Lumen itself,
+# whenever that changes - so nothing has to restart for them. To force one, name it in session.env:
+# LUMEN_DVDCSS_LIBRARY=/path/libdvdcss.so.2, LIBAACS_PATH=/path/libaacs (without ".so.0").
 
 # sound: PipeWire and its session manager run as services of this user; make sure they are up
 # before the player asks for its output (a connection that fails is slower than one that waits)
@@ -27,6 +27,19 @@ if command -v systemctl > /dev/null 2>&1; then
     systemctl --user start pipewire.socket wireplumber.service > /dev/null 2>&1 || true
 fi
 
+# No arrow in the middle of the television. With a mouse plugged in, the compositor draws its own
+# pointer until the mouse first moves (only then does the pointer belong to Lumen, which hides it
+# whenever the mouse rests). So the compositor gets a pointer theme of one transparent dot, made
+# here; Lumen keeps the ordinary arrow.
+cursors="$XDG_RUNTIME_DIR/lumenos-cursors"
+mkdir -p "$cursors/lumenos-blank/cursors" 2> /dev/null
+# an Xcursor file: header, one table entry, one 1x1 image of nominal size 32, fully transparent
+printf 'Xcur\020\0\0\0\0\0\001\0\001\0\0\0\002\0\375\377\040\0\0\0\034\0\0\0\044\0\0\0\002\0\375\377\040\0\0\0\001\0\0\0\001\0\0\0\001\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' \
+    > "$cursors/lumenos-blank/cursors/default" 2> /dev/null
+ln -sf default "$cursors/lumenos-blank/cursors/left_ptr" 2> /dev/null
+printf '[Icon Theme]\nName=lumenos-blank\n' > "$cursors/lumenos-blank/index.theme" 2> /dev/null
+
 # -s: the keys for switching the console stay (Ctrl+Alt+F2 for a login, for maintenance)
 # -d: no window decorations
-exec cage -s -d -- /usr/bin/lumen --os
+exec env XCURSOR_PATH="$cursors" XCURSOR_THEME=lumenos-blank \
+    cage -s -d -- env -u XCURSOR_PATH -u XCURSOR_THEME /usr/bin/lumen --os

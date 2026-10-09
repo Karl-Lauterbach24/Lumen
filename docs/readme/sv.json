@@ -25,6 +25,7 @@
 "f_cd": "**Ljud-cd:** spårnamn från CD-Text eller, med pluginet *Disc identification*, från MusicBrainz.",
 "f_comfort": "**I vardagen:** lista över senast spelade med återupptagning, dra och släpp, externa undertextfiler, kortkommandon (F1).",
 "f_languages": "**Gränssnitt på 16 språk**, väljs i fönstrets rubrikrad (jordglobssymbolen).",
+"f_os": "**LumenOS:** Lumen som fristående spelare – en avbild för USB-sticka (x86-64 och ARM64) som startar direkt i Lumen på tv:n, styrs med fjärrkontroll, uppdaterar sig själv och kopierar skivor till sin disk, en USB-disk eller en NAS. Se [os/README.md](os/README.md).",
 "h_protection": "Kopieringsskydd",
 "protection_text": "Lumen innehåller **ingen** kringgående av kopieringsskydd. Skyddade skivor (AACS, BD+, CSS) spelas bara om du själv lägger till de bibliotek som behövs via ett plugin; du ansvarar för att det är lagligt i ditt land.",
 "h_plugins": "Plugins",
