@@ -131,6 +131,9 @@ them itself when asked. The repository holds neither – only an image built fro
 - Picture: SDR. Lumen's own window is used, which does not pass HDR through.
 - Reading ahead of a disc (see the notes of Lumen 1.4.1) covers Blu-rays; DVDs play with the small
   buffer they always had.
+- **No graphics driver** (a virtual machine, a board Mesa has no driver for): the interface is drawn by
+  Qt's software renderer and the film by Mesa's; fine for trying LumenOS out, too slow for films in
+  full resolution.
 - A drive or a share that stops answering is left out of the library after six seconds and comes back
   when it answers again; the interface does not wait for it. A film disc that never opens is given up
   after two minutes (Lumen 1.4.1). What a drive that hangs needs in the end is to be unplugged.
