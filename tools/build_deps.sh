@@ -92,8 +92,12 @@ Darwin)
     OS=macos
     # Homebrew's headers and libraries are not in the compiler's default search path
     BREW="$(brew --prefix)"
-    FF_PLATFORM=(--enable-videotoolbox --enable-audiotoolbox "--extra-ldflags=-L$BREW/lib")
-    FF_CFLAGS="-I$BREW/include"
+    # OpenSSL 3, explicitly and first: Homebrew's own include and lib folders (-I/-L below) lead to
+    # whichever OpenSSL is linked there, and that differs between runner images (an openssl@4 that one
+    # image has and the next has not left ffmpeg unable to start: "libssl.4.dylib not loaded").
+    SSL3="$(brew --prefix openssl@3 2>/dev/null || true)"
+    FF_PLATFORM=(--enable-videotoolbox --enable-audiotoolbox "--extra-ldflags=${SSL3:+-L$SSL3/lib }-L$BREW/lib")
+    FF_CFLAGS="${SSL3:+-I$SSL3/include }-I$BREW/include"
     for keg in openssl@3 libxml2 libarchive; do
         p="$(brew --prefix "$keg" 2>/dev/null || true)"
         [ -d "$p/lib/pkgconfig" ] && export PKG_CONFIG_PATH="$p/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
