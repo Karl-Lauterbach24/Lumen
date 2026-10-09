@@ -38,6 +38,8 @@ FFMPEG_REPO=https://github.com/tthayer93/FFmpeg-mvc.git
 FFMPEG_REF=86c0b25eac28aafc3e09b76c8b319854c1f396e9        # release/9.0 (n9.0.2-mvc8)
 MPV_REPO=https://github.com/mpv-player/mpv.git
 MPV_REF=v0.41.0
+DISPLAYINFO_REPO=https://gitlab.freedesktop.org/emersion/libdisplay-info.git
+DISPLAYINFO_REF=0.2.0                                      # only where the system has none (Linux; static, inside libmpv)
 DVDREAD_REPO=https://code.videolan.org/videolan/libdvdread.git
 DVDREAD_REF=7.1.1
 DVDNAV_REPO=https://code.videolan.org/videolan/libdvdnav.git
@@ -230,6 +232,42 @@ if want mpv; then
         git -C "$src" apply "$patch"
         echo "applied: $(basename "$patch")"
     done
+    # Linux: mpv's output straight to the display (KMS, "gpu-context=drm") – what LumenOS plays
+    # through, because only there the display is told about HDR (the connector's HDR metadata),
+    # gets 10 bits and the film's frame rate. mpv builds it when it finds libdrm, GBM, EGL and
+    # libdisplay-info. The build machines have the first three; libdisplay-info is built here, as a
+    # static library that ends up inside libmpv – so the package needs nothing new on the system
+    # it is installed on. Its build reads the list of monitor makers from the package "hwdata".
+    if [ "$OS" = linux ]; then
+        if ! pkg-config --exists libdisplay-info 2> /dev/null; then
+            if [ ! -f /usr/share/hwdata/pnp.ids ] && [ "$(id -u)" = 0 ]; then
+                if command -v apt-get > /dev/null; then
+                    DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends hwdata || true
+                elif command -v dnf > /dev/null; then
+                    dnf install -y -q hwdata || true
+                fi
+            fi
+            if [ -f /usr/share/hwdata/pnp.ids ]; then
+                echo "=== libdisplay-info ($DISPLAYINFO_REF)"
+                disrc="$(checkout displayinfo "$DISPLAYINFO_REPO" "$DISPLAYINFO_REF")"
+                rm -rf "$SRCROOT/displayinfo-build"
+                meson setup "$SRCROOT/displayinfo-build" "$disrc" --prefix="$PREFIX" --libdir=lib --buildtype=release -Ddefault_library=static
+                meson compile -C "$SRCROOT/displayinfo-build"
+                meson install -C "$SRCROOT/displayinfo-build"
+            else
+                echo "libdisplay-info: /usr/share/hwdata/pnp.ids missing (package hwdata) – not built" >&2
+            fi
+        fi
+        if pkg-config --exists libdisplay-info libdrm gbm egl 2> /dev/null; then
+            MPV_PLATFORM+=(-Ddrm=enabled -Dgbm=enabled -Degl-drm=enabled)
+            echo "mpv: with output straight to the display (KMS)"
+        elif [ -n "${LUMEN_REQUIRE_KMS:-}" ]; then
+            echo "mpv: libdisplay-info, libdrm, gbm or egl missing – no output straight to the display" >&2
+            exit 1
+        else
+            echo "mpv: WITHOUT output straight to the display (KMS): libdisplay-info, libdrm, gbm or egl missing" >&2
+        fi
+    fi
     rm -rf "$SRCROOT/mpv-build"
     meson setup "$SRCROOT/mpv-build" "$src" --prefix="$PREFIX" --libdir=lib --buildtype=release \
         -Dlibmpv=true -Dcplayer=false -Dtests=false \

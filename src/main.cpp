@@ -1,4 +1,5 @@
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIcon>
@@ -37,6 +38,8 @@
 #include "DvdNav.h"
 #include "InputMapper.h"
 #include "MediaServers.h"
+#include "Edid.h"
+#include "KmsDisplay.h"
 #include "OsBridge.h"
 #include "RipManager.h"
 #include "Updater.h"
@@ -55,6 +58,9 @@
 #include <csignal>
 #include <fcntl.h>
 #include <unistd.h>
+#ifdef Q_OS_LINUX
+#include <sys/ioctl.h>
+#endif
 
 #include <QSocketNotifier>
 
@@ -230,6 +236,19 @@ int main(int argc, char *argv[])
     const bool osMode = app.arguments().contains(QStringLiteral("--os")) || qEnvironmentVariableIsSet("LUMEN_OS");
     if (osMode)
         qputenv("LUMEN_OS_ACTIVE", "1"); // (statische Funktionen fragen danach: MpvController::wantsEmbedded)
+#ifdef Q_OS_LINUX
+    if (osMode) {
+        // Unter LumenOS läuft Lumen auf der Konsole des Fenstersystems. Gibt mpv einen Film direkt auf
+        // den Bildschirm aus, will es das Umschalten der Konsolen selbst regeln und greift dafür nach
+        // dem Terminal des Prozesses – das aber gehört der Anmeldung des Fenstersystems, und dessen
+        // Rückkehr auf den Bildschirm bliebe aus. Ohne Terminal lässt mpv es bleiben.
+        const int tty = ::open("/dev/tty", O_RDWR | O_NOCTTY | O_CLOEXEC);
+        if (tty >= 0) {
+            ::ioctl(tty, TIOCNOTTY);
+            ::close(tty);
+        }
+    }
+#endif
 
     I18n i18n; // vor allen anderen: Texte der Objekte sind dann schon übersetzt
     BdjSetup::prepare();
@@ -247,6 +266,120 @@ int main(int argc, char *argv[])
     MpvController player(&displays, &nav);
     OsBridge os(osMode);
     player.setKiosk(os.kiosk());
+    // LumenOS: ein Film geht direkt auf den Bildschirm, wenn das Gerät es kann – nur so kommt HDR beim
+    // Bildschirm an, mit 10 Bit und in der Bildrate des Films. Ohne Grafiktreiber (alles rechnet der
+    // Prozessor) bleibt es beim eigenen Fenster. LUMEN_OS_DIRECT=0 schaltet es ab, =1 erzwingt es.
+    KmsOutput kms;
+    bool directPossible = false; // das Gerät gibt es her (ob es gewünscht ist: Einstellungen › Bild und Ton)
+    {
+        QByteArray wish = qgetenv("LUMEN_OS_DIRECT");
+        // (Entwickler-Hilfe: "fail" erzwingt sie an einem Anschluss, den es nicht gibt – zum Prüfen dessen,
+        // was geschieht, wenn mpv den Bildschirm nicht aufbekommt)
+        const bool mustFail = wish == "fail";
+        if (mustFail)
+            wish = "1";
+        directPossible = os.kiosk() && os.system() && wish != "0" && MpvController::directSupported()
+                         && (wish == "1" || Tuning::hardware().gpu != Tuning::GpuSoftware);
+        if (directPossible)
+            kms = Kms::probe();
+        directPossible = directPossible && kms.valid;
+        if (mustFail)
+            kms.connector = QStringLiteral("None-9");
+        if (directPossible && (wish == "1" || QSettings().value(QStringLiteral("os/direct"), true).toBool())) {
+            {
+                player.setDirect(kms, [&os](bool forFilm, std::function<void()> done) {
+                    // (misslingt der Wechsel, bekommt mpv den Bildschirm nicht auf – und es geht im Fenster weiter)
+                    os.run({QStringLiteral("vt"), forFilm ? QStringLiteral("film") : QStringLiteral("ui")},
+                           [done](int, const QString &, const QString &) { done(); });
+                });
+            }
+        } else if (!kms.valid && os.kiosk() && Kms::available()) {
+            kms = Kms::probe(); // was der Bildschirm kann, zeigt die Oberfläche auch ohne direkte Ausgabe
+        }
+        // Entwickler-Hilfe: LUMEN_OS_EDID=<Datei> gibt vor, was der Bildschirm über sich sagt (ein Fernseher
+        // oder Verstärker, der nicht am Gerät hängt); LUMEN_OS_HDR=1, dass die Grafik HDR ankündigen kann
+        const QString edidFile = qEnvironmentVariable("LUMEN_OS_EDID");
+        if (!edidFile.isEmpty()) {
+            QFile f(edidFile);
+            if (f.open(QIODevice::ReadOnly))
+                kms.edid = f.readAll();
+        }
+        if (qgetenv("LUMEN_OS_HDR") == "1")
+            kms.hdrMetadata = kms.colorspace = true;
+    }
+    // Was das Gerät bestimmt: Tonausgang, durchgereichte Tonformate, HDR (Einstellungen › Bild und Ton)
+    const bool directSetUp = player.direct();
+    const auto applyOutput = [&player, &os, &kms, directPossible, directSetUp] {
+        if (!os.active() || !os.system())
+            return;
+        QSettings s;
+        const EdidInfo edid = parseEdid(kms.edid);
+        QVariantMap o;
+        // HDR geht durch, wenn die Grafik es dem Bildschirm ankündigen kann und der es annimmt; sonst
+        // (oder abgeschaltet) rechnet mpv auf SDR um
+        const bool hdrOut = player.direct() && kms.hdrMetadata && kms.colorspace && edid.bt2020
+                            && s.value(QStringLiteral("os/hdr"), true).toBool();
+        player.setDirectHdr(hdrOut && edid.hdr10, hdrOut && edid.hlg);
+        player.setDirectRateMatching(s.value(QStringLiteral("os/rate"), true).toBool());
+        QString device = s.value(QStringLiteral("os/audioDevice")).toString();
+        const QVariantList known = player.audioDevices();
+        const auto exists = [&known](const QString &name) {
+            if (known.isEmpty())
+                return true; // mpv hat seine Liste noch nicht genannt
+            for (const QVariant &d : known)
+                if (d.toMap().value("name").toString() == name)
+                    return true;
+            return false;
+        };
+        if (device.isEmpty() || !exists(device)) {
+            device = OsBridge::displayAudioDevice();
+            if (!device.isEmpty() && !exists(device)) {
+                // die Karte heißt anders als angenommen: der erste HDMI-Ausgang, den mpv nennt
+                device.clear();
+                for (const QVariant &d : known) {
+                    const QString name = d.toMap().value("name").toString();
+                    if (name.startsWith(QLatin1String("alsa/hdmi:"))) {
+                        device = name;
+                        break;
+                    }
+                }
+            }
+        }
+        o["audio-device"] = device.isEmpty() ? QStringLiteral("auto") : device;
+        // Was der Bildschirm (oder der Verstärker davor) selbst entschlüsselt, steht in seinem EDID – es
+        // gilt also nur für den Ausgang, an dem er hängt, nicht für Kopfhörerbuchse oder Lautsprecher.
+        // (Entwickler-Hilfe: mit LUMEN_OS_EDID gilt der gewählte Ausgang als dieser.)
+        const bool toDisplay = device.startsWith(QLatin1String("alsa/hdmi:"))
+                               || (device.startsWith(QLatin1String("alsa/")) && qEnvironmentVariableIsSet("LUMEN_OS_EDID"));
+        QStringList spdif;
+        if (s.value(QStringLiteral("os/bitstream"), true).toBool() && toDisplay) {
+            for (const char *codec : {"ac3", "eac3", "truehd"})
+                if (edid.bitstream.contains(QLatin1String(codec)))
+                    spdif << QLatin1String(codec);
+            if (edid.bitstream.contains(QLatin1String("dts-hd")))
+                spdif << QStringLiteral("dts-hd");
+            else if (edid.bitstream.contains(QLatin1String("dts")))
+                spdif << QStringLiteral("dts");
+        }
+        o["audio-spdif"] = spdif.join(QLatin1Char(','));
+        // Ton über Kabel öffnet Lumen selbst (ALSA): nur so gehen Dolby- und DTS-Ströme unverändert an
+        // einen Verstärker. Bluetooth-Lautsprecher führt PipeWire – das aber nimmt solche Ströme an und
+        // spielt sie nirgends ab: Wird durchgereicht, steht es deshalb nicht zur Wahl. Lässt sich der
+        // Ausgang dann nicht öffnen, meldet mpv das, und es geht entschlüsselt weiter (MpvController).
+        o["ao"] = spdif.isEmpty() ? QStringLiteral("alsa,pipewire") : QStringLiteral("alsa");
+        o["audio-channels"] = toDisplay && edid.pcmChannels > 2 ? QStringLiteral("auto") : QStringLiteral("auto-safe");
+        player.setOutputOverrides(o);
+        os.setDisplay({{"direct", player.direct()}, {"directPossible", directPossible}, {"directFailed", directSetUp && !player.direct()},
+                       {"connector", kms.connector}, {"name", edid.name},
+                       {"hdr10", edid.hdr10 && edid.bt2020}, {"hlg", edid.hlg && edid.bt2020},
+                       {"dolbyVision", edid.dolbyVision}, {"hdr10plus", edid.hdr10plus},
+                       {"hdrSignal", kms.hdrMetadata && kms.colorspace}, {"bitstream", edid.bitstream}, {"atmos", edid.atmos},
+                       {"pcmChannels", edid.pcmChannels}, {"audioDevice", device}, {"passed", spdif}});
+    };
+    applyOutput();
+    QObject::connect(&os, &OsBridge::outputSettingsChanged, &player, applyOutput);
+    QObject::connect(&player, &MpvController::audioDevicesChanged, &player, applyOutput, Qt::QueuedConnection);
+    QObject::connect(&player, &MpvController::directUnavailable, &player, applyOutput, Qt::QueuedConnection);
     player.setDvdNav(&dvd);
     player.setVcdNav(&vcd);
     player.addOptionProvider([&plugins] { return plugins.mpvOptions(); });
@@ -429,6 +562,7 @@ int main(int argc, char *argv[])
     // LumenOS: Fernbedienungen und Gamepads (alles außer Tastatur und Maus), nach ihrer Einrichtung.
     // Läuft etwas, steuern ihre Tasten die Wiedergabe; sonst kommen sie als Tasten bei der Oberfläche an.
     InputMapper remotes(osMode);
+    QObject::connect(&player, &MpvController::displayHeldChanged, &remotes, [&player, &remotes] { remotes.setKeyboards(player.displayHeld()); });
     RipManager rip;
     QObject::connect(&remotes, &InputMapper::action, &app, [&](const QString &name, bool repeat) {
         if (!player.idle()) {

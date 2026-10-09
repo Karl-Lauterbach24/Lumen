@@ -6,6 +6,7 @@
 #include <QTimer>
 #include <QVariant>
 
+#include <functional>
 #include <memory>
 
 // LumenOS: Lumen als einziges Programm eines Abspielgeräts ("lumen --os"). Diese Klasse ist, was die
@@ -28,6 +29,10 @@ class OsBridge : public QObject
     Q_PROPERTY(bool softwareGraphics READ softwareGraphics CONSTANT)
     // die Oberfläche kommt aus einem Zip des Quelltexts (Aktualisierung ohne Netz), nicht aus dem Programm
     Q_PROPERTY(QString overlayVersion READ overlayVersion CONSTANT)
+    // Der Bildschirm (und der Verstärker davor), wie er sich meldet, und was LumenOS daraus macht:
+    // {direct, connector, name, hdr10, hlg, dolbyVision, hdr10plus, hdrSignal, bitstream: [..], atmos,
+    //  pcmChannels, audioDevice, passed: [..]}
+    Q_PROPERTY(QVariantMap display READ display NOTIFY displayChanged)
     // [{name, path, kind: "internal" | "usb" | "network" | "disc", free, total}]
     Q_PROPERTY(QVariantList places READ places NOTIFY placesChanged)
     // {version, hostname, system, addresses: [..]}
@@ -54,11 +59,18 @@ public:
     // Bild eines Symbols: aus dem Zip, wenn es dort eines gibt, sonst aus dem Programm
     Q_INVOKABLE QString icon(const QString &name) const;
     QVariantList places() const { return m_places; }
+    QVariantMap display() const { return m_display; }
+    void setDisplay(const QVariantMap &display);
+    // Einstellungen › Bild und Ton haben sich geändert (die Oberfläche schreibt sie, main wendet sie an)
+    Q_INVOKABLE void outputSettingChanged() { emit outputSettingsChanged(); }
+    // Der Tonausgang, der zum Bildschirm gehört, in mpvs Namen ("alsa/hdmi:CARD=PCH,DEV=0"); leer = unbekannt
+    static QString displayAudioDevice();
     QVariantMap info() const;
     QVariantMap update() const { return m_update; }
 
     // Hilfsprogramm aufrufen; done(exitCode, stdout, stderr), wenn es fertig ist
     Q_INVOKABLE void admin(const QStringList &arguments, const QJSValue &done = QJSValue());
+    void run(const QStringList &arguments, std::function<void(int code, const QString &out, const QString &err)> done);
     // Ordner lesen, ohne die Oberfläche aufzuhalten (ein Netzlaufwerk kann dauern): folderListed
     Q_INVOKABLE void listFolder(const QString &path);
     Q_INVOKABLE QString parentFolder(const QString &path) const;
@@ -71,6 +83,8 @@ public:
 
 signals:
     void placesChanged();
+    void displayChanged();
+    void outputSettingsChanged();
     void infoChanged();
     void updateChanged();
     // entries: [{name, path, dir, kind, size}], Ordner zuerst; kind: "folder", "file" oder eine Disc-Art
@@ -93,6 +107,7 @@ private:
     // Zustand der Suche nach Datenträgern, geteilt mit ihrem Faden (der die Oberfläche überleben kann)
     std::shared_ptr<Scan> m_scan;
     QVariantList m_places;
+    QVariantMap m_display;
     QVariantMap m_info;
     QVariantMap m_update;
     QTimer m_poll;

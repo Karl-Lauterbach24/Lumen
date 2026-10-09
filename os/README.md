@@ -59,6 +59,33 @@ system's libraries again whenever one of these jobs has finished.
 **Copying a disc** (*Disc › Copy to storage*) lets MakeMKV write the films of the disc as MKV files
 into a folder named after the disc, on the internal disk, a USB disk or a share.
 
+**Picture and sound** (*Settings › Picture and sound*). Where the machine has a graphics driver, a film
+does not play inside the interface's window: for as long as it runs, Lumen hands the display to mpv,
+which puts the picture on it directly (the kernel's mode setting, KMS). That is what makes the rest
+possible:
+
+- **HDR goes through to the display.** If the display says it takes HDR10 (the PQ curve) or HLG with
+  BT.2020 colours, and the graphics driver can announce HDR to it, a film in HDR is put out as it is –
+  10 bits, its own curve, the mastering data it carries – and the display does the rest. Otherwise, or
+  with the switch off, mpv converts the film to SDR. An HLG film on a display that knows only HDR10 is
+  converted to HDR10. **Dolby Vision and HDR10+** films carry the PQ curve: mpv reads what they say
+  about each scene, and the display gets HDR10 – neither format's own signalling can be sent from
+  Linux.
+- **The film's frame rate.** The display is switched to a mode that fits the film – 23.976 for cinema
+  films, 50 or 59.94 for the rest, in the display's preferred resolution – and back when the film ends.
+- **Dolby and DTS unchanged.** What the display or the receiver in front of it says it decodes itself
+  (Dolby Digital, Dolby Digital Plus with Atmos, TrueHD, DTS, DTS-HD) is sent to it as it is on the
+  disc; everything else is decoded and sent as PCM, with as many channels as the device takes. This
+  applies to the HDMI output the display hangs on – Lumen opens it itself (ALSA). A sound output chosen
+  by hand (*Sound output*: a Bluetooth speaker, a headphone jack) gets decoded sound.
+
+While a film has the display, the interface is not on screen: remotes work as before, a keyboard's
+arrows, Enter, Space and Esc are read directly, and what mpv shows (the seek bar, the disc's menus) is
+all there is to see. *Output films straight to the display* turns all of this off – the film then plays
+in the interface's window as in Lumen 1.5, in SDR – and takes effect when Lumen starts the next time.
+If the direct output cannot be opened on a machine, Lumen falls back to the window by itself and the
+page says so.
+
 **Updates.** Every six hours (and four minutes after starting, and in the setup) LumenOS asks GitHub
 for Lumen's latest release, loads the package for its machine, checks it against the release's
 `SHA256SUMS.txt`, waits until nothing is playing, copying or being set up, installs it and starts the
@@ -83,7 +110,10 @@ and the page says that a package is needed.
 **Maintenance.** Ctrl+Alt+F2 opens a console: user `lumen`, password `lumen` (change it with
 `passwd`), `sudo` for everything. `journalctl -t lumenos-session` is the player's log;
 `/etc/lumenos/session.env` takes `NAME=value` lines for its environment (`LUMEN_MPV_LOG=v`,
-`LUMEN_PERF_LOG=1`, `QSG_INFO=1`).
+`LUMEN_PERF_LOG=1`, `QSG_INFO=1`; `LUMEN_OS_DIRECT=0` keeps films in the window whatever the settings
+say, `=1` forces the direct output even without a graphics driver). With the direct output the log has
+one line per film saying what was sent to the display: `LumenOS: direkte Ausgabe HDMI-A-1 - Film
+pq/bt.2020 …, Bildschirm pq/bt.2020 …`.
 
 ## How it is made
 
@@ -92,7 +122,7 @@ Lumen's own Debian package, so an update of Lumen updates the system's part too:
 
 | in the package | |
 |---|---|
-| `lumen --os` | the interface for the television (`qml/Os*.qml`), remotes (`src/InputMapper`), storage and the bridge to the system (`src/OsBridge`), copying (`src/RipManager`) |
+| `lumen --os` | the interface for the television (`qml/Os*.qml`), remotes (`src/InputMapper`), storage and the bridge to the system (`src/OsBridge`), copying (`src/RipManager`), what the display says about itself and which mode a film gets (`src/Edid`, `src/KmsDisplay`) |
 | `share/lumen/os/lumenos-session` | the one session: the compositor `cage` with Lumen in it, on the first console |
 | `share/lumen/os/lumenos-admin` | the only thing Lumen may do with the system's rights (through one `sudo` rule): network, Bluetooth, shares, update, power, installing |
 | `share/lumen/os/lumenos-update` | the updater (a systemd timer) |
@@ -131,7 +161,14 @@ them itself when asked. The repository holds neither – only an image built fro
   adapter). Most PC graphics cards have none.
 - Bluetooth devices that want a number typed for pairing (keyboards) are not handled; remotes and
   gamepads pair without.
-- Picture: SDR. Lumen's own window is used, which does not pass HDR through.
+- **HDR, frame rate and bitstream sound need the direct output**, and that needs a graphics driver with
+  mode setting (Intel, AMD, the Raspberry Pi's; not Nvidia's own driver, which the image does not
+  carry). HDR also needs the driver to offer the connector's HDR properties, and a display that names
+  HDR and BT.2020 in the first extension block of its EDID. None of this could be tried on a real
+  television or receiver (see the release notes of 1.6.0).
+- The colour depth on the cable is the driver's choice (the connector's "max bpc"); LumenOS renders
+  10 bits and leaves that setting alone.
+- S/PDIF outputs get decoded sound: what the receiver behind them decodes cannot be asked.
 - Reading ahead of a disc (see the notes of Lumen 1.4.1) covers Blu-rays; DVDs play with the small
   buffer they always had.
 - **No graphics driver** (a virtual machine, a board Mesa has no driver for): the interface is drawn by

@@ -16,6 +16,7 @@
 #include <QNetworkInterface>
 #include <QPointer>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSet>
 #include <QStandardPaths>
 #include <QStorageInfo>
@@ -215,6 +216,54 @@ bool OsBridge::live() const
     return QFileInfo::exists(QStringLiteral("/run/live/medium/live/filesystem.squashfs")) || qEnvironmentVariableIsSet("LUMEN_OS_LIVE");
 }
 
+void OsBridge::setDisplay(const QVariantMap &display)
+{
+    if (display == m_display)
+        return;
+    m_display = display;
+    emit displayChanged();
+}
+
+// Der Tonausgang am Bildschirm. Grafikkarten für PCs (Intel, AMD, NVIDIA) melden je HDMI-Ausgang, ob
+// ein Bildschirm oder Verstärker daran hängt (/proc/asound/card*/eld#*); der Ausgang heißt bei ALSA
+// "hdmi:CARD=<Karte>,DEV=<Nummer>". Wo es diese Meldung nicht gibt (viele Geräte mit ARM-Prozessor),
+// eine Tonkarte, die HDMI im Namen trägt; sonst die erste Tonkarte.
+QString OsBridge::displayAudioDevice()
+{
+#ifdef Q_OS_LINUX
+    const QDir proc(QStringLiteral("/proc/asound"));
+    static const QRegularExpression cardName(QStringLiteral("^card[0-9]+$"));
+    static const QRegularExpression present(QStringLiteral("monitor_present\\s+1")), valid(QStringLiteral("eld_valid\\s+1"));
+    QStringList ids;
+    const QStringList cards = proc.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    for (const QString &card : cards) {
+        if (!cardName.match(card).hasMatch())
+            continue;
+        QFile idFile(proc.filePath(card + QStringLiteral("/id")));
+        if (!idFile.open(QIODevice::ReadOnly))
+            continue;
+        const QString id = QString::fromLatin1(idFile.readAll()).trimmed();
+        ids << id;
+        const QStringList elds = QDir(proc.filePath(card)).entryList({QStringLiteral("eld#*")}, QDir::Files, QDir::Name);
+        for (const QString &eld : elds) {
+            QFile f(proc.filePath(card + QLatin1Char('/') + eld));
+            if (!f.open(QIODevice::ReadOnly))
+                continue;
+            const QString text = QString::fromLatin1(f.readAll());
+            if (present.match(text).hasMatch() && valid.match(text).hasMatch())
+                return QStringLiteral("alsa/hdmi:CARD=%1,DEV=%2").arg(id).arg(eld.section(QLatin1Char('.'), -1).toInt());
+        }
+    }
+    for (const QString &id : std::as_const(ids)) {
+        if (id.contains(QLatin1String("hdmi"), Qt::CaseInsensitive))
+            return QStringLiteral("alsa/hdmi:CARD=%1,DEV=0").arg(id);
+    }
+    if (!ids.isEmpty())
+        return QStringLiteral("alsa/sysdefault:CARD=%1").arg(ids.first());
+#endif
+    return {};
+}
+
 bool OsBridge::softwareGraphics() const
 {
     return m_active && Tuning::hardware().gpu == Tuning::GpuSoftware;
@@ -406,11 +455,17 @@ void OsBridge::readUpdate()
 
 void OsBridge::admin(const QStringList &arguments, const QJSValue &done)
 {
-    const QString program = helper();
-    const auto answer = [done](int code, const QString &out, const QString &err) {
+    run(arguments, [done](int code, const QString &out, const QString &err) {
         if (done.isCallable())
             QJSValue(done).call({code, out, err});
-    };
+    });
+}
+
+void OsBridge::run(const QStringList &arguments, std::function<void(int, const QString &, const QString &)> answer)
+{
+    const QString program = helper();
+    if (!answer)
+        answer = [](int, const QString &, const QString &) {};
     if (program.isEmpty()) {
         answer(127, QString(), QStringLiteral("lumenos-admin"));
         return;

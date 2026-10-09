@@ -349,6 +349,164 @@ bool MpvController::embeddedByDefault()
 #endif
 }
 
+bool MpvController::directSupported()
+{
+#ifdef Q_OS_LINUX
+    // Kennt mpv die Ausgabe "drm"? Eine Option mit festen Werten lehnt einen unbekannten ab.
+    static const bool supported = [] {
+        mpv_handle *probe = mpv_create();
+        if (!probe)
+            return false;
+        const bool ok = mpv_set_option_string(probe, "gpu-context", "drm") >= 0;
+        mpv_destroy(probe);
+        return ok;
+    }();
+    return supported && Kms::available();
+#else
+    return false;
+#endif
+}
+
+void MpvController::setDirect(const KmsOutput &output, DisplayClaim claim)
+{
+    m_kms = output;
+    m_claimDisplay = std::move(claim);
+    m_direct = output.valid && m_claimDisplay && directSupported();
+    m_directRelease.setSingleShot(true);
+    m_directRelease.setInterval(450);
+    connect(&m_directRelease, &QTimer::timeout, this, &MpvController::releaseDisplay, Qt::UniqueConnection);
+}
+
+void MpvController::setDirectHdr(bool pq, bool hlg)
+{
+    if (m_hdrPq == pq && m_hdrHlg == hlg)
+        return;
+    m_hdrPq = pq;
+    m_hdrHlg = hlg;
+    if (m_mpv && m_direct) {
+        setOptionRaw(QStringLiteral("target-colorspace-hint"), pq || hlg ? QStringLiteral("yes") : QStringLiteral("no"), false);
+        applyDirectColor();
+    }
+}
+
+// Direkte Ausgabe: mpv rechnet das Bild in das Ziel, das hier steht, und kündigt dem Bildschirm genau
+// dieses an. Ein HDR-Film bleibt also HDR, wenn das Ziel seine Kennlinie trägt – dann geht er
+// unverändert durch, mit den Angaben seines Masters. Sonst (der Bildschirm nimmt es nicht an, oder
+// HDR ist abgeschaltet) bleibt das Ziel SDR, und mpv rechnet um.
+// HLG an einem Bildschirm, der nur PQ kennt, wird nach PQ gewandelt. HDR10+ und Dolby Vision tragen
+// PQ: ihre Angaben je Szene wertet mpv aus; der Bildschirm bekommt HDR10.
+void MpvController::applyDirectColor()
+{
+    if (!m_direct || !m_mpv)
+        return;
+    const QString gamma = m_videoParams.value(QStringLiteral("gamma")).toString();
+    QString trc = QStringLiteral("auto");
+    if (gamma == QLatin1String("pq") && m_hdrPq)
+        trc = QStringLiteral("pq");
+    else if (gamma == QLatin1String("hlg") && (m_hdrHlg || m_hdrPq))
+        trc = m_hdrHlg ? QStringLiteral("hlg") : QStringLiteral("pq");
+    if (trc == m_directTrc)
+        return;
+    m_directTrc = trc;
+    const bool hdrOut = trc != QLatin1String("auto");
+    setOptionRaw(QStringLiteral("target-trc"), trc, false);
+    setOptionRaw(QStringLiteral("target-prim"), hdrOut ? QStringLiteral("bt.2020") : QStringLiteral("auto"), false);
+    // Durchgereicht wird, was im Film steht: Die Helligkeit jeder Szene zu messen und danach
+    // anzupassen ist Sache des Bildschirms – mpv ließe sonst Bilder, die heller sind als ihre Angabe,
+    // nicht unverändert. (buildOptions kennt m_directTrc und nennt den Wert, der jetzt gilt.)
+    setOptionRaw(QStringLiteral("hdr-compute-peak"), buildOptions(m_profile).value(QStringLiteral("hdr-compute-peak"), QStringLiteral("auto")), false);
+}
+
+void MpvController::reportDirectOutput()
+{
+    mpv_node node;
+    if (!m_direct || !m_mpv || m_idle || mpv_get_property(m_mpv, "video-target-params", MPV_FORMAT_NODE, &node) < 0)
+        return;
+    const QVariantMap out = nodeToVariant(&node).toMap();
+    mpv_free_node_contents(&node);
+    const auto describe = [](const QVariantMap &p) {
+        return QStringLiteral("%1/%2 %3-%4 cd/m2, CLL %5").arg(p.value("gamma").toString(), p.value("primaries").toString())
+            .arg(p.value("min-luma").toDouble(), 0, 'g', 3).arg(p.value("max-luma").toDouble(), 0, 'f', 0).arg(p.value("max-cll").toDouble(), 0, 'f', 0);
+    };
+    qWarning("LumenOS: direkte Ausgabe %s - Film %s, Bildschirm %s", qPrintable(m_kms.connector),
+             qPrintable(describe(m_videoParams)), qPrintable(describe(out)));
+}
+
+void MpvController::setOutputOverrides(const QVariantMap &options)
+{
+    if (options == m_overrides)
+        return;
+    m_overrides = options;
+    m_audioFallback = false;
+    if (m_mpv)
+        applyProfile(m_profile);
+}
+
+// Den Bildschirm für den Film holen; was geladen werden soll, wartet so lange (m_pendingUrl)
+void MpvController::claimDisplay()
+{
+    m_directRelease.stop();
+    if (m_directSwitching || m_directHeld)
+        return;
+    m_directSwitching = true;
+    m_claimDisplay(true, [this] {
+        m_directSwitching = false;
+        m_directHeld = true;
+        emit displayHeldChanged();
+        if (!m_pendingUrl.isEmpty()) {
+            const QString url = std::exchange(m_pendingUrl, QString());
+            loadFile(url, std::exchange(m_pendingOptions, QVariantMap()));
+        } else {
+            m_directRelease.start(); // inzwischen abgesagt
+        }
+    });
+}
+
+// … und zurück an die Oberfläche, wenn mpv seine Ausgabe geschlossen hat und nichts Neues wartet
+void MpvController::releaseDisplay()
+{
+    if (!m_directHeld || m_directSwitching || !m_idle || !m_pendingUrl.isEmpty())
+        return;
+    m_directSwitching = true;
+    m_claimDisplay(false, [this] {
+        m_directSwitching = false;
+        m_directHeld = false;
+        emit displayHeldChanged();
+        if (!m_pendingUrl.isEmpty())
+            claimDisplay(); // inzwischen ist etwas Neues gewählt
+    });
+}
+
+// Die direkte Ausgabe ließ sich nicht öffnen (kein passender Treiber, der Bildschirm nimmt die
+// Betriebsart nicht): im eigenen Fenster geht es weiter, wie auf einem Gerät ohne diese Ausgabe.
+void MpvController::directFailed()
+{
+    if (!m_direct)
+        return;
+    qWarning("LumenOS: direkte Ausgabe nicht möglich - weiter im eigenen Fenster");
+    m_direct = false;
+    m_directTrc.clear();
+    // (nicht anhalten: restart() lädt, was gerade läuft, in den neuen Kern – an derselben Stelle)
+    const auto again = [this] {
+        m_directSwitching = false;
+        m_directHeld = false;
+        emit displayHeldChanged();
+        m_appliedOptions = buildOptions(m_profile);
+        // Die Ausgabe scheitert beim Start eines Films: Eine Pause ist da noch die, mit der er auf sein
+        // erstes Bild wartet (sie wird gerade aufgehoben) – in den neuen Kern soll sie nicht mit.
+        m_paused = false;
+        if (!m_quitting)
+            restart(m_appliedOptions);
+        emit directUnavailable();
+    };
+    if (m_directHeld) {
+        m_directSwitching = true;
+        m_claimDisplay(false, again);
+    } else {
+        again();
+    }
+}
+
 bool MpvController::wantsEmbedded(const QVariantMap &profile)
 {
     // gilt auch, wenn ein (z. B. unter Windows angelegtes) Profil "nativ" verlangt
@@ -514,7 +672,8 @@ bool MpvController::create(const QVariantMap &options)
 
     // Entwickler-Hilfe: LUMEN_MPV_LOG=warn|info|v|debug gibt mpv-Meldungen aus
     const QByteArray logLevel = qgetenv("LUMEN_MPV_LOG");
-    mpv_request_log_messages(m_mpv, logLevel.isEmpty() ? "error" : logLevel.constData());
+    // (direkte Ausgabe: auch Warnungen – dass der Treiber Bilder ablehnt, meldet mpv nur so)
+    mpv_request_log_messages(m_mpv, !logLevel.isEmpty() ? logLevel.constData() : m_direct ? "warn" : "error");
 
     if (mpv_initialize(m_mpv) < 0) {
         mpv_terminate_destroy(m_mpv);
@@ -523,6 +682,10 @@ bool MpvController::create(const QVariantMap &options)
         return false;
     }
     observeAll();
+    // LumenOS: bevor mpv Bild und Ton öffnet – die Betriebsart des Bildschirms für die Bildrate des Films
+    // (direkte Ausgabe), und der Tonausgang bekommt einen neuen Versuch
+    if (m_direct || m_kiosk)
+        mpv_hook_add(m_mpv, 1, "on_preloaded", 0);
     if (m_stereoSubs) { // ein neuer mpv-Kern zeigt Untertitel wieder selbst
         m_stereoSubs = false;
         emit stereoSubtitlesChanged();
@@ -649,7 +812,8 @@ void MpvController::restart(const QVariantMap &options)
 {
     const QString path = m_idle ? QString() : m_path;
     const double pos = m_position;
-    const bool paused = m_paused;
+    // (die Pause, mit der ein Film bis zu seinem ersten Bild wartet, ist keine des Zuschauers)
+    const bool paused = m_paused && !m_primedStart;
 
     const QString lastUrl = m_lastUrl;
     QVariantMap lastOptions = m_lastOptions;
@@ -739,6 +903,14 @@ void MpvController::loadFile(const QString &url, const QVariantMap &fileOptions)
             placeEmbeddedWindow();
         }
     }
+    if (m_direct && !m_directHeld) {
+        // erst gehört der Bildschirm dem Film, dann öffnet mpv seine Ausgabe
+        m_pendingUrl = url;
+        m_pendingOptions = fileOptions;
+        claimDisplay();
+        return;
+    }
+    m_directRelease.stop();
     if (m_window && !m_window->ready()) {
         // vo=libmpv kann erst nach dem Render-Kontext ein Bild ausgeben
         m_pendingUrl = url;
@@ -1597,6 +1769,34 @@ QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
         const QVariantMap cast = castMpvOptions(m_castPcm);
         for (auto it = cast.cbegin(); it != cast.cend(); ++it)
             o.insert(it.key(), it.value());
+    } else if (m_direct) {
+        // LumenOS: ohne Fenstersystem direkt auf den Bildschirm
+        o["vo"] = QStringLiteral("gpu-next");
+        o["gpu-context"] = QStringLiteral("drm");
+        o["gpu-api"] = QStringLiteral("opengl");
+        o["force-window"] = QStringLiteral("no"); // nach dem Film schließt mpv die Ausgabe: der Bildschirm wird frei
+        o["drm-device"] = m_kms.device;
+        o["drm-connector"] = m_kms.connector;
+        o["drm-mode"] = QStringLiteral("preferred"); // je Film: siehe MPV_EVENT_HOOK
+        // HDR braucht 10 Bit; kann die Grafik das nicht, nimmt mpv von selbst 8
+        if (m_kms.hdrMetadata && (m_kms.maxBpc == 0 || m_kms.maxBpc >= 10))
+            o["drm-format"] = QStringLiteral("xrgb2101010");
+        // was dem Bildschirm angekündigt wird, und worin das Bild dafür gerechnet ist (applyDirectColor)
+        o["target-colorspace-hint"] = m_hdrPq || m_hdrHlg ? QStringLiteral("yes") : QStringLiteral("no");
+        // (ein Fenstersystem, dessen Farbraum vorginge, gibt es hier nicht: das Ziel gilt, wie es hier steht –
+        // sonst bliebe es bei den Grundfarben von SDR, bis mpv dem Bildschirm das erste Bild angekündigt hat)
+        o["target-colorspace-hint-strict"] = QStringLiteral("no");
+        const bool hdrOut = !m_directTrc.isEmpty() && m_directTrc != QLatin1String("auto");
+        o["target-trc"] = hdrOut ? m_directTrc : QStringLiteral("auto");
+        o["target-prim"] = hdrOut ? QStringLiteral("bt.2020") : QStringLiteral("auto");
+        if (hdrOut)
+            o["hdr-compute-peak"] = QStringLiteral("no");
+        // erzwungen auf einem Gerät ohne Grafiktreiber (virtuelle Maschine): der Renderer lehnt das sonst ab
+        if (Tuning::hardware().gpu == Tuning::GpuSoftware)
+            o["gpu-sw"] = QStringLiteral("yes");
+        o.remove("border");
+        o.remove("ontop");
+        o.remove("fullscreen");
     } else if (wantsEmbedded(profile)) {
         // Eigenes Qt-Fenster: Platzierung/Rahmen übernimmt Qt, Bild über die Render-API
         o["vo"] = QStringLiteral("libmpv");
@@ -1611,24 +1811,31 @@ QVariantMap MpvController::buildOptions(const QVariantMap &profile) const
     }
 
     // Eigenes mpv-Fenster: fällt der neue Renderer aus (alter Treiber), nimmt mpv den bewährten
-    if (!m_castEncoder && !wantsEmbedded(profile) && o.value("vo").toString() == QLatin1String("gpu-next"))
+    if (!m_castEncoder && !m_direct && !wantsEmbedded(profile) && o.value("vo").toString() == QLatin1String("gpu-next"))
         o["vo"] = QStringLiteral("gpu-next,gpu");
 
     o["vf"] = stereoFilter;
     // Im eingebetteten Fenster kennt mpv die Bildwiederholrate nicht (0 = unbekannt)
     o["display-fps-override"] = QStringLiteral("0");
+    if (m_direct)
+        o.remove("display-fps-override"); // … direkt am Bildschirm kennt mpv sie
     if (out == QLatin1String("seq") && m_stereoIn != QLatin1String("none")) {
         // Bildfolge: jedes Bild genau einen Bildwechsel lang, also streng im Takt des Bildschirms
         o["video-sync"] = QStringLiteral("display-resample");
         o["interpolation"] = QStringLiteral("no");
         // … und der Takt ist die Rate des Profils: Ohne diese Angabe richtet sich mpv im
         // eingebetteten Fenster nach dem Ton und lässt Bilder aus, sobald eines zu spät kommt
-        if (wantsEmbedded(profile))
+        if (!m_direct && wantsEmbedded(profile))
             o["display-fps-override"] = QString::number(qBound(48, profile.value("seqRate", 120).toInt(), 480));
     }
     if (m_nav) {
         m_nav->setStereo(m_mvcCapable && BlurayNav::available() && out != QLatin1String("none"), out);
         m_nav->setSubtitleDepth(profile.value("subtitleDepth").toInt());
+    }
+    // LumenOS: was das Gerät bestimmt, geht dem Profil vor (nicht, solange übertragen wird)
+    if (!m_castEncoder) {
+        for (auto it = m_overrides.cbegin(); it != m_overrides.cend(); ++it)
+            o.insert(it.key(), it.value());
     }
     return o;
 }
@@ -2388,6 +2595,45 @@ void MpvController::handleEvent(mpv_event *ev)
         if (prefix == "cplayer" && (m_path.startsWith(QLatin1String("lumenbd://")) || m_path.startsWith(QLatin1String("lumendvd://")))
             && (text.contains(QLatin1String("Cannot seek in this stream")) || text.contains(QLatin1String("force-seekable"))))
             transient = true;
+        // LumenOS: Der Tonausgang am Bildschirm ließ sich nicht öffnen (belegt, oder die Karte heißt anders
+        // als angenommen): einmal mit dem Ausgang des Systems weiter, statt stumm zu bleiben
+        if (m_kiosk && !m_audioFallback && m_overrides.contains(QStringLiteral("audio-device")) && prefix == "cplayer"
+            && text.contains(QLatin1String("Could not open/initialize audio device"))) {
+            m_audioFallback = true;
+            qWarning("LumenOS: Tonausgang %s nicht zu öffnen - weiter mit dem des Systems", qPrintable(m_overrides.value(QStringLiteral("audio-device")).toString()));
+            // mpv hat die Tonspur abgewählt: mit dem Ausgang des Systems, entschlüsselt, wieder wählen
+            const int aid = m_aid;
+            QMetaObject::invokeMethod(this, [this, aid] {
+                setOptionRaw(QStringLiteral("ao"), QStringLiteral("alsa,pipewire"), false);
+                setOptionRaw(QStringLiteral("audio-device"), QStringLiteral("auto"), false);
+                setOptionRaw(QStringLiteral("audio-spdif"), QString(), false);
+                if (aid > 0)
+                    setOptionRaw(QStringLiteral("aid"), QString::number(aid), false);
+            }, Qt::QueuedConnection);
+            break;
+        }
+        // LumenOS, direkte Ausgabe: mpv bekam den Bildschirm nicht auf
+        if (m_direct && prefix == "cplayer" && text.contains(QLatin1String("video_out"))) {
+            QMetaObject::invokeMethod(this, &MpvController::directFailed, Qt::QueuedConnection);
+            break;
+        }
+        // … oder der Treiber nimmt seine Bilder nicht an. Einzelne solche Meldungen gibt es beim Wechsel
+        // der Betriebsart; eine Reihe davon heißt: so geht es nicht. Erst ohne HDR weiter (die Angaben
+        // dafür sind das, was Treiber ablehnen), bleibt es dabei, im eigenen Fenster.
+        if (m_direct && prefix.startsWith("vo/") && text.contains(QLatin1String("Failed to commit atomic request"))) {
+            if (++m_directFlipErrors == 12) {
+                QMetaObject::invokeMethod(this, [this] {
+                    if (m_hdrPq || m_hdrHlg) {
+                        qWarning("LumenOS: der Bildschirm nimmt die HDR-Ausgabe nicht an - weiter in SDR");
+                        m_directFlipErrors = 0;
+                        setDirectHdr(false, false);
+                    } else {
+                        directFailed();
+                    }
+                }, Qt::QueuedConnection);
+            }
+            break;
+        }
         if (m->log_level <= MPV_LOG_LEVEL_ERROR && !transient && !m_endFileError)
             setError(text);
         break;
@@ -2397,6 +2643,8 @@ void MpvController::handleEvent(mpv_event *ev)
         m_bdOpenStarted = true;
         m_fileReady = false;
         m_endFileError = false;
+        m_directFlipErrors = 0;
+        m_directReported = false;
         break;
     case MPV_EVENT_END_FILE: {
         m_primedStart = false;
@@ -2406,6 +2654,8 @@ void MpvController::handleEvent(mpv_event *ev)
             m_kioskShow = false;
             placeEmbeddedWindow();
         }
+        if (m_direct && m_directHeld && m_idle && !m_kioskLoading)
+            m_directRelease.start();
         // das Ende der vorigen Datei kommt vor dem Start der neuen: dann läuft das Öffnen noch
         if (m_bdOpenStarted)
             releaseBdOpenLock();
@@ -2481,6 +2731,40 @@ void MpvController::handleEvent(mpv_event *ev)
             });
         }
         break;
+    case MPV_EVENT_HOOK: {
+        // Die Datei ist geöffnet, die Ausgabe noch nicht: Jetzt steht die Bildrate fest, und mpv nimmt
+        // die Betriebsart des Bildschirms, die hier gesetzt wird, wenn es die Ausgabe gleich öffnet.
+        auto *hook = static_cast<mpv_event_hook *>(ev->data);
+        // Der Tonausgang war beim letzten Film nicht zu öffnen (der Verstärker aus?): neuer Versuch
+        if (m_audioFallback) {
+            m_audioFallback = false;
+            for (const char *key : {"ao", "audio-device", "audio-spdif"})
+                if (m_overrides.contains(QLatin1String(key)))
+                    setOptionRaw(QLatin1String(key), m_overrides.value(QLatin1String(key)), false);
+        }
+        if (m_direct) {
+            double fps = 0;
+            mpv_node list;
+            if (m_directRate && mpv_get_property(m_mpv, "track-list", MPV_FORMAT_NODE, &list) >= 0) {
+                const QVariantList tracks = nodeToVariant(&list).toList();
+                mpv_free_node_contents(&list);
+                for (const QVariant &t : tracks) {
+                    const QVariantMap track = t.toMap();
+                    if (track.value("type").toString() != QLatin1String("video") || track.value("albumart").toBool())
+                        continue;
+                    fps = track.value("demux-fps").toDouble();
+                    if (track.value("default").toBool() || track.value("selected").toBool())
+                        break;
+                }
+            }
+            const QString mode = Kms::modeFor(m_kms, fps);
+            setOptionRaw(QStringLiteral("drm-mode"), mode.isEmpty() ? QStringLiteral("preferred") : mode, false);
+            qWarning("LumenOS: Bildrate des Films %s - Betriebsart %s", fps > 0 ? qPrintable(QString::number(fps, 'f', 3)) : "unbekannt",
+                     mode.isEmpty() ? "die bevorzugte" : qPrintable(mode));
+        }
+        mpv_hook_continue(m_mpv, hook->id);
+        break;
+    }
     case MPV_EVENT_SHUTDOWN:
         // Player-Fenster wurde geschlossen -> ganze App beenden
         destroy();
@@ -2566,6 +2850,12 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
             m_kioskShow = false;
             placeEmbeddedWindow();
         }
+        if (m_direct && m_directHeld) {
+            if (m_idle && !m_kioskLoading)
+                m_directRelease.start();
+            else
+                m_directRelease.stop();
+        }
         emit idleChanged();
         break;
     case P_DISCTITLES: {
@@ -2613,6 +2903,12 @@ void MpvController::handleProperty(quint64 id, int format, void *data)
     }
     case P_VIDEOPARAMS:
         m_videoParams = node().toMap();
+        applyDirectColor();
+        // ins Protokoll: was vom Film am Bildschirm ankommt (einmal je Film, wenn das Bild steht)
+        if (m_direct && !m_videoParams.isEmpty() && !m_directReported) {
+            m_directReported = true;
+            QTimer::singleShot(2500, this, &MpvController::reportDirectOutput);
+        }
         updateVideoInfo();
         onContentFormatKnown();
         break;

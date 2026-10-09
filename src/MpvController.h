@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CastOutput.h"
+#include "KmsDisplay.h"
 #include "Tuning.h"
 
 #include <QElapsedTimer>
@@ -110,6 +111,26 @@ public:
     // danach gehört der Bildschirm der Oberfläche. Vor initialize() setzen.
     void setKiosk(bool on) { m_kiosk = on; }
     bool kiosk() const { return m_kiosk; }
+    // LumenOS, "direkt": Der Film geht ohne Fenstersystem auf den Bildschirm (KMS, mpv: gpu-context=drm).
+    // Nur so erfährt der Bildschirm von HDR, bekommt 10 Bit und die Bildrate des Films. Den Bildschirm
+    // hat sonst das Fenstersystem mit der Oberfläche: claim(true, done) holt ihn für den Film,
+    // claim(false, done) gibt ihn zurück; done wird gerufen, wenn es geschehen ist. Vor initialize().
+    using DisplayClaim = std::function<void(bool forFilm, std::function<void()> done)>;
+    void setDirect(const KmsOutput &output, DisplayClaim claim);
+    bool direct() const { return m_direct; }
+    // der Film hat den Bildschirm (die Oberfläche ist nicht zu sehen, Tasten kommen nicht über sie)
+    bool displayHeld() const { return m_directHeld; }
+    // die Bildrate des Films bestimmt die Betriebsart des Bildschirms
+    void setDirectRateMatching(bool on) { m_directRate = on; }
+    // HDR durchreichen: mit welchen Kennlinien der Bildschirm es annimmt (PQ: HDR10, HDR10+, Dolby
+    // Vision; HLG). Beides aus: jeder Film wird auf SDR umgerechnet.
+    void setDirectHdr(bool pq, bool hlg);
+    // mpv kann direkt ausgeben (mit libdrm und GBM gebaut)
+    static bool directSupported();
+    // LumenOS: Optionen, die das Gerät bestimmt und nicht das Ausgabeprofil – der Tonausgang am
+    // Bildschirm, welche Tonformate der Verstärker selbst entschlüsselt, HDR ja oder nein. Sie gehen
+    // den Angaben des Profils vor.
+    void setOutputOverrides(const QVariantMap &options);
     Q_INVOKABLE static bool embeddedOnly();
     // "Automatisch" heißt hier eingebettet (macOS, Wayland-Sitzungen)
     Q_INVOKABLE static bool embeddedByDefault();
@@ -275,6 +296,9 @@ signals:
     void tuningChanged();
     void outputStatusChanged();
     void idleChanged();
+    void displayHeldChanged();
+    // die direkte Ausgabe ließ sich nicht öffnen: es geht im eigenen Fenster weiter (ohne HDR)
+    void directUnavailable();
     void pausedChanged();
     void positionChanged();
     void durationChanged();
@@ -424,6 +448,25 @@ private:
     double m_subDelay = 0;
     bool m_buffering = false;
     double m_cacheSeconds = 0;
+    bool m_direct = false;          // so eingerichtet (setDirect)
+    bool m_directHeld = false;      // der Film hat den Bildschirm
+    bool m_directSwitching = false; // die Übergabe läuft
+    bool m_directRate = true;
+    bool m_hdrPq = false;
+    bool m_hdrHlg = false;
+    QString m_directTrc;            // die Kennlinie, in der gerade ausgegeben wird ("auto": SDR)
+    int m_directFlipErrors = 0;     // Bilder in Folge, die der Treiber nicht annahm
+    void applyDirectColor();
+    bool m_directReported = false;
+    void reportDirectOutput();
+    KmsOutput m_kms;
+    QVariantMap m_overrides;
+    bool m_audioFallback = false;   // der gewählte Tonausgang ließ sich nicht öffnen: einmal den des Systems versuchen
+    DisplayClaim m_claimDisplay;
+    QTimer m_directRelease;         // nach dem Ende: Bildschirm zurückgeben, wenn nichts Neues folgt
+    void claimDisplay();
+    void releaseDisplay();
+    void directFailed();
     bool m_kiosk = false;
     bool m_kioskShow = false; // etwas wird geladen oder läuft: Player-Fenster zeigen
     bool m_kioskLoading = false; // loadfile ist abgeschickt, mpv hat noch nicht geantwortet

@@ -64,6 +64,11 @@ public:
     // Suche nach Geräten anstoßen (nach dem Koppeln per Bluetooth)
     Q_INVOKABLE void rescan();
 
+    // LumenOS: Läuft ein Film ohne Fenstersystem direkt auf dem Bildschirm, kommt von der Tastatur
+    // nichts mehr über das Fenstersystem an. So lange werden auch Tastaturen hier gelesen, mit fester
+    // Belegung: Pfeile, Eingabe, Esc/Rücktaste, Leertaste, Bild auf/ab, M, I, A, S, die Medientasten.
+    void setKeyboards(bool on);
+
     // Für Tests und für die Entwicklung ohne Gerät: ein Gerät mit diesem Namen "anschließen" und
     // Tasten darauf drücken (code: beliebige Zahl je Taste)
     Q_INVOKABLE void fakeDevice(const QString &name);
@@ -83,6 +88,7 @@ signals:
 
 private:
     struct Node;
+    struct Keyboard;
     struct Device
     {
         QString id;
@@ -102,6 +108,7 @@ private:
     void advance();
     void finish(bool save);
     void applyGrab(Device *device);
+    void readKeyboard(Keyboard *keyboard);
     void load();
     void save() const;
     QString storePath() const;
@@ -120,5 +127,7 @@ private:
     Device *m_heldDevice = nullptr;
     QString m_heldCode;
     QObject *m_watcher = nullptr;
+    QList<Keyboard *> m_keyboards;            // nur, während der Film den Bildschirm hat
+    bool m_keyboardsOn = false;
     int m_retries = 0;
 };

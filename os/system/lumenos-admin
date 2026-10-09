@@ -32,6 +32,39 @@ power)
     esac
     ;;
 
+# ------------------------------------------------------------------ the display for a film
+vt)
+    # A film goes straight to the display, without the window system - only so the display learns
+    # of HDR and takes the film's frame rate. The window system has to let go of the display for
+    # that: the console is switched to one of its own ("film"), and back afterwards ("ui").
+    # (perl is part of every Debian; the two calls are VT_ACTIVATE and VT_WAITACTIVE.)
+    switch_to() {
+        perl -e 'open(my $t, "<", "/dev/tty0") or exit 1; my $n = $ARGV[0] + 0;
+                 ioctl($t, 0x5606, $n) or exit 1; ioctl($t, 0x5607, $n) or exit 1;' "$1"
+    }
+    film=8
+    case "${1:-}" in
+    film)
+        now="$(sed 's/^tty//' /sys/class/tty/tty0/active 2> /dev/null)"
+        [ "$now" = "$film" ] && exit 0
+        mkdir -p /run/lumenos
+        echo "${now:-1}" > /run/lumenos/vt
+        # an empty console: no cursor, nothing written on it
+        printf '\033[?25l\033[2J\033[H' > "/dev/tty$film" 2> /dev/null || true
+        switch_to "$film" || die "the console could not be switched"
+        ;;
+    ui)
+        back="$(cat /run/lumenos/vt 2> /dev/null)"
+        case "$back" in '' | *[!0-9]*) back=1 ;; esac
+        now="$(sed 's/^tty//' /sys/class/tty/tty0/active 2> /dev/null)"
+        # (someone switched to another console by hand: leave him there)
+        [ "$now" = "$film" ] || exit 0
+        switch_to "$back" || die "the console could not be switched"
+        ;;
+    *) die "vt film|ui" ;;
+    esac
+    ;;
+
 # ------------------------------------------------------------------ installing to the internal disk
 install-list)
     "$HERE/lumenos-install" list

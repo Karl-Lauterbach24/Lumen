@@ -60,6 +60,12 @@ if [ -x "$BUILD/os_test" ] || [ -x "$BUILD/os_test.exe" ]; then
     "$O" | grep -vE "^OK" || true
     "$O" > /dev/null
 fi
+# LumenOS: what the display says about itself (EDID), the display mode for a film's frame rate
+if [ -x "$BUILD/kms_test" ] || [ -x "$BUILD/kms_test.exe" ]; then
+    K="$BUILD/kms_test"; [ -x "$K" ] || K="$BUILD/kms_test.exe"
+    "$K" | grep -vE "^OK" || true
+    "$K" > /dev/null
+fi
 # reading ahead of a disc (DiscReadAhead): sequential streams, the lead kept, a standing drive
 if [ -x "$BUILD/readahead_test" ] || [ -x "$BUILD/readahead_test.exe" ]; then
     R="$BUILD/readahead_test"; [ -x "$R" ] || R="$BUILD/readahead_test.exe"

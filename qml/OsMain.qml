@@ -43,7 +43,15 @@ Window {
         property string setupStage: ""
         // Aktualisierungen auf einem Stick, die schon angeboten wurden (Pfad und Version)
         property string offeredUpdates: ""
+        // Bild und Ton (das Programm liest sie: os/hdr, os/rate, os/bitstream, os/audioDevice)
+        property bool direct: true       // Filme direkt auf den Bildschirm (wo das Gerät es hergibt)
+        property bool hdr: true          // HDR an den Bildschirm durchreichen
+        property bool rate: true         // Bildrate des Films übernehmen
+        property bool bitstream: true    // Dolby und DTS unverändert an den Verstärker
+        property string audioDevice: ""  // leer = der Ausgang am Bildschirm
     }
+    function outputChanged() { osSettings.sync(); Os.outputSettingChanged() }
+    readonly property var codecNames: ({ "ac3": "Dolby Digital", "eac3": "Dolby Digital Plus", "truehd": "Dolby TrueHD", "dts": "DTS", "dts-hd": "DTS-HD" })
 
     function push(component, properties) { stack.push(component, properties || {}) }
     function back() { if (stack.depth > 1) stack.pop() }
@@ -417,6 +425,7 @@ Window {
                 { label: qsTr("Netzlaufwerke"), icon: "network", dimmed: !Os.system, run: () => os.push(sharesPage) },
                 { label: qsTr("Bluetooth"), icon: "bluetooth", dimmed: !Os.system, run: () => os.push(bluetoothPage) },
                 { label: qsTr("Wiedergabe"), icon: "play", detail: Profiles.current.name || "", run: () => os.push(playbackPage) },
+                { label: qsTr("Bild und Ton"), icon: "screen", detail: Os.display.name || "", dimmed: !Os.system, run: () => os.push(outputPage) },
                 { label: qsTr("Sprache"), icon: "language", detail: I18n.languages.find(l => l.code === I18n.effective).name, run: () => os.push(languagePage) },
                 { label: qsTr("Discs"), icon: "disc", dimmed: !Os.system, run: () => os.push(discSupportPage) },
                 { label: qsTr("Aktualisierung"), icon: "download", detail: qsTr("Lumen %1").arg(Os.info.version), dimmed: !Os.system, run: () => os.push(updatePage) },
@@ -583,7 +592,56 @@ Window {
                 }
                 return list
             }
-            footer: qsTr("Ausgabeprofile legen Bild und Ton fest: HDR, Durchleitung an den Receiver, 3D. Angelegt und geändert werden sie in Lumen auf einem Rechner; hier wird eines gewählt.")
+            footer: qsTr("Ausgabeprofile legen fest, wie das Bild gerechnet wird: Skalierung, Farbraum, 3D. Angelegt und geändert werden sie in Lumen auf einem Rechner; hier wird eines gewählt. HDR, Bildrate und Ton stehen unter „Bild und Ton“.")
+        }
+    }
+    // ------------------------------------------------------------------ Bild und Ton
+    Component {
+        id: outputPage
+        OsPage {
+            readonly property var d: Os.display
+            readonly property var hdrFormats: [d.hdr10 ? "HDR10" : "", d.hlg ? "HLG" : "", d.hdr10plus ? "HDR10+" : "", d.dolbyVision ? "Dolby Vision" : ""].filter(x => x)
+            readonly property bool hdrPossible: !!d.direct && !!d.hdrSignal && (!!d.hdr10 || !!d.hlg)
+            icon: "screen"
+            title: qsTr("Bild und Ton")
+            note: d.direct
+                ? qsTr("Ein Film geht direkt auf den Bildschirm: in seiner Bildrate, mit HDR, wenn der Bildschirm es annimmt, und mit dem Ton unverändert an einen Verstärker, der ihn selbst entschlüsselt.")
+                : d.directPossible ? qsTr("Filme laufen im Fenster der Oberfläche: ohne HDR und in der Bildrate der Oberfläche.")
+                : qsTr("Auf diesem Gerät läuft ein Film im Fenster der Oberfläche, weil seine Grafik die direkte Ausgabe nicht hergibt: ohne HDR und in der Bildrate der Oberfläche.")
+            entries: [
+                // (wirkt beim nächsten Start von Lumen: die Ausgabe wird eingerichtet, bevor mpv entsteht)
+                { label: qsTr("Filme direkt auf den Bildschirm ausgeben"), icon: "screen", checked: osSettings.direct && !!d.directPossible, dimmed: !d.directPossible,
+                  detail: !d.directPossible ? "" : d.directFailed ? qsTr("ließ sich nicht öffnen – es läuft im Fenster")
+                          : osSettings.direct !== !!d.direct ? qsTr("gilt nach einem Neustart von Lumen") : "",
+                  run: () => osSettings.direct = !osSettings.direct },
+                { label: qsTr("HDR an den Bildschirm durchreichen"), icon: "sparkle", checked: osSettings.hdr && hdrPossible, dimmed: !hdrPossible,
+                  detail: !d.direct ? "" : hdrFormats.length === 0 ? qsTr("der Bildschirm meldet kein HDR") : !d.hdrSignal ? qsTr("die Grafik kann es nicht ankündigen") : hdrFormats.join(", "),
+                  run: () => { osSettings.hdr = !osSettings.hdr; os.outputChanged() } },
+                { label: qsTr("Bildrate des Films übernehmen"), icon: "film", checked: osSettings.rate && !!d.direct, dimmed: !d.direct,
+                  run: () => { osSettings.rate = !osSettings.rate; os.outputChanged() } },
+                { label: qsTr("Dolby und DTS unverändert ausgeben"), icon: "volume", checked: osSettings.bitstream && (d.bitstream || []).length > 0, dimmed: (d.bitstream || []).length === 0,
+                  detail: (d.bitstream || []).length === 0 ? qsTr("das Gerät am Anschluss nimmt nur PCM an")
+                          : (d.passed || []).map(c => os.codecNames[c] || c).join(", ") + (d.atmos && (d.passed || []).length > 0 ? ", Atmos" : ""),
+                  run: () => { osSettings.bitstream = !osSettings.bitstream; os.outputChanged() } },
+                { label: qsTr("Tonausgang"), icon: "volume",
+                  detail: osSettings.audioDevice === "" ? qsTr("automatisch") : ((Player.audioDevices.find(a => a.name === osSettings.audioDevice) || {}).description || osSettings.audioDevice),
+                  run: () => os.push(audioOutputPage) }
+            ]
+            footer: d.direct && (d.dolbyVision || d.hdr10plus || d.hdr10)
+                ? qsTr("Filme in Dolby Vision und HDR10+ kommen als HDR10 beim Bildschirm an.") : ""
+        }
+    }
+    Component {
+        id: audioOutputPage
+        OsPage {
+            icon: "volume"
+            title: qsTr("Tonausgang")
+            note: qsTr("„Automatisch“ nimmt den Ausgang, an dem der Bildschirm oder der Verstärker hängt. Ein Bluetooth-Lautsprecher erscheint hier, sobald er gekoppelt und eingeschaltet ist.")
+            Component.onCompleted: currentIndex = Math.max(0, 1 + Player.audioDevices.filter(a => a.name !== "auto").findIndex(a => a.name === osSettings.audioDevice))
+            entries: [{ label: qsTr("Automatisch"), detail: osSettings.audioDevice === "" ? qsTr("aktiv") : "", run: () => { osSettings.audioDevice = ""; os.outputChanged(); os.back() } }]
+                .concat(Player.audioDevices.filter(a => a.name !== "auto").map(a => ({
+                    label: a.description || a.name, detail: a.name === osSettings.audioDevice ? qsTr("aktiv") : "",
+                    run: () => { osSettings.audioDevice = a.name; os.outputChanged(); os.back() } })))
         }
     }
     Component {

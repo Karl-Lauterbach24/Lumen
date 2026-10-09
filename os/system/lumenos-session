@@ -41,5 +41,9 @@ printf '[Icon Theme]\nName=lumenos-blank\n' > "$cursors/lumenos-blank/index.them
 
 # -s: the keys for switching the console stay (Ctrl+Alt+F2 for a login, for maintenance)
 # -d: no window decorations
+# A film has the display to itself, on a console of its own. If Lumen ended while one was running,
+# that console is still the one shown: come back from it, or this session would start unseen.
+sudo -n /usr/share/lumen/os/lumenos-admin vt ui 2> /dev/null || true
+
 exec env XCURSOR_PATH="$cursors" XCURSOR_THEME=lumenos-blank \
     cage -s -d -- env -u XCURSOR_PATH -u XCURSOR_THEME /usr/bin/lumen --os

@@ -40,14 +40,28 @@ Item {
             sourceSize.width: 40 * item.u; sourceSize.height: 40 * item.u
             opacity: item.current ? 1 : 0.7
         }
-        Text {
+        ColumnLayout {
             Layout.fillWidth: true
-            text: item.label
-            color: Theme.text
-            font.family: Theme.font
-            font.pixelSize: 30 * item.u
-            font.weight: item.current ? Font.DemiBold : Font.Normal
-            elide: Text.ElideRight
+            spacing: 2 * item.u
+            Text {
+                Layout.fillWidth: true
+                text: item.label
+                color: Theme.text
+                font.family: Theme.font
+                font.pixelSize: 30 * item.u
+                font.weight: item.current ? Font.DemiBold : Font.Normal
+                elide: Text.ElideRight
+            }
+            // neben einem Schalter ist kein Platz für die Angabe: sie steht darunter
+            Text {
+                Layout.fillWidth: true
+                visible: item.checked !== undefined && item.detail.length > 0
+                text: item.detail
+                color: item.current ? Qt.rgba(1, 1, 1, 0.86) : Theme.textDim
+                font.family: Theme.font
+                font.pixelSize: 21 * item.u
+                elide: Text.ElideRight
+            }
         }
         Text {
             visible: item.checked === undefined

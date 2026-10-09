@@ -173,6 +173,7 @@ InputMapper::InputMapper(bool enabled, QObject *parent)
 
 InputMapper::~InputMapper()
 {
+    setKeyboards(false);
     for (Device *d : std::as_const(m_devices)) {
         for (Node *n : std::as_const(d->nodes))
             closeNode(n);
@@ -442,6 +443,87 @@ void InputMapper::readNode(Node *node)
     }
 #else
     Q_UNUSED(node)
+#endif
+}
+
+// ---------------------------------------------------------------------------
+// Tastaturen, während der Film den Bildschirm hat
+// ---------------------------------------------------------------------------
+
+struct InputMapper::Keyboard
+{
+    int fd = -1;
+    QSocketNotifier *notifier = nullptr;
+};
+
+void InputMapper::setKeyboards(bool on)
+{
+    if (on == m_keyboardsOn)
+        return;
+    m_keyboardsOn = on;
+#ifdef Q_OS_LINUX
+    for (Keyboard *k : std::as_const(m_keyboards)) {
+        delete k->notifier;
+        ::close(k->fd);
+        delete k;
+    }
+    m_keyboards.clear();
+    if (!on)
+        return;
+    const QStringList present = QDir(QStringLiteral("/dev/input")).entryList({QStringLiteral("event*")}, QDir::System | QDir::Files);
+    for (const QString &name : present) {
+        const QString path = QStringLiteral("/dev/input/") + name;
+        const int fd = ::open(QFile::encodeName(path).constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0)
+            continue;
+        if (!probe(fd, path).keyboard) {
+            ::close(fd);
+            continue;
+        }
+        auto *k = new Keyboard{fd, new QSocketNotifier(fd, QSocketNotifier::Read, this)};
+        connect(k->notifier, &QSocketNotifier::activated, this, [this, k] { readKeyboard(k); });
+        m_keyboards.append(k);
+    }
+#endif
+}
+
+void InputMapper::readKeyboard(Keyboard *keyboard)
+{
+#ifdef Q_OS_LINUX
+    static const QHash<int, QString> keys = {
+        {KEY_UP, "up"}, {KEY_DOWN, "down"}, {KEY_LEFT, "left"}, {KEY_RIGHT, "right"},
+        {KEY_ENTER, "ok"}, {KEY_KPENTER, "ok"}, {KEY_SELECT, "ok"}, {KEY_OK, "ok"},
+        {KEY_ESC, "back"}, {KEY_BACKSPACE, "back"}, {KEY_BACK, "back"}, {KEY_EXIT, "back"},
+        {KEY_SPACE, "playpause"}, {KEY_PLAYPAUSE, "playpause"}, {KEY_PLAY, "playpause"}, {KEY_PAUSE, "playpause"},
+        {KEY_STOP, "stop"}, {KEY_STOPCD, "stop"}, {KEY_Q, "stop"},
+        {KEY_HOME, "menu"}, {KEY_M, "menu"}, {KEY_MENU, "menu"},
+        {KEY_PAGEUP, "next"}, {KEY_NEXTSONG, "next"}, {KEY_PAGEDOWN, "prev"}, {KEY_PREVIOUSSONG, "prev"},
+        {KEY_REWIND, "rewind"}, {KEY_COMMA, "rewind"}, {KEY_FASTFORWARD, "forward"}, {KEY_DOT, "forward"},
+        {KEY_VOLUMEUP, "volup"}, {KEY_VOLUMEDOWN, "voldown"}, {KEY_MUTE, "mute"},
+        {KEY_I, "info"}, {KEY_INFO, "info"}, {KEY_END, "info"}, {KEY_A, "audio"}, {KEY_AUDIO, "audio"},
+        {KEY_S, "subtitle"}, {KEY_SUBTITLE, "subtitle"},
+    };
+    input_event events[32];
+    for (;;) {
+        const ssize_t got = ::read(keyboard->fd, events, sizeof(events));
+        if (got < ssize_t(sizeof(input_event))) {
+            if (got < 0 && errno != EAGAIN && errno != EINTR)
+                keyboard->notifier->setEnabled(false); // abgezogen
+            return;
+        }
+        for (size_t i = 0; i < size_t(got) / sizeof(input_event); ++i) {
+            const input_event &e = events[i];
+            if (e.type != EV_KEY || e.value == 0)
+                continue;
+            const QString name = keys.value(e.code);
+            // (die Wiederholung einer gehaltenen Taste liefert der Kern; sie gilt nur, wo sie Sinn hat)
+            if (name.isEmpty() || (e.value == 2 && !kRepeating.contains(name)))
+                continue;
+            emit action(name, e.value == 2);
+        }
+    }
+#else
+    Q_UNUSED(keyboard)
 #endif
 }
 

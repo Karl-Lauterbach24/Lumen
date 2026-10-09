@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Lumen VERSION 1.5.1 LANGUAGES CXX)
+project(Lumen VERSION 1.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -204,6 +204,8 @@ qt_add_executable(lumen WIN32 MACOSX_BUNDLE
     src/BitmapSubs.h        src/BitmapSubs.cpp
     src/ZipReader.h         src/ZipReader.cpp
     src/Tuning.h            src/Tuning.cpp          src/HardwareProbe.cpp
+    src/Edid.h              src/Edid.cpp
+    src/KmsDisplay.h        src/KmsDisplay.cpp
     src/AudioTap.h          src/AudioTap.cpp
     src/CastStream.h        src/CastStream.cpp
     src/CastAudio.h         src/CastAudio.cpp
@@ -280,6 +282,16 @@ if(ZLIB_FOUND)
     target_link_libraries(lumen PRIVATE ZLIB::ZLIB)
 endif()
 target_include_directories(lumen PRIVATE include)
+
+# LumenOS: der Bildschirm, wie der Kern ihn führt (Betriebsarten, HDR-Fähigkeit des Anschlusses) – für
+# die Ausgabe eines Films ohne Fenstersystem. Ohne libdrm bleibt es bei der Ausgabe im eigenen Fenster.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND PkgConfig_FOUND)
+    pkg_check_modules(LIBDRM QUIET IMPORTED_TARGET libdrm)
+    if(LIBDRM_FOUND)
+        target_compile_definitions(lumen PRIVATE LUMEN_HAVE_LIBDRM=1)
+        target_link_libraries(lumen PRIVATE PkgConfig::LIBDRM)
+    endif()
+endif()
 
 target_link_libraries(lumen PRIVATE
     Qt6::Core Qt6::Gui Qt6::Network Qt6::OpenGL Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::Xml
@@ -595,6 +607,11 @@ if(LUMEN_BUILD_TESTS)
     set_target_properties(os_test PROPERTIES AUTOMOC ON)
     target_include_directories(os_test PRIVATE src)
     target_link_libraries(os_test PRIVATE Qt6::Core)
+
+    # LumenOS: was der Bildschirm über sich sagt (EDID), Betriebsart für die Bildrate eines Films
+    add_executable(kms_test tests/kms_test.cpp src/Edid.cpp src/Edid.h src/KmsDisplay.cpp src/KmsDisplay.h)
+    target_include_directories(kms_test PRIVATE src)
+    target_link_libraries(kms_test PRIVATE Qt6::Core)
 
     add_executable(tuning_test tests/tuning_test.cpp src/Tuning.cpp src/Tuning.h)
     target_include_directories(tuning_test PRIVATE src)
