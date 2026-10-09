@@ -455,6 +455,7 @@ Window {
                 Os.admin(["install-to", chosen.device], (code, out, err) => {
                     busy = false
                     failed = code !== 0
+                    currentIndex = 0 // „Neu starten“ bzw. „Zurück“, nicht die Zeile der Nachfrage
                     if (failed && setup) osSettings.setupStage = stage
                     result = code === 0 ? qsTr("Fertig. Den Stick abziehen und neu starten: LumenOS startet dann von „%1“.").arg(chosen.name)
                                         : qsTr("Die Installation ist gescheitert: %1").arg(os.lastLine(out, err))
