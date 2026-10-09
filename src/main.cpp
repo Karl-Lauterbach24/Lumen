@@ -8,6 +8,7 @@
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QScreen>
 #include <QSet>
 #include <QSettings>
@@ -45,6 +46,7 @@
 #include "MpvController.h"
 #include "PluginManager.h"
 #include "Recent.h"
+#include "Tuning.h"
 #include "PluginStore.h"
 #include "ProfileManager.h"
 #include "VcdNav.h"
@@ -187,7 +189,8 @@ int main(int argc, char *argv[])
     // Acht Bit je Farbe verlangen. Ohne Angabe nimmt Qt die erste Darstellung, die der Grafiktreiber
     // anbietet, und unter Wayland kann das RGB565 sein (gesehen mit Mesa/llvmpipe unter cage): dann
     // zeigen Verläufe Ringe – in der Oberfläche und, im eigenen Fenster, auch im Bild des Films.
-    {
+    // (Entwickler-Hilfe: LUMEN_DEFAULT_FORMAT=1 lässt Qt wählen wie bis 1.4.1)
+    if (!qEnvironmentVariableIsSet("LUMEN_DEFAULT_FORMAT")) {
         QSurfaceFormat format = QSurfaceFormat::defaultFormat();
         format.setRedBufferSize(8);
         format.setGreenBufferSize(8);
@@ -543,6 +546,14 @@ int main(int argc, char *argv[])
     QTimer::singleShot(4000, &updater, &Updater::checkAutomatically);
     QObject::connect(&i18n, &I18n::languageChanged, &profiles, &ProfileManager::retranslate);
 
+    // LumenOS ohne Grafiktreiber (eine virtuelle Maschine, ein Gerät, für das Mesa keinen hat): OpenGL
+    // rechnet dann der Prozessor, und unter dem Compositor von LumenOS erschien ein einzelnes neues
+    // Bild der Oberfläche erst mit dem nächsten – die Uhr ging eine Minute nach, eine geänderte Seite
+    // stand, bis eine Taste gedrückt wurde. Qt Quicks eigener Software-Renderer zeigt jedes Bild
+    // (und malt nur neu, was sich geändert hat). QT_QUICK_BACKEND in session.env geht vor.
+    if (osMode && !qEnvironmentVariableIsSet("QT_QUICK_BACKEND") && !qEnvironmentVariableIsSet("QSG_RHI_BACKEND")
+        && Tuning::hardware().gpu == Tuning::GpuSoftware)
+        QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
     QQmlApplicationEngine engine;
     i18n.setEngine(&engine);
     // LumenOS: Die Oberfläche kann aus einem Zip des Quelltexts stammen (Aktualisierung ohne Netz).

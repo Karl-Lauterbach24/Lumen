@@ -24,6 +24,8 @@ class OsBridge : public QObject
     Q_PROPERTY(bool system READ system CONSTANT)
     // vom Stick oder von der Disc gestartet, nicht von einer Platte des Geräts
     Q_PROPERTY(bool live READ live CONSTANT)
+    // kein Grafiktreiber: OpenGL rechnet der Prozessor (eine virtuelle Maschine, ein Gerät ohne Treiber)
+    Q_PROPERTY(bool softwareGraphics READ softwareGraphics CONSTANT)
     // die Oberfläche kommt aus einem Zip des Quelltexts (Aktualisierung ohne Netz), nicht aus dem Programm
     Q_PROPERTY(QString overlayVersion READ overlayVersion CONSTANT)
     // [{name, path, kind: "internal" | "usb" | "network" | "disc", free, total}]
@@ -40,6 +42,7 @@ public:
     bool kiosk() const { return m_active && !qEnvironmentVariableIsSet("LUMEN_OS_WINDOWED"); }
     bool system() const;
     bool live() const;
+    bool softwareGraphics() const;
     QString overlayVersion() const;
 
     // Was die Oberfläche von diesem Programm verlangen darf. Jede Erweiterung, die die QML-Seiten

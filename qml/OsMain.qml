@@ -290,6 +290,19 @@ Window {
             }
         }
     }
+    // Ohne Grafiktreiber (Os.softwareGraphics) zeigte der Bildschirm ein einzelnes neues Bild – die Uhr,
+    // eine Disc, die das Laufwerk verlassen hat – manchmal erst, wenn ein weiteres folgte: Qt hatte es
+    // übergeben, der Compositor es bestätigt, zu sehen war es nicht. Ein Bildpunkt in der dunklen Ecke
+    // wechselt darum jede Sekunde unmerklich seine Farbe; was aussteht, kommt damit auf den Schirm.
+    Rectangle {
+        visible: Os.softwareGraphics
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        width: 1
+        height: 1
+        color: beat.on ? "#07080c" : "#07080b"
+        Timer { id: beat; property bool on: false; interval: 1000; repeat: true; running: Os.softwareGraphics; onTriggered: on = !on }
+    }
     // Der Mauszeiger verschwindet, wenn die Maus ruht (auf dem Fernseher stört er)
     MouseArea {
         anchors.fill: parent

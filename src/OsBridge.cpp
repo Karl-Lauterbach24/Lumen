@@ -1,6 +1,7 @@
 #include "OsBridge.h"
 
 #include "MpvController.h"
+#include "Tuning.h"
 
 #include <QCollator>
 #include <QCoreApplication>
@@ -212,6 +213,11 @@ bool OsBridge::system() const
 bool OsBridge::live() const
 {
     return QFileInfo::exists(QStringLiteral("/run/live/medium/live/filesystem.squashfs")) || qEnvironmentVariableIsSet("LUMEN_OS_LIVE");
+}
+
+bool OsBridge::softwareGraphics() const
+{
+    return m_active && Tuning::hardware().gpu == Tuning::GpuSoftware;
 }
 
 QString OsBridge::overlayDir()
