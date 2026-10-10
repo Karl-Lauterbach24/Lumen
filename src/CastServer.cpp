@@ -45,6 +45,7 @@ QByteArray contentType(const QString &file)
     if (file.endsWith(QLatin1String(".css"))) return "text/css; charset=utf-8";
     if (file.endsWith(QLatin1String(".png"))) return "image/png";
     if (file.endsWith(QLatin1String(".svg"))) return "image/svg+xml";
+    if (file.endsWith(QLatin1String(".ogg"))) return "audio/ogg";
     if (file.endsWith(QLatin1String(".json"))) return "application/json";
     return "application/octet-stream";
 }

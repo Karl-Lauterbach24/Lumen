@@ -309,9 +309,10 @@ target_link_libraries(lumen PRIVATE
     lumen_mpv PkgConfig::FFMPEG)
 
 # Empfänger-Seite für Browser und TV-Apps (liefert der eingebaute HTTP-Server aus)
+# (every file of the folder: the page, its script and styles, icons, the emblem and the sounds)
+file(GLOB LUMEN_RECEIVER_FILES CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/receiver/*")
 qt_add_resources(lumen "lumen_receiver" PREFIX "/receiver" BASE "${CMAKE_CURRENT_SOURCE_DIR}/receiver"
-    FILES receiver/index.html receiver/receiver.js receiver/receiver.css receiver/icon.png
-          receiver/hls.light.min.js)
+    FILES ${LUMEN_RECEIVER_FILES})
 
 function(lumen_optional_libs target)
     if(LUMEN_HAVE_OPENSSL)
@@ -637,7 +638,7 @@ if(LUMEN_BUILD_TESTS)
     target_compile_definitions(cast_test PRIVATE LUMEN_VERSION="${PROJECT_VERSION}")
     target_link_libraries(cast_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::OpenGL lumen_mpv PkgConfig::FFMPEG)
     qt_add_resources(cast_test "cast_test_receiver" PREFIX "/receiver" BASE "${CMAKE_CURRENT_SOURCE_DIR}/receiver"
-        FILES receiver/index.html receiver/receiver.js receiver/receiver.css receiver/icon.png receiver/hls.light.min.js)
+        FILES ${LUMEN_RECEIVER_FILES})
     if(APPLE)
         target_compile_definitions(cast_test PRIVATE GL_SILENCE_DEPRECATION)
     endif()

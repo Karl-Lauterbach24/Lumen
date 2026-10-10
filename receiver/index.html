@@ -7,29 +7,32 @@
 <link rel="icon" href="icon.png">
 <link rel="stylesheet" href="receiver.css">
 </head>
-<body>
+<body class="ui">
 <video id="video" playsinline></video>
 
-<div id="panel">
-  <img id="logo" src="icon.png" alt="">
-  <h1>Lumen TV</h1>
-  <p id="status"></p>
-  <p id="hint"></p>
-
-  <div id="connect">
-    <input id="address" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="192.168.1.20:47800">
-    <button id="go"></button>
-    <button id="search"></button>
+<!-- The interface is laid out for a screen 1080 units high; receiver.js scales it to the real one -->
+<div id="stage">
+  <div id="glow1" class="glow"></div>
+  <div id="glow2" class="glow"></div>
+  <div id="grain"></div>
+  <div id="head">
+    <img id="emblem" src="emblem.png" alt="">
+    <span id="brand">LUMEN</span>
+    <div id="chips"><span id="netchip" class="chip"></span><span id="clock" class="chip"></span></div>
   </div>
-
-  <div id="idle">
-    <label id="nameLabel" for="name"></label>
-    <input id="name" type="text" autocomplete="off" spellcheck="false" maxlength="40">
-    <button id="disconnect"></button>
-  </div>
+  <div id="view"></div>
+  <div id="help"></div>
 </div>
 
-<div id="toast"></div>
+<div id="over">
+  <div id="osd">
+    <div id="osdTitle"></div>
+    <div id="osdRow"><img id="osdIcon" alt=""><div id="osdBar"><div id="osdFill"></div></div><span id="osdTime"></span></div>
+  </div>
+  <div id="toast"></div>
+  <div id="saver"><div id="saverBox"><div id="saverClock"></div><div id="saverDate"></div></div></div>
+  <div id="intro"><div id="introBox"><img id="introEmblem" src="emblem.png" alt=""><div id="introWord">LUMEN</div></div></div>
+</div>
 
 <!-- A packaged TV app puts its platform file next to this page (see Lumen-TV); in a browser it is absent -->
 <script src="platform.js" onerror="void 0"></script>
