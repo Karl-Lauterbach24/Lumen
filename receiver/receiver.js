@@ -551,10 +551,10 @@
     var list = [];
     var castSub = cast === 'connected' ? tr('castOn', serverName || base.replace(/^https?:\/\//, '') || location.host)
                 : cast === 'searching' ? tr('castSearching') : tr('castOff');
-    list.push({ title: tr('castCard'), sub: castSub, icon: 'screen', run: function () { push(castPage()); } });
     if (P.drives && discs.length)
       list.push({ title: tr('discCard'), sub: discs.length === 1 ? discs[0].name : discs.length + ' ×', icon: 'disc',
         run: function () { if (discs.length === 1) push(folderPage(discs[0].path, discs[0].name, tr('discCard'))); else push(drivesPage(true)); } });
+    list.push({ title: tr('castCard'), sub: castSub, icon: 'screen', run: function () { push(castPage()); } });
     if (P.drives) list.push({ title: tr('driveCard'), sub: driveSub, icon: 'usb', run: function () { push(drivesPage()); } });
     list.push({ title: tr('settings'), sub: deviceName, icon: 'tune', run: function () { push(settingsPage()); } });
     return list;
