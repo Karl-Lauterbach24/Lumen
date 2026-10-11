@@ -28,6 +28,7 @@
           castSearching: 'Searching…',
           castOff: 'Not connected',
           driveCard: 'USB drive',
+          discCard: 'Disc',
           driveNone: 'None connected',
           settings: 'Settings',
           folderEmpty: 'Nothing here that can be played.',
@@ -48,6 +49,7 @@
           castSearching: 'Suche …',
           castOff: 'Nicht verbunden',
           driveCard: 'USB-Laufwerk',
+          discCard: 'Disc',
           driveNone: 'Keines angeschlossen',
           settings: 'Einstellungen',
           folderEmpty: 'Hier liegt nichts, was sich abspielen lässt.',
@@ -68,6 +70,7 @@
           castSearching: 'Recherche…',
           castOff: 'Non connecté',
           driveCard: 'Disque USB',
+          discCard: 'Disque',
           driveNone: 'Aucun branché',
           settings: 'Réglages',
           folderEmpty: 'Rien de lisible ici.',
@@ -88,6 +91,7 @@
           castSearching: 'Buscando…',
           castOff: 'Sin conexión',
           driveCard: 'Disco USB',
+          discCard: 'Disco',
           driveNone: 'Ninguno conectado',
           settings: 'Ajustes',
           folderEmpty: 'Aquí no hay nada que reproducir.',
@@ -108,6 +112,7 @@
           castSearching: 'Ricerca…',
           castOff: 'Non connesso',
           driveCard: 'Disco USB',
+          discCard: 'Disco',
           driveNone: 'Nessuno collegato',
           settings: 'Impostazioni',
           folderEmpty: 'Qui non c’è nulla da riprodurre.',
@@ -128,6 +133,7 @@
           castSearching: 'A procurar…',
           castOff: 'Sem ligação',
           driveCard: 'Disco USB',
+          discCard: 'Disco',
           driveNone: 'Nenhum ligado',
           settings: 'Definições',
           folderEmpty: 'Aqui não há nada para reproduzir.',
@@ -148,6 +154,7 @@
           castSearching: 'Zoeken…',
           castOff: 'Niet verbonden',
           driveCard: 'USB-schijf',
+          discCard: 'Schijf',
           driveNone: 'Geen aangesloten',
           settings: 'Instellingen',
           folderEmpty: 'Hier staat niets wat je kunt afspelen.',
@@ -168,6 +175,7 @@
           castSearching: 'Szukanie…',
           castOff: 'Brak połączenia',
           driveCard: 'Dysk USB',
+          discCard: 'Płyta',
           driveNone: 'Nic nie podłączono',
           settings: 'Ustawienia',
           folderEmpty: 'Nie ma tu nic do odtworzenia.',
@@ -188,6 +196,7 @@
           castSearching: 'Söker…',
           castOff: 'Inte ansluten',
           driveCard: 'USB-enhet',
+          discCard: 'Skiva',
           driveNone: 'Ingen ansluten',
           settings: 'Inställningar',
           folderEmpty: 'Här finns inget som går att spela.',
@@ -208,6 +217,7 @@
           castSearching: 'Hledání…',
           castOff: 'Nepřipojeno',
           driveCard: 'Disk USB',
+          discCard: 'Disk',
           driveNone: 'Žádný nepřipojen',
           settings: 'Nastavení',
           folderEmpty: 'Není tu nic k přehrání.',
@@ -228,6 +238,7 @@
           castSearching: 'Aranıyor…',
           castOff: 'Bağlı değil',
           driveCard: 'USB sürücü',
+          discCard: 'Disk',
           driveNone: 'Hiçbiri bağlı değil',
           settings: 'Ayarlar',
           folderEmpty: 'Burada oynatılacak bir şey yok.',
@@ -248,6 +259,7 @@
           castSearching: 'Пошук…',
           castOff: 'Не підключено',
           driveCard: 'USB-диск',
+          discCard: 'Диск',
           driveNone: 'Нічого не підключено',
           settings: 'Налаштування',
           folderEmpty: 'Тут немає нічого, що можна відтворити.',
@@ -268,6 +280,7 @@
           castSearching: 'Поиск…',
           castOff: 'Нет подключения',
           driveCard: 'USB-диск',
+          discCard: 'Диск',
           driveNone: 'Ничего не подключено',
           settings: 'Настройки',
           folderEmpty: 'Здесь нечего воспроизводить.',
@@ -288,6 +301,7 @@
           castSearching: '検索中…',
           castOff: '未接続',
           driveCard: 'USB ドライブ',
+          discCard: 'ディスク',
           driveNone: '接続なし',
           settings: '設定',
           folderEmpty: '再生できるものはありません。',
@@ -308,6 +322,7 @@
           castSearching: '正在查找…',
           castOff: '未连接',
           driveCard: 'USB 驱动器',
+          discCard: '光盘',
           driveNone: '未连接',
           settings: '设置',
           folderEmpty: '这里没有可播放的内容。',
@@ -328,6 +343,7 @@
           castSearching: '찾는 중…',
           castOff: '연결 안 됨',
           driveCard: 'USB 드라이브',
+          discCard: 'Disc',
           driveNone: '연결된 것 없음',
           settings: '설정',
           folderEmpty: '재생할 수 있는 것이 없습니다.',
@@ -536,11 +552,21 @@
     var castSub = cast === 'connected' ? tr('castOn', serverName || base.replace(/^https?:\/\//, '') || location.host)
                 : cast === 'searching' ? tr('castSearching') : tr('castOff');
     list.push({ title: tr('castCard'), sub: castSub, icon: 'screen', run: function () { push(castPage()); } });
+    if (P.drives && discs.length)
+      list.push({ title: tr('discCard'), sub: discs.length === 1 ? discs[0].name : discs.length + ' ×', icon: 'disc',
+        run: function () { if (discs.length === 1) push(folderPage(discs[0].path, discs[0].name, tr('discCard'))); else push(drivesPage(true)); } });
     if (P.drives) list.push({ title: tr('driveCard'), sub: driveSub, icon: 'usb', run: function () { push(drivesPage()); } });
     list.push({ title: tr('settings'), sub: deviceName, icon: 'tune', run: function () { push(settingsPage()); } });
     return list;
   }
   var driveSub = '';
+  var discs = [];                          // the volumes that are discs (a drive with or without one)
+  function setDrives(d) {
+    d = d || [];
+    driveSub = d.length ? (d.length === 1 ? d[0].name : d.length + ' ×') : tr('driveNone');
+    discs = [];
+    for (var i = 0; i < d.length; i++) if (/^disc:/.test(d[i].path)) discs.push(d[i]);
+  }
   var firstHome = true;
   function buildHome(page, node, quiet) {
     var cards = homeCards();
@@ -715,14 +741,15 @@
 
   // ---- drives (only where the platform can read them: P.drives) ----
   var MEDIA = /\.(mkv|mp4|m4v|mov|avi|ts|m2ts|mts|webm|wmv|mpg|mpeg|vob|flv|3gp|mp3|flac|m4a|aac|ogg|opus|wav|wma)$/i;
-  function drivesPage() {
+  function drivesPage(onlyDiscs) {
     var page = {
-      kind: 'list', index: 0, icon: 'usb', title: tr('driveCard'), busy: true, drives: null,
+      kind: 'list', index: 0, icon: onlyDiscs ? 'disc' : 'usb', title: tr(onlyDiscs ? 'discCard' : 'driveCard'), busy: true, drives: null,
       note: function (p) { return p.drives && !p.drives.length ? tr('driveNone') : ''; },
       entries: function (p) {
         var list = [];
         var d = p.drives || [];
         for (var i = 0; i < d.length; i++) {
+          if (onlyDiscs && !/^disc:/.test(d[i].path)) continue;
           (function (drive) {
             list.push({ label: drive.name, icon: 'usb', detail: drive.detail || '', run: function () { push(folderPage(drive.path, drive.name, drive.name)); } });
           })(d[i]);
@@ -733,7 +760,7 @@
         P.drives.list(function (drives) {
           p.drives = drives || [];
           p.busy = false;
-          driveSub = p.drives.length ? (p.drives.length === 1 ? p.drives[0].name : p.drives.length + ' ×') : tr('driveNone');
+          setDrives(p.drives);
           if (stack[stack.length - 1] === p) refresh();
         });
       }
@@ -1306,8 +1333,17 @@
     Snd.sync();
   }, 1750);
   if (location.search.indexOf('nointro') >= 0) { $('intro').style.display = 'none'; introDone = true; firstHome = false; }
-  if (P.drives && P.drives.watch) P.drives.watch(function () { driveSub = ''; refresh(); });
-  if (P.drives) P.drives.list(function (d) { d = d || []; driveSub = d.length ? (d.length === 1 ? d[0].name : d.length + ' ×') : tr('driveNone'); refresh(); });
+  if (P.drives && P.drives.watch) P.drives.watch(function () { P.drives.list(function (d) { setDrives(d); refresh(); }); });
+  if (P.drives) P.drives.list(function (d) { setDrives(d); refresh(); });
+  // a disc put into a drive that is already connected sends no event: ask now and then while the home page shows
+  if (P.drives && P.native) setInterval(function () {
+    if (stack.length !== 1) return;
+    var before = driveSub + '|' + discs.map(function (x) { return x.name + x.detail; }).join(',');
+    P.drives.list(function (d) {
+      setDrives(d);
+      if (before !== driveSub + '|' + discs.map(function (x) { return x.name + x.detail; }).join(',') && stack.length === 1) refresh();
+    });
+  }, 4000);
   if (embedded) {
     connectTo('');
   } else {
