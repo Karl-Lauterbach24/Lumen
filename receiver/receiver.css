@@ -125,8 +125,8 @@ img { border: 0; }
 #osdFill { height: 8px; width: 0; border-radius: 4px; background: #7b93ff; }
 #osdTime { position: absolute; right: 0; top: 8px; width: 200px; text-align: right; font-size: 26px; color: #eceef3; }
 
-#toast { position: absolute; left: 50%; bottom: 70px; padding: 0 28px; height: 58px; line-height: 58px; font-size: 24px; border-radius: 29px; background: rgba(13,15,20,0.86);
-  display: none; -webkit-transform: translateX(-50%); transform: translateX(-50%); white-space: nowrap; }
+#toast { position: absolute; left: 50%; bottom: 70px; padding: 14px 28px; min-height: 30px; line-height: 31px; font-size: 24px; border-radius: 29px; background: rgba(13,15,20,0.9);
+  display: none; -webkit-transform: translateX(-50%); transform: translateX(-50%); white-space: normal; text-align: center; width: max-content; max-width: 82%; }
 
 /* ---- screen saver ---- */
 #saver { position: absolute; left: 0; top: 0; right: 0; bottom: 0; background: #000; opacity: 0; visibility: hidden; -webkit-transition: opacity 1600ms ease-in-out, visibility 0s 1600ms; transition: opacity 1600ms ease-in-out, visibility 0s 1600ms; }
