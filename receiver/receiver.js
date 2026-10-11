@@ -1330,6 +1330,7 @@
   setTimeout(function () {
     $('intro').className = 'gone';
     introDone = true;
+    if (P.native) Snd.unlock();           // an app may play sound without a first key press (the browser's rule does not apply)
     Snd.sync();
   }, 1750);
   if (location.search.indexOf('nointro') >= 0) { $('intro').style.display = 'none'; introDone = true; firstHome = false; }
