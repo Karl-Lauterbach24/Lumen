@@ -751,6 +751,7 @@
         for (var i = 0; i < d.length; i++) {
           if (onlyDiscs && !/^disc:/.test(d[i].path)) continue;
           (function (drive) {
+            if (drive.off) { list.push({ label: drive.name, icon: 'usb', detail: drive.detail || '', off: true }); return; }
             list.push({ label: drive.name, icon: 'usb', detail: drive.detail || '', run: function () { push(folderPage(drive.path, drive.name, drive.name)); } });
           })(d[i]);
         }
