@@ -35,7 +35,7 @@
           music: 'Music in the menus',
           saver: 'Screen saver',
           address: 'Address of Lumen',
-          help: 'The arrow keys choose, OK opens, Back goes one page back.' },
+          help: 'The arrow keys choose, OK opens, Back goes one page back.', copying: 'Copying the titles …' },
     de: { searching: 'Lumen wird in diesem Netz gesucht …', notFound: 'Lumen wurde nicht gefunden.',
           enter: 'In Lumen am Computer „Übertragen“ öffnen und die dort gezeigte Adresse eingeben.',
           connect: 'Verbinden', search: 'Erneut suchen', connecting: 'Verbindung zu %1 …',
@@ -373,9 +373,14 @@
   }
   function setT(node, value) { node.style.webkitTransform = value; node.style.transform = value; }
 
+  var fitW = 0, fitH = 0;
   // The interface is laid out for a screen 1080 units high and scaled to the real one
   function fit() {
-    var h = window.innerHeight || 1080, w = window.innerWidth || 1920, s = h / 1080;
+    // (an on-screen keyboard shrinks the window of an app: the page keeps its size then, the keyboard covers it)
+    var h = window.innerHeight || 1080, w = window.innerWidth || 1920;
+    if (w === fitW && h < fitH && fitH - h > fitH * 0.2) h = fitH;
+    fitW = w; fitH = h;
+    var s = h / 1080;
     stage.style.width = Math.ceil(w / s) + 'px';
     over.style.width = Math.ceil(w / s) + 'px';
     setT(stage, 'scale(' + s + ')');
@@ -464,6 +469,7 @@
   })();
 
   // ---- screens ----
+  window.lumenToast = function (text, ms) { toast(text, ms); };
   function toast(text, ms) {
     var e = $('toast');
     e.textContent = text;
@@ -592,7 +598,7 @@
     for (var i = 0; i < entries.length; i++) {
       (function (i) {
         var e = entries[i];
-        var r = el('div', 'row' + (e.icon ? '' : ' noicon') + (e.detail ? ' hasd' : '') + (e.checked !== undefined ? ' sw' : '') + (e.off ? ' off' : ''));
+        var r = el('div', 'row' + (e.icon ? '' : ' noicon') + (e.detail ? ' hasd' : '') + (e.checked !== undefined ? ' hasSw' : '') + (e.off ? ' off' : ''));
         r.style.top = (i * ROW) + 'px';
         if (quiet) { r.style.webkitAnimation = 'none'; r.style.animation = 'none'; r.style.opacity = e.off ? '0.4' : '1'; }
         else { var dly = Math.min(i, 9) * 34; r.style.webkitAnimationDelay = dly + 'ms'; r.style.animationDelay = dly + 'ms'; }
@@ -745,7 +751,9 @@
         for (var i = 0; i < items.length; i++) if (!items[i].dir) files.push(items[i]);
         for (i = 0; i < items.length; i++) {
           (function (it) {
-            if (it.dir) list.push({ label: it.name, icon: 'folder', run: function () { push(folderPage(it.path, it.name, title)); } });
+            if (it.off) list.push({ label: it.name, icon: 'disc', off: true });
+            else if (it.action) list.push({ label: it.name, icon: 'download', run: function () { if (it.action === 'copy') toast(tr('copying'), 4000); P.drives.act(it.path, function () { refresh(); }); } });
+            else if (it.dir) list.push({ label: it.name, icon: 'folder', run: function () { push(folderPage(it.path, it.name, title)); } });
             else list.push({ label: it.name, icon: 'film', detail: sizeText(it.size), silent: true, run: function () { playLocal(it, files); } });
           })(items[i]);
         }
@@ -755,10 +763,14 @@
         P.drives.folder(p.path, function (items) {
           var out = [];
           items = items || [];
-          for (var i = 0; i < items.length; i++) if (items[i].dir || MEDIA.test(items[i].name)) out.push(items[i]);
-          out.sort(function (a, b) { return a.dir !== b.dir ? (a.dir ? -1 : 1) : (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1); });
+          for (var i = 0; i < items.length; i++) if (items[i].dir || items[i].off || items[i].action || items[i].video || MEDIA.test(items[i].name)) out.push(items[i]);
+          // (a disc names its titles by size, largest first: keep that order)
+          if (!/^disc:/.test(p.path)) out.sort(function (a, b) { return a.dir !== b.dir ? (a.dir ? -1 : 1) : (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1); });
           p.items = out;
           p.busy = false;
+          // a note row (not selectable) is skipped when the page opens
+          p.index = 0;
+          for (i = 0; i < out.length; i++) if (!out[i].off) { p.index = i; break; }
           if (stack[stack.length - 1] === p) refresh();
         });
       }

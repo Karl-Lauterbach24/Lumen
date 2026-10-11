@@ -98,7 +98,7 @@ img { border: 0; }
 .row .d { position: absolute; right: 30px; top: 31px; max-width: 270px; font-size: 24px; line-height: 30px; color: #9299a8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row.sel .d { color: rgba(255,255,255,0.86); }
 .row.hasd .l { right: 320px; }
-.row.sw .l { right: 140px; }
+.row.hasSw .l { right: 140px; }
 .sw { position: absolute; right: 30px; top: 25px; width: 76px; height: 42px; border-radius: 21px; background: rgba(255,255,255,0.16); -webkit-transition: background 120ms; transition: background 120ms; }
 .sw.on { background: #3ccf8e; }
 .sw i { position: absolute; left: 5px; top: 5px; width: 32px; height: 32px; border-radius: 16px; background: #fff; -webkit-transition: -webkit-transform 120ms; transition: transform 120ms; }
@@ -151,3 +151,6 @@ img { border: 0; }
 /* a platform with its own player behind the page (Android TV): the page is see-through while a film runs */
 html.native.playing, html.native.playing body { background: transparent; }
 html.native.playing #video { display: none; }
+
+/* a television's processor is not a computer's: the slow drift of the light stays still there */
+html.native .glow { -webkit-animation: none; animation: none; }
