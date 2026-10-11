@@ -751,7 +751,11 @@
         for (var i = 0; i < d.length; i++) {
           if (onlyDiscs && !/^disc:/.test(d[i].path)) continue;
           (function (drive) {
-            if (drive.off) { list.push({ label: drive.name, icon: 'usb', detail: drive.detail || '', off: true }); return; }
+            if (drive.off) {            // a note about a USB device (what the television shows): OK reads it in full
+              list.push({ label: drive.name.length > 44 ? drive.name.slice(0, 43) + '…' : drive.name, icon: 'usb', detail: 'i', silent: true,
+                run: function () { toast(drive.name, 15000); } });
+              return;
+            }
             list.push({ label: drive.name, icon: 'usb', detail: drive.detail || '', run: function () { push(folderPage(drive.path, drive.name, drive.name)); } });
           })(d[i]);
         }
