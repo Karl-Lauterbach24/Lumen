@@ -123,6 +123,15 @@ img { border: 0; }
 #osdIcon { position: absolute; left: 0; top: 4px; width: 42px; height: 42px; }
 #osdBar { position: absolute; left: 72px; right: 230px; top: 21px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.22); }
 #osdFill { height: 8px; width: 0; border-radius: 4px; background: #7b93ff; }
+/* the audio and subtitle tracks of a film from a drive */
+#tracks { position: absolute; right: 72px; top: 72px; bottom: 72px; width: 660px; overflow: hidden; padding: 20px 0; border-radius: 26px;
+  background: rgba(14,16,26,0.94); box-shadow: 0 20px 60px rgba(0,0,0,0.5); opacity: 0; visibility: hidden; -webkit-transition: opacity 200ms; transition: opacity 200ms; }
+#tracks.on { opacity: 1; visibility: visible; }
+.trkHead { font-size: 21px; font-weight: 600; letter-spacing: 2.2px; text-transform: uppercase; color: #7b93ff; padding: 22px 36px 10px; }
+.trkRow { position: relative; margin: 0 14px; padding: 13px 22px 13px 72px; border-radius: 16px; font-size: 27px; line-height: 34px; color: #eceef3; }
+.trkRow.sel { background: linear-gradient(135deg, #6b82ff, #4a5ee0); }
+.trkRow.bad { color: #7d8290; }
+.trkOn { position: absolute; left: 24px; top: 15px; width: 30px; height: 30px; }
 #osdTime { position: absolute; right: 0; top: 8px; width: 200px; text-align: right; font-size: 26px; color: #eceef3; }
 
 #toast { position: absolute; left: 50%; bottom: 70px; padding: 14px 28px; min-height: 30px; line-height: 31px; font-size: 24px; border-radius: 29px; background: rgba(13,15,20,0.9);

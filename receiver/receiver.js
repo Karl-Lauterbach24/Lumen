@@ -36,7 +36,9 @@
           music: 'Music in the menus',
           saver: 'Screen saver',
           address: 'Address of Lumen',
-          help: 'The arrow keys choose, OK opens, Back goes one page back.', copying: 'Copying the titles …' },
+          help: 'The arrow keys choose, OK opens, Back goes one page back.', copying: 'Copying the titles …',
+          audio: 'Audio', subtitles: 'Subtitles', off: 'Off', forced: 'forced', unplayable: 'cannot be played here',
+          noTracks: 'This film has no tracks to choose from.' },
     de: { searching: 'Lumen wird in diesem Netz gesucht …', notFound: 'Lumen wurde nicht gefunden.',
           enter: 'In Lumen am Computer „Übertragen“ öffnen und die dort gezeigte Adresse eingeben.',
           connect: 'Verbinden', search: 'Erneut suchen', connecting: 'Verbindung zu %1 …',
@@ -57,7 +59,9 @@
           music: 'Musik in den Menüs',
           saver: 'Bildschirmschoner',
           address: 'Adresse von Lumen',
-          help: 'Pfeiltasten wählen, OK öffnet, Zurück geht eine Seite zurück.' },
+          help: 'Pfeiltasten wählen, OK öffnet, Zurück geht eine Seite zurück.',
+          audio: 'Ton', subtitles: 'Untertitel', off: 'Aus', forced: 'erzwungen', unplayable: 'hier nicht abspielbar',
+          noTracks: 'Dieser Film hat keine Spuren zur Auswahl.' },
     fr: { searching: 'Recherche de Lumen sur ce réseau…', notFound: 'Lumen est introuvable.',
           enter: 'Ouvrez « Diffuser » dans Lumen sur votre ordinateur et saisissez l’adresse affichée.',
           connect: 'Connecter', search: 'Rechercher à nouveau', connecting: 'Connexion à %1…',
@@ -1160,6 +1164,7 @@
   function stopLocal(silent) {
     if (!local) return;
     local = null;
+    closeTracks();
     hideOsd();
     try { if (P.drives && P.drives.detach) P.drives.detach(video); } catch (e) { /* ignore */ }
     try { video.pause(); video.removeAttribute('src'); video.load(); } catch (e) { /* ignore */ }
@@ -1189,7 +1194,81 @@
     showOsd();
     updateOsd();
   }
+  // ---- audio and subtitle tracks (where the platform can switch them): Up or Menu while a film plays ----
+  var trk = null;
+  function openTracks() {
+    if (!P.drives || !P.drives.tracks) return false;
+    P.drives.tracks(function (list) {
+      if (!local) return;
+      var audio = [], text = [], i;
+      for (i = 0; i < list.length; i++) (list[i].type === 'audio' ? audio : text).push(list[i]);
+      if (!audio.length && !text.length) { toast(tr('noTracks'), 3000); return; }
+      var rows = [];
+      function add(t) {
+        rows.push({ type: t.type, id: t.id, on: t.selected, bad: !t.ok,
+          label: t.label + (t.forced ? ' · ' + tr('forced') : '') + (t.ok ? '' : ' · ' + tr('unplayable')) });
+      }
+      if (audio.length) { rows.push({ head: tr('audio') }); for (i = 0; i < audio.length; i++) add(audio[i]); }
+      var anyText = false;
+      for (i = 0; i < text.length; i++) if (text[i].selected) anyText = true;
+      rows.push({ head: tr('subtitles') });
+      rows.push({ type: 'text', id: 'off', on: !anyText, label: tr('off') });
+      for (i = 0; i < text.length; i++) add(text[i]);
+      var index = -1;
+      for (i = 0; i < rows.length; i++) if (!rows[i].head && rows[i].on && index < 0) index = i;
+      if (index < 0) index = 1;
+      trk = { rows: rows, index: index };
+      hideOsd();
+      drawTracks();
+      Snd.play('select');
+    });
+    return true;
+  }
+  function drawTracks() {
+    var box = $('tracks');
+    box.innerHTML = '';
+    var sel = null;
+    for (var i = 0; i < trk.rows.length; i++) {
+      var r = trk.rows[i], d = document.createElement('div');
+      if (r.head) { d.className = 'trkHead'; d.textContent = r.head; }
+      else {
+        d.className = 'trkRow' + (i === trk.index ? ' sel' : '') + (r.bad ? ' bad' : '');
+        if (r.on) { var c = document.createElement('img'); c.src = 'ic-check.svg'; c.className = 'trkOn'; d.appendChild(c); }
+        var l = document.createElement('span'); l.textContent = r.label; d.appendChild(l);
+        if (i === trk.index) sel = d;
+      }
+      box.appendChild(d);
+    }
+    box.className = 'on';
+    if (sel) {
+      var top = sel.offsetTop - box.clientHeight / 2 + sel.offsetHeight / 2;
+      box.scrollTop = Math.max(0, top);
+    }
+  }
+  function closeTracks() { trk = null; $('tracks').className = ''; }
+  function tracksKey(key) {
+    var step = key === 'up' ? -1 : key === 'down' ? 1 : 0;
+    if (step) {
+      var i = trk.index + step;
+      while (i >= 0 && i < trk.rows.length && trk.rows[i].head) i += step;
+      if (i >= 0 && i < trk.rows.length) { trk.index = i; Snd.play('move'); drawTracks(); }
+    } else if (key === 'enter') {
+      var r = trk.rows[trk.index];
+      if (r.bad) { Snd.play('error'); return; }
+      for (var j = 0; j < trk.rows.length; j++) if (trk.rows[j].type === r.type) trk.rows[j].on = false;
+      r.on = true;
+      P.drives.track(r.type, r.id);
+      Snd.play('select');
+      drawTracks();
+    } else if (key === 'back' || key === 'menu' || key === 'left' || key === 'right') {
+      closeTracks();
+      Snd.play('back');
+    } else if (key === 'stop') { closeTracks(); stopLocalToList(); }
+  }
+
   function localKey(key) {
+    if (trk) { tracksKey(key); return; }
+    if ((key === 'up' || key === 'menu') && openTracks()) return;
     showOsd();
     if (key === 'enter' || key === 'playpause') { if (video.paused) play(); else video.pause(); }
     else if (key === 'play') play();
