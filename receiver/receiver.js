@@ -787,10 +787,10 @@
         for (var i = 0; i < items.length; i++) if (!items[i].dir) files.push(items[i]);
         for (i = 0; i < items.length; i++) {
           (function (it) {
-            if (it.off) list.push({ label: it.name, icon: 'disc', off: true });
-            else if (it.action) list.push({ label: it.name, icon: 'download', run: function () { if (it.action === 'copy') toast(tr('copying'), 4000); P.drives.act(it.path, function () { refresh(); }); } });
+            if (it.off) list.push({ label: it.name, icon: it.icon || 'disc', detail: it.detail || '', off: true });
+            else if (it.action) list.push({ label: it.name, icon: it.icon || 'download', detail: it.detail || '', run: function () { if (it.action === 'copy') toast(tr('copying'), 4000); P.drives.act(it.path, function () { refresh(); }); } });
             else if (it.dir) list.push({ label: it.name, icon: 'folder', run: function () { push(folderPage(it.path, it.name, title)); } });
-            else list.push({ label: it.name, icon: 'film', detail: sizeText(it.size), silent: true, run: function () { playLocal(it, files); } });
+            else list.push({ label: it.name, icon: it.icon || 'film', detail: it.detail || sizeText(it.size), silent: true, run: function () { playLocal(it, files); } });
           })(items[i]);
         }
         return list;
