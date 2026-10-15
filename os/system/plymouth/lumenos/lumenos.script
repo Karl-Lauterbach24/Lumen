@@ -22,8 +22,9 @@ emblem.w = Math.Int(emblem.source.GetWidth() * emblem.h / emblem.source.GetHeigh
 emblem.image = emblem.source.Scale(emblem.w, emblem.h);
 emblem.sprite = Sprite(emblem.image);
 emblem.sprite.SetX(screen.x + screen.w / 2 - emblem.w / 2);
-# (the interface centres emblem, gap and name together: the emblem's top is 128 units above the middle)
-emblem.sprite.SetY(screen.y + screen.h / 2 - Math.Int(128 * u));
+# (the interface centres emblem, gap and tagline together: 170 + 34 + about 26 units, so the emblem's
+# top is 115 units above the middle)
+emblem.sprite.SetY(screen.y + screen.h / 2 - Math.Int(115 * u));
 emblem.sprite.SetOpacity(0);
 
 dot.source = Image("dot.png");

@@ -287,7 +287,7 @@ ApplicationWindow {
                     Layout.rightMargin: 18
                     Image {
                         source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-small.png"
-                        height: 24; width: 50
+                        height: 28; width: 28
                         fillMode: Image.PreserveAspectFit
                         smooth: true; mipmap: true
                         anchors.verticalCenter: parent.verticalCenter

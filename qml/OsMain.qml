@@ -294,7 +294,7 @@ Window {
         spacing: 18 * os.u
         Image {
             source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-alpha.png"
-            height: 44 * os.u; width: height * 658 / 312
+            height: 44 * os.u; width: height
             fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
             anchors.verticalCenter: parent.verticalCenter
         }
@@ -395,7 +395,7 @@ Window {
                 opacity: 0.55
                 Image {
                     source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-alpha.png"
-                    height: 30 * os.u; width: height * 658 / 312
+                    height: 30 * os.u; width: height
                     fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
                     anchors.verticalCenter: parent.verticalCenter
                 }
@@ -444,7 +444,7 @@ Window {
                 id: introEmblem
                 anchors.horizontalCenter: parent.horizontalCenter
                 source: "qrc:/qt/qml/Lumen/resources/logo/lumen-emblem-alpha.png"
-                height: 170 * os.u; width: height * 658 / 312
+                height: 170 * os.u; width: height
                 fillMode: Image.PreserveAspectFit; smooth: true; mipmap: true
                 opacity: 0.0
                 scale: 0.9
@@ -452,12 +452,13 @@ Window {
             Text {
                 id: introWord
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: qsTr("LUMEN")
+                // das Emblem trägt den Namen selbst; darunter die Zeile aus dem Logo
+                text: "DISC \u00b7 CINEMA PLAYER"
                 color: Theme.text
-                font.family: Theme.font; font.pixelSize: 44 * os.u; font.weight: Font.Bold; font.letterSpacing: 22 * os.u
+                font.family: Theme.font; font.pixelSize: 22 * os.u; font.weight: Font.DemiBold; font.letterSpacing: 5 * os.u
                 opacity: 0
                 // (der Sperrsatz hängt hinter dem letzten Buchstaben: um die Hälfte nach rechts, damit er mittig steht)
-                leftPadding: 22 * os.u
+                leftPadding: 5 * os.u
             }
         }
         SequentialAnimation {
@@ -472,7 +473,7 @@ Window {
                     PauseAnimation { duration: 320 }
                     ParallelAnimation {
                         NumberAnimation { target: introWord; property: "opacity"; to: 1; duration: 520 }
-                        NumberAnimation { target: introWord; property: "font.letterSpacing"; from: 34 * os.u; to: 22 * os.u; duration: 900; easing.type: Easing.OutCubic }
+                        NumberAnimation { target: introWord; property: "font.letterSpacing"; from: 9 * os.u; to: 5 * os.u; duration: 900; easing.type: Easing.OutCubic }
                     }
                 }
             }
