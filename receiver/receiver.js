@@ -788,7 +788,7 @@
         for (i = 0; i < items.length; i++) {
           (function (it) {
             if (it.off) list.push({ label: it.name, icon: it.icon || 'disc', detail: it.detail || '', off: true });
-            else if (it.action) list.push({ label: it.name, icon: it.icon || 'download', detail: it.detail || '', run: function () { if (it.action === 'copy') toast(tr('copying'), 4000); P.drives.act(it.path, function () { refresh(); }); } });
+            else if (it.action) list.push({ label: it.name, icon: it.icon || 'download', detail: it.detail || '', run: function () { if (it.action === 'copy') toast(tr('copying'), 4000); P.drives.act(it.path, function () { var pg = stack[stack.length - 1]; if (pg && pg.shown) pg.shown(pg); else refresh(); }); } });
             else if (it.dir) list.push({ label: it.name, icon: 'folder', run: function () { push(folderPage(it.path, it.name, title)); } });
             else list.push({ label: it.name, icon: it.icon || 'film', detail: it.detail || sizeText(it.size), silent: true, run: function () { playLocal(it, files); } });
           })(items[i]);
@@ -802,11 +802,13 @@
           for (var i = 0; i < items.length; i++) if (items[i].dir || items[i].off || items[i].action || items[i].video || MEDIA.test(items[i].name)) out.push(items[i]);
           // (a disc names its titles by size, largest first: keep that order)
           if (!/^disc:/.test(p.path)) out.sort(function (a, b) { return a.dir !== b.dir ? (a.dir ? -1 : 1) : (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1); });
+          var again = !!p.items, was = p.index;
           p.items = out;
           p.busy = false;
-          // a note row (not selectable) is skipped when the page opens
+          // a note row (not selectable) is skipped when the page opens; loaded again (after an action) the choice stays
           p.index = 0;
-          for (i = 0; i < out.length; i++) if (!out[i].off) { p.index = i; break; }
+          if (again && was < out.length && !out[was].off) p.index = was;
+          else for (i = 0; i < out.length; i++) if (!out[i].off) { p.index = i; break; }
           if (stack[stack.length - 1] === p) refresh();
         });
       }
