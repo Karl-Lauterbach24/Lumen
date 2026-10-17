@@ -122,6 +122,7 @@ ApplicationWindow {
 
     // Dialoge entstehen erst beim ersten Öffnen: Das Steuerfenster ist schneller da
     function showHelp() { helpLoader.active = true; helpLoader.item.open() }
+    function showTab(i) { settings.tab = i }
     function showCast() { castLoader.active = true; castLoader.item.open() }
     function openEditor(profile) { editorLoader.active = true; editorLoader.item.openFor(profile) }
     function openRecentIndex(i) { if (Recent.items[i]) openRecent(Recent.items[i]) }

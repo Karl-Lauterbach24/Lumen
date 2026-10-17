@@ -787,6 +787,9 @@ int main(int argc, char *argv[])
         // LUMEN_SNAPSHOT_CAST=1: mit geöffnetem Dialog „Übertragen“
         if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_CAST"))
             QMetaObject::invokeMethod(window, "showCast");
+        // LUMEN_SNAPSHOT_TAB=<n>: Reiter der rechten Seite (0 Wiedergabe, 1 Kino, 2 Streaming, 3 Ausgabe, 4 Plugins)
+        if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_TAB"))
+            QMetaObject::invokeMethod(window, "showTab", Q_ARG(QVariant, qEnvironmentVariableIntValue("LUMEN_SNAPSHOT_TAB")));
         // LUMEN_SNAPSHOT_RECENT=<n>: n-ten Eintrag aus „Zuletzt gespielt“ öffnen (Test des Fortsetzens)
         if (qEnvironmentVariableIsSet("LUMEN_SNAPSHOT_RECENT"))
             QMetaObject::invokeMethod(window, "openRecentIndex", Q_ARG(QVariant, qEnvironmentVariableIntValue("LUMEN_SNAPSHOT_RECENT")));

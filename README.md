@@ -550,7 +550,7 @@ python tools/make_test_vcd_pbc.py ffmpeg vcdxbuild vcd && vcd_test vcd/pbc.cue
 python tools/make_test_vcd.py ffmpeg vcd && lumen vcd/vcd.cue
 ```
 
-Developer aids: `LUMEN_SNAPSHOT=shot.png` (optionally `LUMEN_SNAPSHOT_DELAY=ms`) saves the control window as an image;
+Developer aids: `LUMEN_SNAPSHOT=shot.png` (optionally `LUMEN_SNAPSHOT_DELAY=ms`, `LUMEN_SNAPSHOT_TAB=5..8` for the Cinema, Streaming, Output or Plugins tab, `LUMEN_SNAPSHOT_HELP=1`) saves the control window as an image;
 `LUMEN_MPV_LOG=warn|info|v` forwards mpv's log (with `QT_FORCE_STDERR_LOGGING=1` on Windows);
 `LUMEN_APP_NAME=LumenDev` keeps settings, profiles and history of a test run apart from the installed Lumen;
 `LUMEN_GPU="llvmpipe"` pretends a graphics driver; `LUMEN_STEREO_DEBUG=1` prints the 3D detection's decisions;
