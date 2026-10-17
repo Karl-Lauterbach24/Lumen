@@ -609,7 +609,8 @@
                 : cast === 'searching' ? tr('castSearching') : tr('castOff');
     if (P.drives && discs.length)
       list.push({ id: 'disc', title: tr('discCard'), sub: discs.length === 1 ? discs[0].name : discs.length + ' ×', icon: 'disc',
-        run: function () { if (discs.length === 1) push(folderPage(discs[0].path, discs[0].name, tr('discCard'))); else push(drivesPage(true)); } });
+        cover: discs.length === 1 ? discs[0].cover : '',
+        run: function () { if (discs.length === 1) push(folderPage(discs[0].path, discs[0].name, tr('discCard'), discs[0].cover)); else push(drivesPage(true)); } });
     list.push({ id: 'cast', title: tr('castCard'), sub: castSub, icon: 'screen', run: function () { push(castPage()); } });
     if (P.drives) list.push({ id: 'usb', title: tr('driveCard'), sub: driveSub, icon: 'usb', run: function () { push(drivesPage()); } });
     list.push({ id: 'settings', title: tr('settings'), sub: deviceName, icon: 'tune', run: function () { push(settingsPage()); } });
@@ -617,6 +618,7 @@
   }
   var driveSub = '';
   var discs = [];                          // the volumes that are discs (a drive with or without one)
+  function coverOf(path) { for (var i = 0; i < discs.length; i++) if (discs[i].path === path) return discs[i].cover || ''; return ''; }
   function setDrives(d) {
     d = d || [];
     driveSub = d.length ? (d.length === 1 ? d[0].name : d.length + ' ×') : tr('driveNone');
@@ -643,7 +645,13 @@
         if (quiet) { c.style.webkitAnimation = 'none'; c.style.animation = 'none'; c.style.opacity = '1'; }
         else { c.style.webkitAnimationDelay = delay + 'ms'; c.style.animationDelay = delay + 'ms'; }
         c.appendChild(el('div', 'halo'));
-        var b = el('div', 'badge'); b.appendChild(icon(cards[i].icon)); c.appendChild(b);
+        if (cards[i].cover) {
+          // the disc's picture as the tile (like a game's on a console), with the name over it
+          c.className += ' cover';
+          c.style.backgroundImage = 'linear-gradient(to top, rgba(8,10,18,0.94) 0%, rgba(8,10,18,0.35) 48%, rgba(8,10,18,0.05) 100%), url(' + cards[i].cover + ')';
+        } else {
+          var b = el('div', 'badge'); b.appendChild(icon(cards[i].icon)); c.appendChild(b);
+        }
         c.appendChild(el('div', 't', cards[i].title));
         c.appendChild(el('div', 's', cards[i].sub));
         c.onclick = function () { page.index = i; page.moved = true; page.sel = cards[i].id; Snd.unlock(); selectCard(page, nodes, i, true); activateCard(page); };
@@ -657,7 +665,7 @@
     return { cards: cards, nodes: nodes };
   }
   function selectCard(page, nodes, i, silent) {
-    for (var k = 0; k < nodes.length; k++) nodes[k].className = 'card' + (k === i ? ' sel' : '');
+    for (var k = 0; k < nodes.length; k++) nodes[k].className = 'card' + (nodes[k].className.indexOf('cover') >= 0 ? ' cover' : '') + (k === i ? ' sel' : '');
     for (k = 0; k < nodes.length; k++) { nodes[k].style.webkitAnimation = 'none'; nodes[k].style.animation = 'none'; nodes[k].style.opacity = '1'; }
     if (!silent) Snd.play('move');
   }
@@ -670,7 +678,8 @@
   var ROW = 106;
   function buildList(page, node, quiet) {
     var left = el('div', 'left');
-    if (page.icon) { var ico = el('div', 'ico'); ico.appendChild(icon(page.icon)); left.appendChild(ico); }
+    if (page.cover) { var poster = el('div', 'poster'); poster.style.backgroundImage = 'url(' + page.cover + ')'; left.appendChild(poster); }
+    else if (page.icon) { var ico = el('div', 'ico'); ico.appendChild(icon(page.icon)); left.appendChild(ico); }
     if (page.kicker) left.appendChild(el('div', 'kicker', page.kicker));
     left.appendChild(el('div', 'title', page.title));
     var note = typeof page.note === 'function' ? page.note(page) : page.note;
@@ -883,9 +892,9 @@
     };
     return page;
   }
-  function folderPage(path, title, kicker) {
+  function folderPage(path, title, kicker, cover) {
     var page = {
-      kind: 'list', index: 0, icon: 'folder', title: title, kicker: kicker, busy: true, items: null, path: path,
+      kind: 'list', index: 0, icon: 'folder', title: title, kicker: kicker, busy: true, items: null, path: path, cover: cover || '',
       note: function (p) { return p.items && !p.items.length ? tr('folderEmpty') : ''; },
       entries: function (p) {
         var list = [];
@@ -896,7 +905,7 @@
           (function (it) {
             if (it.off) list.push({ label: it.name, icon: it.icon || 'disc', detail: it.detail || '', off: true });
             else if (it.action) list.push({ label: it.name, icon: it.icon || 'download', detail: it.detail || '', run: function () { if (it.action === 'copy') toast(tr('copying'), 4000); P.drives.act(it.path, function () { var pg = stack[stack.length - 1]; if (pg && pg.shown) pg.shown(pg); else refresh(); }); } });
-            else if (it.dir) list.push({ label: it.name, icon: 'folder', run: function () { push(folderPage(it.path, it.name, title)); } });
+            else if (it.dir) list.push({ label: it.name, icon: it.icon || 'folder', detail: it.detail || '', run: function () { push(folderPage(it.path, it.name, title)); } });
             else list.push({ label: it.name, icon: it.icon || 'film', detail: it.detail || sizeText(it.size), silent: true, run: function () { playLocal(it, it.group ? files.filter(function (f) { return f.group === it.group; }) : files); } });
           })(items[i]);
         }
@@ -909,6 +918,11 @@
           for (var i = 0; i < items.length; i++) if (items[i].dir || items[i].off || items[i].action || items[i].video || MEDIA.test(items[i].name)) out.push(items[i]);
           // (a disc names its titles by size, largest first: keep that order)
           if (!/^disc:/.test(p.path)) out.sort(function (a, b) { return a.dir !== b.dir ? (a.dir ? -1 : 1) : (a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1); });
+          if (/^disc:/.test(p.path)) {
+            var dp = p.path.replace(/\|.*$/, '|');
+            p.cover = coverOf(dp) || p.cover;
+            for (var di = 0; di < discs.length; di++) if (discs[di].path === dp && !p.sub) p.title = discs[di].name;   // (the disc's own name once it is identified)
+          }
           var again = !!p.items, was = p.index;
           p.items = out;
           p.busy = false;

@@ -163,3 +163,7 @@ html.native.playing #video { display: none; }
 
 /* a television's processor is not a computer's: the slow drift of the light stays still there */
 html.native .glow { -webkit-animation: none; animation: none; }
+
+/* the picture of a disc: as the tile of the disc card and beside the disc's page */
+.card.cover { background-size: cover; background-position: center 18%; background-repeat: no-repeat; }
+.poster { width: 230px; height: 345px; border-radius: 18px; background-size: cover; background-position: center; box-shadow: 0 16px 40px rgba(0,0,0,0.5); margin-bottom: 26px; }
