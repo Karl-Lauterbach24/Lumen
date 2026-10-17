@@ -650,6 +650,8 @@
           c.className += ' cover';
           var art = el('div', 'art');
           art.style.backgroundImage = 'url(' + cards[i].cover + ')';
+          // a wide picture (a disc's jacket) shows its right part more: the title usually stands there
+          (function (art, url) { var pr = new Image(); pr.onload = function () { if (pr.naturalWidth > pr.naturalHeight) art.style.backgroundPosition = '78% 40%'; }; pr.src = url; })(art, cards[i].cover);
           c.appendChild(art);
         } else {
           var b = el('div', 'badge'); b.appendChild(icon(cards[i].icon)); c.appendChild(b);
@@ -680,7 +682,13 @@
   var ROW = 106;
   function buildList(page, node, quiet) {
     var left = el('div', 'left');
-    if (page.cover) { var poster = el('div', 'poster'); poster.style.backgroundImage = 'url(' + page.cover + ')'; left.appendChild(poster); }
+    if (page.cover) {
+      // a picture that is wider than high (a disc's jacket) is shown wide
+      var poster = el('div', 'poster'); poster.style.backgroundImage = 'url(' + page.cover + ')'; left.appendChild(poster);
+      var probe = new Image();
+      probe.onload = function () { if (probe.naturalWidth > probe.naturalHeight) poster.className = 'poster wide'; };
+      probe.src = page.cover;
+    }
     else if (page.icon) { var ico = el('div', 'ico'); ico.appendChild(icon(page.icon)); left.appendChild(ico); }
     if (page.kicker) left.appendChild(el('div', 'kicker', page.kicker));
     left.appendChild(el('div', 'title', page.title));

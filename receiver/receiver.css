@@ -174,3 +174,4 @@ html.native .glow { -webkit-animation: none; animation: none; }
 .card.cover.sel { box-shadow: 0 0 0 5px #7b93ff; }
 .card.cover .t, .card.cover .s { z-index: 1; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
 .poster { width: 230px; height: 345px; border-radius: 18px; background-size: cover; background-position: center; box-shadow: 0 16px 40px rgba(0,0,0,0.5); margin-bottom: 26px; }
+.poster.wide { width: 400px; height: 225px; }
