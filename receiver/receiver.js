@@ -648,7 +648,9 @@
         if (cards[i].cover) {
           // the disc's picture as the tile (like a game's on a console), with the name over it
           c.className += ' cover';
-          c.style.backgroundImage = 'linear-gradient(to top, rgba(8,10,18,0.94) 0%, rgba(8,10,18,0.35) 48%, rgba(8,10,18,0.05) 100%), url(' + cards[i].cover + ')';
+          var art = el('div', 'art');
+          art.style.backgroundImage = 'url(' + cards[i].cover + ')';
+          c.appendChild(art);
         } else {
           var b = el('div', 'badge'); b.appendChild(icon(cards[i].icon)); c.appendChild(b);
         }
@@ -1368,7 +1370,11 @@
       box.scrollTop = Math.max(0, top);
     }
   }
-  function closeTracks() { trk = null; $('tracks').className = ''; }
+  function closeTracks() {
+    var was = trk;
+    trk = null; $('tracks').className = '';
+    if (was && P.drives && P.drives.tracksClosed) P.drives.tracksClosed();
+  }
   function tracksKey(key) {
     var step = key === 'up' ? -1 : key === 'down' ? 1 : 0;
     if (step) {

@@ -164,6 +164,13 @@ html.native.playing #video { display: none; }
 /* a television's processor is not a computer's: the slow drift of the light stays still there */
 html.native .glow { -webkit-animation: none; animation: none; }
 
-/* the picture of a disc: as the tile of the disc card and beside the disc's page */
-.card.cover { background-size: cover; background-position: center 18%; background-repeat: no-repeat; }
+/* the picture of a disc: as the tile of the disc card (filling it to the edge, the name on a dark foot) and beside the disc's page */
+.card.cover, .card.cover.sel { background: #12151b; border-color: transparent; }
+.card .art { position: absolute; left: 0; top: 0; right: 0; bottom: 0; border-radius: 30px; overflow: hidden;
+  background-size: cover; background-position: center 22%; background-repeat: no-repeat; }
+.card .art:after { content: ''; position: absolute; left: 0; top: 0; right: 0; bottom: 0; border-radius: 30px;
+  background: -webkit-linear-gradient(bottom, rgba(8,10,18,0.97) 0%, rgba(8,10,18,0.78) 30%, rgba(8,10,18,0) 66%);
+  background: linear-gradient(to top, rgba(8,10,18,0.97) 0%, rgba(8,10,18,0.78) 30%, rgba(8,10,18,0) 66%); }
+.card.cover.sel { box-shadow: 0 0 0 5px #7b93ff; }
+.card.cover .t, .card.cover .s { z-index: 1; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
 .poster { width: 230px; height: 345px; border-radius: 18px; background-size: cover; background-position: center; box-shadow: 0 16px 40px rgba(0,0,0,0.5); margin-bottom: 26px; }
