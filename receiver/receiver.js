@@ -37,6 +37,7 @@
           saver: 'Screen saver',
           address: 'Address of Lumen',
           help: 'The arrow keys choose, OK opens, Back goes one page back.', copying: 'Copying the titles …',
+          interfaceSet: 'Interface', soundsShort: 'Sounds', musicShort: 'Music', connection: 'Connection', loadingSet: 'Loading …',
           audio: 'Audio', subtitles: 'Subtitles', off: 'Off', forced: 'forced', unplayable: 'cannot be played here',
           noTracks: 'This film has no tracks to choose from.' },
     de: { searching: 'Lumen wird in diesem Netz gesucht …', notFound: 'Lumen wurde nicht gefunden.',
@@ -60,6 +61,7 @@
           saver: 'Bildschirmschoner',
           address: 'Adresse von Lumen',
           help: 'Pfeiltasten wählen, OK öffnet, Zurück geht eine Seite zurück.',
+          interfaceSet: 'Oberfläche', soundsShort: 'Töne', musicShort: 'Musik', connection: 'Verbindung', loadingSet: 'Wird geladen …',
           audio: 'Ton', subtitles: 'Untertitel', off: 'Aus', forced: 'erzwungen', unplayable: 'hier nicht abspielbar',
           noTracks: 'Dieser Film hat keine Spuren zur Auswahl.' },
     fr: { searching: 'Recherche de Lumen sur ce réseau…', notFound: 'Lumen est introuvable.',
@@ -447,6 +449,53 @@
       a.src = 'snd-' + name + '.ogg';
       return a;
     }
+    // The music loops without a gap through the Web Audio API (an <audio> element stops for a moment at the end of
+    // a loop); where that is missing or the file cannot be decoded, the element does it.
+    var wa = { ctx: null, buf: null, src: null, gain: null, state: 'none' };   // none | loading | ready | failed
+    function waStart() {
+      if (wa.state !== 'none') return;
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { wa.state = 'failed'; return; }
+      try { wa.ctx = new AC(); } catch (e) { wa.state = 'failed'; return; }
+      wa.state = 'loading';
+      var x = new XMLHttpRequest();
+      x.open('GET', 'snd-music.ogg', true);
+      x.responseType = 'arraybuffer';
+      x.onload = function () {
+        try {
+          wa.ctx.decodeAudioData(x.response, function (b) { wa.buf = b; wa.state = 'ready'; Snd.sync(); }, function () { wa.state = 'failed'; Snd.sync(); });
+        } catch (e) { wa.state = 'failed'; Snd.sync(); }
+      };
+      x.onerror = function () { wa.state = 'failed'; Snd.sync(); };
+      x.send();
+    }
+    function waPlay(on) {
+      if (wa.state !== 'ready') return;
+      var t = wa.ctx.currentTime;
+      if (on) {
+        try { if (wa.ctx.state === 'suspended') wa.ctx.resume(); } catch (e) { /* ignore */ }
+        if (!wa.src) {
+          wa.gain = wa.ctx.createGain();
+          wa.gain.gain.setValueAtTime(0, t);
+          wa.src = wa.ctx.createBufferSource();
+          wa.src.buffer = wa.buf;
+          wa.src.loop = true;
+          wa.src.connect(wa.gain);
+          wa.gain.connect(wa.ctx.destination);
+          wa.src.start(0);
+        }
+        wa.gain.gain.cancelScheduledValues(t);
+        wa.gain.gain.setValueAtTime(wa.gain.gain.value, t);
+        wa.gain.gain.linearRampToValueAtTime(0.3, t + 1.2);
+      } else if (wa.src) {
+        var src = wa.src, g = wa.gain;
+        g.gain.cancelScheduledValues(t);
+        g.gain.setValueAtTime(g.gain.value, t);
+        g.gain.linearRampToValueAtTime(0, t + 0.5);
+        wa.src = null; wa.gain = null;
+        setTimeout(function () { try { src.stop(); src.disconnect(); g.disconnect(); } catch (e) { /* ignore */ } }, 700);
+      }
+    }
     function fade() {
       if (!music) return;
       var target = wanted ? 0.3 : 0;
@@ -472,8 +521,11 @@
       },
       // music while the interface is shown and nothing plays
       sync: function () {
-        if (!ok) return;
         wanted = set.music && mode === 'ui' && introDone && !saverOn && unlocked;
+        if (wanted) waStart();
+        if (wa.state === 'ready') { waPlay(wanted); return; }
+        if (wa.state === 'loading') return;
+        if (!ok) return;
         if (wanted && !music) {
           music = make('music');
           music.loop = true;
@@ -556,11 +608,11 @@
     var castSub = cast === 'connected' ? tr('castOn', serverName || base.replace(/^https?:\/\//, '') || location.host)
                 : cast === 'searching' ? tr('castSearching') : tr('castOff');
     if (P.drives && discs.length)
-      list.push({ title: tr('discCard'), sub: discs.length === 1 ? discs[0].name : discs.length + ' ×', icon: 'disc',
+      list.push({ id: 'disc', title: tr('discCard'), sub: discs.length === 1 ? discs[0].name : discs.length + ' ×', icon: 'disc',
         run: function () { if (discs.length === 1) push(folderPage(discs[0].path, discs[0].name, tr('discCard'))); else push(drivesPage(true)); } });
-    list.push({ title: tr('castCard'), sub: castSub, icon: 'screen', run: function () { push(castPage()); } });
-    if (P.drives) list.push({ title: tr('driveCard'), sub: driveSub, icon: 'usb', run: function () { push(drivesPage()); } });
-    list.push({ title: tr('settings'), sub: deviceName, icon: 'tune', run: function () { push(settingsPage()); } });
+    list.push({ id: 'cast', title: tr('castCard'), sub: castSub, icon: 'screen', run: function () { push(castPage()); } });
+    if (P.drives) list.push({ id: 'usb', title: tr('driveCard'), sub: driveSub, icon: 'usb', run: function () { push(drivesPage()); } });
+    list.push({ id: 'settings', title: tr('settings'), sub: deviceName, icon: 'tune', run: function () { push(settingsPage()); } });
     return list;
   }
   var driveSub = '';
@@ -574,7 +626,12 @@
   var firstHome = true;
   function buildHome(page, node, quiet) {
     var cards = homeCards();
+    // the cards change while the page is open (a disc arrives): the choice stays on the card the user went to,
+    // and where the user has not moved yet, the first card (the disc, if there is one) is chosen
+    if (!page.moved) page.index = 0;
+    else for (var q = 0; q < cards.length; q++) if (cards[q].id === page.sel) page.index = q;
     if (page.index >= cards.length) page.index = cards.length - 1;
+    page.sel = cards[page.index] && cards[page.index].id;
     var head = el('div', 'headline', tr('watch'));
     var row = el('div', 'cards');
     var nodes = [];
@@ -589,7 +646,7 @@
         var b = el('div', 'badge'); b.appendChild(icon(cards[i].icon)); c.appendChild(b);
         c.appendChild(el('div', 't', cards[i].title));
         c.appendChild(el('div', 's', cards[i].sub));
-        c.onclick = function () { page.index = i; Snd.unlock(); selectCard(page, nodes, i, true); activateCard(page); };
+        c.onclick = function () { page.index = i; page.moved = true; page.sel = cards[i].id; Snd.unlock(); selectCard(page, nodes, i, true); activateCard(page); };
         row.appendChild(c);
         nodes.push(c);
       })(i);
@@ -727,17 +784,67 @@
              value: (store('lumen.address') || '').replace(/^https?:\/\//, ''),
              accept: function (v) { var a = normalize(v); if (a) { cast = 'searching'; connectTo(a); } } };
   }
+  // Settings: a few groups instead of one long list. Each group is its own page; the television's own groups
+  // (playback, disc and MakeMKV) come from the platform (P.settings) and are asked for when the page opens.
   function settingsPage() {
+    var page = {
+      kind: 'list', index: 0, icon: 'tune', title: tr('settings'), secs: null,
+      shown: function (p) {
+        if (!P.settings) return;
+        P.settings.list('', function (list) { p.secs = list || []; if (stack[stack.length - 1] === p) refresh(); });
+      },
+      entries: function (p) {
+        var list = [{ label: tr('interfaceSet'), icon: 'screen', detail: [set.sounds ? tr('soundsShort') : '', set.music ? tr('musicShort') : ''].filter(function (x) { return x; }).join(' · ') || tr('off'),
+                      run: function () { push(interfacePage()); } }];
+        var secs = p.secs || [];
+        for (var i = 0; i < secs.length; i++) (function (sec) {
+          list.push({ label: sec.label, icon: sec.icon, detail: sec.detail, run: function () { push(nativeSettingsPage(sec)); } });
+        })(secs[i]);
+        list.push({ label: tr('connection'), icon: 'network', detail: deviceName, run: function () { push(connectionPage()); } });
+        return list;
+      }
+    };
+    return page;
+  }
+  function interfacePage() {
     return {
-      kind: 'list', index: 0, icon: 'tune', title: tr('settings'),
+      kind: 'list', index: 0, icon: 'screen', title: tr('interfaceSet'),
       entries: function () {
-        var list = [
-          { label: tr('name'), icon: 'tune', detail: deviceName, run: function () { push(namePage()); } }
+        return [
+          { label: tr('sounds'), icon: 'volume', checked: set.sounds, run: function () { setFlag('sounds', !set.sounds); refresh(); } },
+          { label: tr('music'), icon: 'music', checked: set.music, run: function () { setFlag('music', !set.music); Snd.sync(); refresh(); } },
+          { label: tr('saver'), icon: 'screen', checked: set.saver, run: function () { setFlag('saver', !set.saver); refresh(); } }
         ];
+      }
+    };
+  }
+  function connectionPage() {
+    return {
+      kind: 'list', index: 0, icon: 'network', title: tr('connection'),
+      entries: function () {
+        var list = [{ label: tr('name'), icon: 'tune', detail: deviceName, run: function () { push(namePage()); } }];
         if (!embedded) list.push({ label: tr('address'), icon: 'network', detail: (store('lumen.address') || '').replace(/^https?:\/\//, ''), run: function () { push(addressPage()); } });
-        list.push({ label: tr('sounds'), icon: 'volume', checked: set.sounds, run: function () { setFlag('sounds', !set.sounds); refresh(); } });
-        list.push({ label: tr('music'), icon: 'music', checked: set.music, run: function () { setFlag('music', !set.music); Snd.sync(); refresh(); } });
-        list.push({ label: tr('saver'), icon: 'screen', checked: set.saver, run: function () { setFlag('saver', !set.saver); refresh(); } });
+        return list;
+      }
+    };
+  }
+  // a group of the television's own settings: the items come from the platform; choosing one changes it and asks again
+  function nativeSettingsPage(sec) {
+    return {
+      kind: 'list', index: 0, icon: sec.icon, title: sec.label, busy: true, items: null,
+      shown: function (p) {
+        P.settings.list(sec.id, function (items) {
+          p.items = items || [];
+          p.busy = false;
+          if (stack[stack.length - 1] === p) refresh();
+        });
+      },
+      entries: function (p) {
+        var list = [], items = p.items || [];
+        for (var i = 0; i < items.length; i++) (function (it) {
+          if (it.off) list.push({ label: it.label, icon: it.icon, detail: it.detail, off: true });
+          else list.push({ label: it.label, icon: it.icon, detail: it.detail, run: function () { P.settings.act(it.id, function () { p.shown(p); }); } });
+        })(items[i]);
         return list;
       }
     };
@@ -784,13 +891,13 @@
         var list = [];
         var items = p.items || [];
         var files = [];
-        for (var i = 0; i < items.length; i++) if (!items[i].dir) files.push(items[i]);
+        for (var i = 0; i < items.length; i++) if (!items[i].dir && !items[i].off && !items[i].action) files.push(items[i]);
         for (i = 0; i < items.length; i++) {
           (function (it) {
             if (it.off) list.push({ label: it.name, icon: it.icon || 'disc', detail: it.detail || '', off: true });
             else if (it.action) list.push({ label: it.name, icon: it.icon || 'download', detail: it.detail || '', run: function () { if (it.action === 'copy') toast(tr('copying'), 4000); P.drives.act(it.path, function () { var pg = stack[stack.length - 1]; if (pg && pg.shown) pg.shown(pg); else refresh(); }); } });
             else if (it.dir) list.push({ label: it.name, icon: 'folder', run: function () { push(folderPage(it.path, it.name, title)); } });
-            else list.push({ label: it.name, icon: it.icon || 'film', detail: it.detail || sizeText(it.size), silent: true, run: function () { playLocal(it, files); } });
+            else list.push({ label: it.name, icon: it.icon || 'film', detail: it.detail || sizeText(it.size), silent: true, run: function () { playLocal(it, it.group ? files.filter(function (f) { return f.group === it.group; }) : files); } });
           })(items[i]);
         }
         return list;
@@ -1303,8 +1410,8 @@
     if (!page) return;
     if (page.kind === 'home') {
       var n = shown.refs.cards.length;
-      if (key === 'left' && page.index > 0) { page.index--; selectCard(page, shown.refs.nodes, page.index); }
-      else if (key === 'right' && page.index < n - 1) { page.index++; selectCard(page, shown.refs.nodes, page.index); }
+      if (key === 'left' && page.index > 0) { page.index--; page.moved = true; page.sel = shown.refs.cards[page.index].id; selectCard(page, shown.refs.nodes, page.index); }
+      else if (key === 'right' && page.index < n - 1) { page.index++; page.moved = true; page.sel = shown.refs.cards[page.index].id; selectCard(page, shown.refs.nodes, page.index); }
       else if (key === 'enter') { Snd.play('select'); activateCard(page); }
       else if (key === 'back' && P.exit) P.exit();
     } else if (page.kind === 'list') {
@@ -1420,7 +1527,12 @@
     Snd.sync();
   }, 1750);
   if (location.search.indexOf('nointro') >= 0) { $('intro').style.display = 'none'; introDone = true; firstHome = false; }
-  if (P.drives && P.drives.watch) P.drives.watch(function () { P.drives.list(function (d) { setDrives(d); refresh(); }); });
+  if (P.drives && P.drives.watch) P.drives.watch(function () {
+    P.drives.list(function (d) { setDrives(d); refresh(); });
+    // a disc page open: its files again (the disc was identified, a drive came or went)
+    var pg = stack[stack.length - 1];
+    if (pg && pg.path && pg.shown && mode === 'ui') pg.shown(pg);
+  });
   if (P.drives) P.drives.list(function (d) { setDrives(d); refresh(); });
   // a disc put into a drive that is already connected sends no event: ask now and then while the home page shows
   if (P.drives && P.native) setInterval(function () {
