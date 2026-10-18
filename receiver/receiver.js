@@ -585,6 +585,8 @@
     if (page.kind === 'field') { try { refs.input.focus(); } catch (e) { /* ignore */ } }
     else { try { document.activeElement && document.activeElement.blur(); } catch (e) { /* ignore */ } }
     if (page.shown) page.shown(page);
+    // (the app hears which page is up: a disc prepared for a quick start is let go when its page is left)
+    if (P.pageShown) { try { P.pageShown(page.kind === 'home' ? 'home' : (page.path || page.kind || '')); } catch (e) { /* ignore */ } }
   }
   function push(page) {
     stack.push(page);
