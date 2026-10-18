@@ -39,7 +39,11 @@
           help: 'The arrow keys choose, OK opens, Back goes one page back.', copying: 'Copying the titles …',
           interfaceSet: 'Interface', soundsShort: 'Sounds', musicShort: 'Music', connection: 'Connection', loadingSet: 'Loading …',
           audio: 'Audio', subtitles: 'Subtitles', off: 'Off', forced: 'forced', unplayable: 'cannot be played here',
-          noTracks: 'This film has no tracks to choose from.' },
+          noTracks: 'This film has no tracks to choose from.',
+          bPlay: 'Play', bPause: 'Pause', bBack10: '10 seconds back', bFwd10: '10 seconds on', bChprev: 'Previous chapter',
+          bChnext: 'Next chapter', bTracks: 'Audio and subtitles', bNext: 'Next', chapter: 'Chapter %1', chapterOf: 'Chapter %1 of %2',
+          endsAt: 'ends at %1', notLoaded: 'not loaded yet', notLoaded2: 'That part of the film is not loaded yet.',
+          noSeek: 'Seeking is not possible here.' },
     de: { searching: 'Lumen wird in diesem Netz gesucht …', notFound: 'Lumen wurde nicht gefunden.',
           enter: 'In Lumen am Computer „Übertragen“ öffnen und die dort gezeigte Adresse eingeben.',
           connect: 'Verbinden', search: 'Erneut suchen', connecting: 'Verbindung zu %1 …',
@@ -63,7 +67,11 @@
           help: 'Pfeiltasten wählen, OK öffnet, Zurück geht eine Seite zurück.',
           interfaceSet: 'Oberfläche', soundsShort: 'Töne', musicShort: 'Musik', connection: 'Verbindung', loadingSet: 'Wird geladen …',
           audio: 'Ton', subtitles: 'Untertitel', off: 'Aus', forced: 'erzwungen', unplayable: 'hier nicht abspielbar',
-          noTracks: 'Dieser Film hat keine Spuren zur Auswahl.' },
+          noTracks: 'Dieser Film hat keine Spuren zur Auswahl.',
+          bPlay: 'Abspielen', bPause: 'Pause', bBack10: '10 Sekunden zurück', bFwd10: '10 Sekunden vor', bChprev: 'Voriges Kapitel',
+          bChnext: 'Nächstes Kapitel', bTracks: 'Ton und Untertitel', bNext: 'Als Nächstes', chapter: 'Kapitel %1', chapterOf: 'Kapitel %1 von %2',
+          endsAt: 'Ende %1', notLoaded: 'noch nicht geladen', notLoaded2: 'Diese Stelle des Films ist noch nicht geladen.',
+          noSeek: 'Hier kann nicht gespult werden.' },
     fr: { searching: 'Recherche de Lumen sur ce réseau…', notFound: 'Lumen est introuvable.',
           enter: 'Ouvrez « Diffuser » dans Lumen sur votre ordinateur et saisissez l’adresse affichée.',
           connect: 'Connecter', search: 'Rechercher à nouveau', connecting: 'Connexion à %1…',
@@ -1251,10 +1259,10 @@
     lastTime = t;
   }
 
-  video.addEventListener('playing', function () { if (current) setState('playing'); updateOsd(); });
-  video.addEventListener('pause', function () { if (local) { updateOsd(); showOsd(); } });
+  video.addEventListener('playing', function () { if (current) setState('playing'); if (local) drawOsd(); });
+  video.addEventListener('pause', function () { if (local) showOsd(); });
   video.addEventListener('waiting', function () { if (current) setState('buffering'); });
-  video.addEventListener('timeupdate', function () { if (local) updateOsd(); });
+  video.addEventListener('timeupdate', function () { if (local) drawOsd(); });
   video.addEventListener('error', function () { if ((current && !hls) || local) playbackFailed(); });
   video.addEventListener('ended', function () {
     if (local) { nextLocal(1) || stopLocalToList(); return; }
@@ -1265,41 +1273,276 @@
     if (video.muted && (current || local)) { video.muted = false; toast(''); }
   }
 
-  // ---- a file from a drive ----
-  var osdTimer = null;
-  function showOsd() {
-    $('osd').className = 'on';
-    clearTimeout(osdTimer);
-    osdTimer = setTimeout(function () { if (!video.paused) hideOsd(); }, 4500);
-  }
-  function hideOsd() { clearTimeout(osdTimer); $('osd').className = ''; }
+  // ---- a file from a drive: the controls on the picture ----
+  // Hidden while the film runs; any key brings them. Two rows take the focus: the time bar (Left/Right look for a
+  // place, OK or a moment without a key jumps there) and the buttons under it (Down). Up opens the audio and subtitle tracks;
+  // the first Back takes the controls away, the next one ends the film.
+  var osdOn = false, osdTimer = null, zone = 'bar', btns = [], btnsKey = '', btnIndex = 0;
+  var scrub = null, scrubEdge = false, scrubTimer = null, scrubLast = 0, scrubStart = 0, flashUntil = 0;
+  var info = {}, infoTimer = null, ticksKey = '', drawn = {};
+  var BTN_ICON = { chprev: 'chprev', back10: 'back10', fwd10: 'fwd10', chnext: 'chnext', tracks: 'subtitles', nextitem: 'episodes' };
+
+  function now() { return new Date().getTime(); }
   function clock(t) {
     if (!(t >= 0) || t === Infinity) return '–:––';
     t = Math.floor(t);
     var h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
     return (h ? h + ':' + (m < 10 ? '0' : '') : '') + m + ':' + (s < 10 ? '0' : '') + s;
   }
-  function updateOsd() {
+  function hhmm(d) { return (d.getHours() < 10 ? '0' : '') + d.getHours() + ':' + (d.getMinutes() < 10 ? '0' : '') + d.getMinutes(); }
+  function setText(id, text) { if (drawn[id] !== text) { drawn[id] = text; $(id).textContent = text; } }
+  function known(d) { return d > 0 && d !== Infinity; }
+
+  function showOsd(z) {
     if (!local) return;
-    var d = video.duration, t = video.currentTime || 0;
-    $('osdFill').style.width = (d > 0 && d !== Infinity ? Math.min(100, t / d * 100) : 0) + '%';
-    $('osdTime').textContent = clock(t) + ' / ' + clock(d);
-    $('osdIcon').src = 'ic-' + (video.paused ? 'play' : 'volume') + '.svg';
+    if (!osdOn) zone = 'bar';
+    if (z) zone = z;
+    osdOn = true;
+    drawOsd();
+    armOsd();
+    if (!infoTimer) pollInfo();
   }
+  function armOsd() {
+    clearTimeout(osdTimer);
+    osdTimer = setTimeout(function () {
+      if (local && !video.paused && scrub === null) hideOsd(); else armOsd();
+    }, local && local.menu ? 3500 : 5000);
+  }
+  function hideOsd() {
+    clearTimeout(osdTimer);
+    clearTimeout(infoTimer); infoTimer = null;
+    cancelScrub();
+    osdOn = false;
+    drawOsd();
+  }
+
+  // what the platform knows of what plays (chapters, where the stream can be jumped to, picture and sound), asked again while the controls are up
+  function pollInfo() {
+    clearTimeout(infoTimer); infoTimer = null;
+    if (!local || !osdOn) return;
+    var mine = local;
+    function got(o) {
+      if (local !== mine) return;
+      info = o && typeof o === 'object' && !o.length ? o : {};
+      buildBtns();
+      drawOsd();
+    }
+    if (P.drives && P.drives.info) P.drives.info(got); else got({ seekable: video.seekable && video.seekable.length > 0 });
+    infoTimer = setTimeout(pollInfo, 2000);
+  }
+  function chapterList() {
+    var c = info.chapters || [], out = [];
+    for (var i = 0; i < c.length; i++) out.push(c[i] / 1000);
+    return out;
+  }
+  function chapterAt(t) {
+    var c = chapterList(), n = 0;
+    for (var i = 0; i < c.length; i++) if (c[i] <= t + 0.5) n = i + 1;
+    return n;
+  }
+  function seekable() { return !local.menu && info.seekable !== false; }
+  function bounds() {
+    var d = video.duration, lo = 0, hi = known(d) ? d - 1 : Infinity;
+    // MakeMKV's stream: only what the cache holds
+    if (info.seekTo !== undefined) { lo = Math.max(lo, info.seekFrom / 1000); hi = Math.min(hi, info.seekTo / 1000); }
+    return { lo: lo, hi: hi };
+  }
+  function bufferedEnd() {
+    if (video.lumenBuffered !== undefined) return video.lumenBuffered;
+    try { var b = video.buffered; return b && b.length ? b.end(b.length - 1) : 0; } catch (e) { return 0; }
+  }
+
+  function buildBtns() {
+    if (!local) return;
+    var hasCh = chapterList().length > 1, canSeek = seekable(), list = [];
+    if (!local.menu) {
+      if (hasCh) list.push('chprev');
+      if (canSeek) list.push('back10');
+    }
+    list.push('play');
+    if (!local.menu) {
+      if (canSeek) list.push('fwd10');
+      if (hasCh) list.push('chnext');
+      if (P.drives && P.drives.tracks) list.push('tracks');
+      if (local.index < local.siblings.length - 1) list.push('nextitem');
+    }
+    var key = list.join(',');
+    if (key === btnsKey) return;
+    var had = btns[btnIndex];
+    btns = list; btnsKey = key;
+    btnIndex = list.indexOf(had) >= 0 ? list.indexOf(had) : list.indexOf('play');
+    var box = $('osdBtns');
+    box.innerHTML = '';
+    for (var i = 0; i < list.length; i++) {
+      var b = document.createElement('div');
+      b.className = 'ob' + (list[i] === 'play' ? ' big' : '');
+      var img = document.createElement('img');
+      img.src = 'ic-' + (BTN_ICON[list[i]] || 'play') + '.svg';
+      b.appendChild(img);
+      box.appendChild(b);
+    }
+    drawn.btnSel = -1; drawn.playIcon = '';
+  }
+  function btnLabel(id) {
+    if (id === 'play') return tr(video.paused ? 'bPlay' : 'bPause');
+    if (id === 'nextitem') return tr('bNext') + ': ' + local.siblings[local.index + 1].name.replace(/\.[^.]+$/, '');
+    return tr({ chprev: 'bChprev', back10: 'bBack10', fwd10: 'bFwd10', chnext: 'bChnext', tracks: 'bTracks' }[id]);
+  }
+
+  function drawOsd() {
+    var o = $('osd');
+    var cls = (osdOn && local ? 'on' : '') + (local && local.menu ? ' menu' : '') + ' z-' + zone +
+      (scrub !== null || now() < flashUntil ? ' scrub' : '') + (local && video.paused ? ' paused' : '') + (local && video.lumenWaiting ? ' wait' : '');
+    if (drawn.cls !== cls) { drawn.cls = cls; o.className = cls; }
+    if (!osdOn || !local) return;
+    var d = video.duration, t = video.currentTime || 0, k = known(d);
+    function pc(x) { return k ? Math.max(0, Math.min(100, x / d * 100)) : 0; }
+    var at = scrub !== null ? scrub : t;
+    $('osdFill').style.width = pc(t) + '%';
+    $('osdBuf').style.width = pc(Math.max(t, bufferedEnd())) + '%';
+    var cache = $('osdCache');
+    if (info.seekTo !== undefined && k) {
+      cache.style.display = 'block';
+      cache.style.left = pc(info.seekFrom / 1000) + '%';
+      cache.style.width = Math.max(0, pc(info.seekTo / 1000) - pc(info.seekFrom / 1000)) + '%';
+    } else cache.style.display = 'none';
+    var ghost = $('osdGhost');
+    if (scrub !== null) { ghost.style.left = Math.min(pc(t), pc(scrub)) + '%'; ghost.style.width = Math.abs(pc(scrub) - pc(t)) + '%'; }
+    else ghost.style.width = '0';
+    $('osdKnob').style.left = pc(at) + '%';
+    var bubble = $('osdBubble');
+    bubble.style.left = Math.max(3, Math.min(97, pc(at))) + '%';
+    var ch = chapterList(), n = chapterAt(at);
+    setText('osdBubbleT', clock(at));
+    setText('osdBubbleC', scrubEdge && scrub !== null ? tr('notLoaded') : ch.length > 1 && n ? tr('chapter', n) : '');
+    // the chapters: gaps in the bar
+    var tk = k ? ch.join(',') + '/' + Math.round(d) : '';
+    if (tk !== ticksKey) {
+      ticksKey = tk;
+      var box = $('osdTicks');
+      box.innerHTML = '';
+      if (k && ch.length > 1) for (var i = 0; i < ch.length; i++) {
+        if (ch[i] < 1) continue;
+        var g = document.createElement('i');
+        g.style.left = pc(ch[i]) + '%';
+        box.appendChild(g);
+      }
+    }
+    setText('osdTime', clock(at));
+    setText('osdLeft', k ? '−' + clock(Math.max(0, d - at)) : '');
+    var nowD = new Date();
+    setText('osdNow', hhmm(nowD));
+    setText('osdEnd', k && !local.menu ? tr('endsAt', hhmm(new Date(nowD.getTime() + Math.max(0, d - t) * 1000))) : '');
+    // the line under the title: chapter, picture, sound, subtitles
+    var meta = [];
+    if (ch.length > 1 && chapterAt(t)) meta.push(tr('chapterOf', chapterAt(t)).replace('%2', ch.length));
+    if (info.video) meta.push(info.video);
+    if (info.audio) meta.push(info.audio);
+    if (info.audio || info.video) meta.push(tr('subtitles') + ': ' + (info.text || tr('off')));
+    var mk = meta.join('\u0001');
+    if (drawn.meta !== mk) {
+      drawn.meta = mk;
+      var mb = $('osdMeta');
+      mb.innerHTML = '';
+      for (var j = 0; j < meta.length; j++) { var c = document.createElement('span'); c.textContent = meta[j]; mb.appendChild(c); }
+    }
+    // the buttons
+    var nodes = $('osdBtns').childNodes, sel = zone === 'btns' ? btnIndex : -1;
+    if (drawn.btnSel !== sel) {
+      drawn.btnSel = sel;
+      for (var b = 0; b < nodes.length; b++) nodes[b].className = 'ob' + (btns[b] === 'play' ? ' big' : '') + (b === sel ? ' sel' : '');
+    }
+    var pi = video.paused ? 'play' : 'pause', pIdx = btns.indexOf('play');
+    if (drawn.playIcon !== pi && pIdx >= 0 && nodes[pIdx]) { drawn.playIcon = pi; nodes[pIdx].firstChild.src = 'ic-' + pi + '.svg'; }
+    setText('osdHint', zone === 'btns' && btns[btnIndex] ? btnLabel(btns[btnIndex]) : '');
+  }
+
+  // ---- looking for a place: the steps grow while the key is held, the jump comes when it is let go ----
+  function scrubBy(dir, big) {
+    if (!seekable()) { toast(tr('noSeek'), 2500); return; }
+    var t = now();
+    if (scrub === null) { scrub = video.currentTime || 0; scrubStart = t; }
+    else if (t - scrubLast > 450) scrubStart = t;          // a new press: small steps again
+    else if (t - scrubLast < 110) return;                  // (a held key repeats fast: the steps keep their pace)
+    scrubLast = t;
+    var held = t - scrubStart;
+    var step = big ? 60 : held > 4000 ? 120 : held > 2200 ? 60 : held > 800 ? 30 : 10;
+    var b = bounds(), s = scrub + dir * step;
+    scrubEdge = false;
+    if (s < b.lo) { s = b.lo; scrubEdge = info.seekTo !== undefined && b.lo > 0; }
+    if (s > b.hi) { s = b.hi; scrubEdge = info.seekTo !== undefined; }
+    scrub = s;
+    clearTimeout(scrubTimer);
+    scrubTimer = setTimeout(commitScrub, 900);
+    showOsd('bar');
+  }
+  function commitScrub() {
+    clearTimeout(scrubTimer);
+    if (scrub === null) return;
+    var s = scrub;
+    scrub = null; scrubEdge = false;
+    flashUntil = now() + 1200;
+    try { video.currentTime = s; } catch (e) { /* not seekable yet */ }
+    drawOsd();
+    armOsd();
+    setTimeout(drawOsd, 1250);
+  }
+  function cancelScrub() { clearTimeout(scrubTimer); scrub = null; scrubEdge = false; }
+  function jumpTo(s) {
+    var b = bounds();
+    if (info.seekTo !== undefined && (s < b.lo - 1 || s > b.hi + 1)) { toast(tr('notLoaded2'), 2500); return; }
+    s = Math.max(b.lo, Math.min(b.hi, s));
+    cancelScrub();
+    flashUntil = now() + 1500;
+    try { video.currentTime = s; } catch (e) { /* not seekable yet */ }
+    showOsd();
+    setTimeout(drawOsd, 1550);
+  }
+  function jumpBy(n) { if (!seekable()) { toast(tr('noSeek'), 2500); return; } jumpTo((video.currentTime || 0) + n); }
+  // a chapter on; before the first or after the last: false (the caller goes to the title before or after)
+  function skipChapter(dir) {
+    var c = chapterList();
+    if (c.length < 2 || !seekable()) return false;
+    var t = video.currentTime || 0, target = null, i;
+    if (dir > 0) { for (i = 0; i < c.length; i++) if (c[i] > t + 1) { target = c[i]; break; } }
+    else {
+      for (i = c.length - 1; i >= 0; i--) if (c[i] < t - 3) { target = c[i]; break; }
+      if (target === null) return false;
+    }
+    if (target === null) return false;
+    jumpTo(target);
+    return true;
+  }
+  function togglePlay() { if (video.paused) play(); else video.pause(); setTimeout(drawOsd, 120); }
+  function activate(id) {
+    if (id === 'chprev') skipChapter(-1) || jumpTo(0);
+    else if (id === 'back10') jumpBy(-10);
+    else if (id === 'play') togglePlay();
+    else if (id === 'fwd10') jumpBy(10);
+    else if (id === 'chnext') skipChapter(1) || nextLocal(1);
+    else if (id === 'tracks') openTracks();
+    else if (id === 'nextitem') nextLocal(1);
+  }
+
   function playLocal(entry, siblings) {
     var index = 0;
     for (var i = 0; i < siblings.length; i++) if (siblings[i].path === entry.path) index = i;
-    startLocal({ entry: entry, siblings: siblings, index: index });
+    var page = stack[stack.length - 1];
+    startLocal({ entry: entry, siblings: siblings, index: index, context: page && page.title || '' });
   }
   function startLocal(l) {
     stopPlayback();
     local = l;
     retries = 0;
-    $('osdTitle').textContent = l.entry.name.replace(/\.[^.]+$/, '');
+    l.menu = /^(makemenu|bdnav):/.test(l.entry.uri || '');
+    info = {}; btnsKey = ''; ticksKey = ''; drawn = {}; zone = 'bar';
+    var name = l.entry.name.replace(/\.[^.]+$/, '');
+    $('osdTitle').textContent = name;
+    $('osdSub').textContent = l.context && l.context !== name ? l.context : '';
+    buildBtns();
     setMode('playing');
     setState('idle');
     showOsd();
-    updateOsd();
     try {
       if (P.drives.attach) P.drives.attach(video, l.entry, playbackFailed);
       else { video.src = P.drives.url(l.entry.path); play(); }
@@ -1307,9 +1550,10 @@
   }
   function stopLocal(silent) {
     if (!local) return;
-    local = null;
     closeTracks();
     hideOsd();
+    local = null;
+    drawOsd();
     try { if (P.drives && P.drives.detach) P.drives.detach(video); } catch (e) { /* ignore */ }
     try { video.pause(); video.removeAttribute('src'); video.load(); } catch (e) { /* ignore */ }
   }
@@ -1322,21 +1566,8 @@
     if (!local) return false;
     var i = local.index + step;
     if (i < 0 || i >= local.siblings.length) return false;
-    startLocal({ entry: local.siblings[i], siblings: local.siblings, index: i });
+    startLocal({ entry: local.siblings[i], siblings: local.siblings, index: i, context: local.context });
     return true;
-  }
-  var lastSeek = 0, seekRun = 0;
-  function seekLocal(direction, big) {
-    var now = new Date().getTime();
-    seekRun = now - lastSeek < 700 ? seekRun + 1 : 0;
-    lastSeek = now;
-    var step = big ? 60 : seekRun > 6 ? 60 : seekRun > 2 ? 30 : 10;
-    var d = video.duration, t = video.currentTime + direction * step;
-    if (t < 0) t = 0;
-    if (d > 0 && d !== Infinity && t > d - 1) t = d - 1;
-    try { video.currentTime = t; } catch (e) { /* not seekable yet */ }
-    showOsd();
-    updateOsd();
   }
   // ---- audio and subtitle tracks (where the platform can switch them): Up or Menu while a film plays ----
   var trk = null;
@@ -1416,18 +1647,33 @@
 
   function localKey(key) {
     if (trk) { tracksKey(key); return; }
-    if ((key === 'up' || key === 'menu') && openTracks()) return;
+    if (key === 'stop') { stopLocalToList(); return; }
+    if (key === 'back') {
+      if (scrub !== null) { cancelScrub(); drawOsd(); armOsd(); return; }
+      if (osdOn && !local.menu) { hideOsd(); return; }
+      stopLocalToList();
+      return;
+    }
+    if (key === 'play') { play(); showOsd(); return; }
+    if (key === 'pause') { video.pause(); showOsd(); return; }
+    if (key === 'playpause') { togglePlay(); showOsd(); return; }
+    if (local.menu) { showOsd(); return; }          // (the disc's own menu takes the arrows and OK)
+    if (key === 'menu' || (key === 'up' && !(osdOn && zone === 'btns'))) { if (openTracks()) return; }
+    if (key === 'rewind' || key === 'forward') { scrubBy(key === 'rewind' ? -1 : 1, true); return; }
+    if (key === 'next') { if (!skipChapter(1)) nextLocal(1); return; }
+    if (key === 'prev') { if (!skipChapter(-1)) { if ((video.currentTime || 0) > 5) jumpTo(0); else nextLocal(-1); } return; }
+    if (osdOn && zone === 'btns') {
+      if (key === 'left' && btnIndex > 0) btnIndex--;
+      else if (key === 'right' && btnIndex < btns.length - 1) btnIndex++;
+      else if (key === 'up') zone = 'bar';
+      else if (key === 'enter') activate(btns[btnIndex]);
+      if (local) { drawOsd(); armOsd(); }
+      return;
+    }
+    if (key === 'left' || key === 'right') { scrubBy(key === 'left' ? -1 : 1, false); return; }
+    if (key === 'enter') { if (scrub !== null) commitScrub(); else { togglePlay(); showOsd(); } return; }
+    if (key === 'down') { showOsd('btns'); return; }
     showOsd();
-    if (key === 'enter' || key === 'playpause') { if (video.paused) play(); else video.pause(); }
-    else if (key === 'play') play();
-    else if (key === 'pause') video.pause();
-    else if (key === 'left') seekLocal(-1, false);
-    else if (key === 'right') seekLocal(1, false);
-    else if (key === 'rewind') seekLocal(-1, true);
-    else if (key === 'forward') seekLocal(1, true);
-    else if (key === 'next') nextLocal(1);
-    else if (key === 'prev') { if (video.currentTime > 5) { try { video.currentTime = 0; } catch (e) { /* ignore */ } } else nextLocal(-1); }
-    else if (key === 'back' || key === 'stop') stopLocalToList();
   }
 
   // ---- remote control ----

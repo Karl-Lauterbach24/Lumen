@@ -115,14 +115,78 @@ img { border: 0; }
 #help { position: absolute; left: 96px; bottom: 60px; font-size: 21px; color: #636a7a; }
 
 /* ---- playing: the controls on the picture ---- */
-#osd { position: absolute; left: 0; right: 0; bottom: 0; height: 250px; opacity: 0; -webkit-transition: opacity 260ms; transition: opacity 260ms;
-  background: -webkit-linear-gradient(top, rgba(0,0,0,0), rgba(0,0,0,0.78)); background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.78)); }
-#osd.on { opacity: 1; }
-#osdTitle { position: absolute; left: 96px; right: 96px; top: 96px; font-size: 38px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#osdRow { position: absolute; left: 96px; right: 96px; top: 158px; height: 50px; }
-#osdIcon { position: absolute; left: 0; top: 4px; width: 42px; height: 42px; }
-#osdBar { position: absolute; left: 72px; right: 230px; top: 21px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.22); }
-#osdFill { height: 8px; width: 0; border-radius: 4px; background: #7b93ff; }
+/* a shade at the top (title, clock) and at the foot (time bar, buttons); hidden, the picture is alone */
+#osd { position: absolute; left: 0; top: 0; right: 0; bottom: 0; opacity: 0; visibility: hidden;
+  -webkit-transition: opacity 240ms ease-out, visibility 0s 240ms; transition: opacity 240ms ease-out, visibility 0s 240ms; }
+#osd.on { opacity: 1; visibility: visible; -webkit-transition: opacity 180ms ease-out; transition: opacity 180ms ease-out; }
+#osdShadeTop { position: absolute; left: 0; right: 0; top: 0; height: 300px;
+  background: -webkit-linear-gradient(top, rgba(0,0,0,0.72), rgba(0,0,0,0)); background: linear-gradient(to bottom, rgba(0,0,0,0.72), rgba(0,0,0,0)); }
+#osdShadeBottom { position: absolute; left: 0; right: 0; bottom: 0; height: 480px;
+  background: -webkit-linear-gradient(top, rgba(0,0,0,0), rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.86)); background: linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.86)); }
+#osdTitle { position: absolute; left: 96px; right: 460px; top: 64px; font-size: 46px; line-height: 58px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 2px 12px rgba(0,0,0,0.6); }
+#osdSub { position: absolute; left: 96px; right: 460px; top: 126px; font-size: 26px; line-height: 34px; color: #c3c8d4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
+#osdClock { position: absolute; right: 96px; top: 64px; text-align: right; text-shadow: 0 2px 10px rgba(0,0,0,0.6); }
+#osdNow { font-size: 44px; line-height: 56px; font-weight: 300; }
+#osdEnd { font-size: 24px; line-height: 32px; color: #b4bac8; }
+
+/* paused: a large play sign in the middle; waiting for the stream: a ring that turns */
+#osdCenter { position: absolute; left: 50%; top: 50%; width: 148px; height: 148px; margin: -74px 0 0 -74px; border-radius: 74px;
+  background: rgba(10,12,20,0.55); opacity: 0; -webkit-transform: scale(0.85); transform: scale(0.85);
+  -webkit-transition: opacity 200ms, -webkit-transform 200ms; transition: opacity 200ms, transform 200ms; }
+#osdCenter img { position: absolute; left: 44px; top: 40px; width: 68px; height: 68px; }
+#osdCenter i { position: absolute; left: 10px; top: 10px; width: 120px; height: 120px; border-radius: 64px; border: 4px solid rgba(255,255,255,0.14);
+  border-top-color: #8ea2ff; display: none; -webkit-animation: osdspin 900ms linear infinite; animation: osdspin 900ms linear infinite; }
+#osd.paused #osdCenter, #osd.wait #osdCenter { opacity: 1; -webkit-transform: none; transform: none; }
+#osd.wait #osdCenter i { display: block; }
+#osd.wait #osdCenter img { display: none; }
+@-webkit-keyframes osdspin { to { -webkit-transform: rotate(360deg); } }
+@keyframes osdspin { to { transform: rotate(360deg); } }
+
+/* chapter, picture, sound, subtitles */
+#osdMeta { position: absolute; left: 96px; right: 96px; bottom: 262px; height: 40px; white-space: nowrap; overflow: hidden; }
+#osdMeta span { display: inline-block; margin-right: 12px; padding: 0 16px; height: 38px; line-height: 38px; border-radius: 10px;
+  font-size: 22px; color: #dfe3ec; background: rgba(255,255,255,0.12); }
+
+/* the time bar: what the cache holds (MakeMKV), what the player has, what has been seen, the chapters as gaps */
+#osdBar { position: absolute; left: 96px; right: 96px; bottom: 222px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.22);
+  -webkit-transition: height 150ms, bottom 150ms; transition: height 150ms, bottom 150ms; }
+#osd.z-bar #osdBar { height: 12px; bottom: 220px; border-radius: 6px; }
+#osdCache { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(142,162,255,0.22); border-radius: 6px; }
+#osdBuf { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(255,255,255,0.3); border-radius: 6px; }
+#osdFill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 6px;
+  background: -webkit-linear-gradient(left, #6b82ff, #9aaaff); background: linear-gradient(to right, #6b82ff, #9aaaff); }
+#osdGhost { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: rgba(255,255,255,0.55); }
+#osdTicks i { position: absolute; top: -1px; bottom: -1px; width: 4px; margin-left: -2px; background: rgba(5,6,10,0.9); }
+#osdKnob { position: absolute; top: 50%; left: 0; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 14px; background: #fff;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5); opacity: 0; -webkit-transform: scale(0.5); transform: scale(0.5);
+  -webkit-transition: opacity 150ms, -webkit-transform 150ms; transition: opacity 150ms, transform 150ms; }
+#osd.z-bar #osdKnob { opacity: 1; -webkit-transform: none; transform: none; }
+#osdBubble { position: absolute; bottom: 34px; left: 0; padding: 10px 20px; border-radius: 14px; background: rgba(14,16,26,0.94);
+  text-align: center; white-space: nowrap; -webkit-transform: translateX(-50%); transform: translateX(-50%);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.45); opacity: 0; -webkit-transition: opacity 150ms; transition: opacity 150ms; }
+#osd.scrub #osdBubble { opacity: 1; }
+#osdBubbleT { font-size: 34px; line-height: 40px; font-weight: 600; }
+#osdBubbleC { font-size: 20px; line-height: 26px; color: #a9b6ff; }
+#osdBubbleC:empty { display: none; }
+#osdTimes { position: absolute; left: 96px; right: 96px; bottom: 170px; height: 34px; font-size: 26px; line-height: 34px; color: #e6e9f0; }
+#osdLeft { position: absolute; right: 0; top: 0; color: #b4bac8; }
+
+/* the buttons: the one with the focus is filled, its name under the row */
+#osdBtns { position: absolute; left: 0; right: 0; bottom: 64px; height: 100px; text-align: center; white-space: nowrap; }
+.ob { display: inline-block; vertical-align: middle; position: relative; width: 80px; height: 80px; margin: 0 12px; border-radius: 40px;
+  background: rgba(255,255,255,0.1); -webkit-transition: background 120ms, -webkit-transform 120ms; transition: background 120ms, transform 120ms; }
+.ob img { position: absolute; left: 20px; top: 20px; width: 40px; height: 40px; }
+.ob.big { width: 100px; height: 100px; border-radius: 50px; background: rgba(255,255,255,0.16); }
+.ob.big img { left: 25px; top: 25px; width: 50px; height: 50px; }
+.ob.sel { background: #6b82ff; background: -webkit-linear-gradient(315deg, #7b93ff, #4a5ee0); background: linear-gradient(135deg, #7b93ff, #4a5ee0);
+  -webkit-transform: scale(1.12); transform: scale(1.12); box-shadow: 0 8px 26px rgba(75,95,230,0.45); }
+#osdHint { position: absolute; left: 0; right: 0; bottom: 22px; text-align: center; font-size: 23px; line-height: 30px; color: #dfe3ec; }
+
+/* the disc's own menu: only its name, for a moment */
+#osd.menu #osdMeta, #osd.menu #osdBar, #osd.menu #osdTimes, #osd.menu #osdBtns, #osd.menu #osdHint, #osd.menu #osdCenter, #osd.menu #osdShadeBottom, #osd.menu #osdEnd { display: none; }
+
 /* the audio and subtitle tracks of a film from a drive */
 #tracks { position: absolute; right: 72px; top: 72px; bottom: 72px; width: 660px; overflow: hidden; padding: 20px 0; border-radius: 26px;
   background: rgba(14,16,26,0.94); box-shadow: 0 20px 60px rgba(0,0,0,0.5); opacity: 0; visibility: hidden; -webkit-transition: opacity 200ms; transition: opacity 200ms; }
@@ -132,7 +196,6 @@ img { border: 0; }
 .trkRow.sel { background: linear-gradient(135deg, #6b82ff, #4a5ee0); }
 .trkRow.bad { color: #7d8290; }
 .trkOn { position: absolute; left: 24px; top: 15px; width: 30px; height: 30px; }
-#osdTime { position: absolute; right: 0; top: 8px; width: 200px; text-align: right; font-size: 26px; color: #eceef3; }
 
 #toast { position: absolute; left: 50%; bottom: 70px; padding: 14px 28px; min-height: 30px; line-height: 31px; font-size: 24px; border-radius: 29px; background: rgba(13,15,20,0.9);
   display: none; -webkit-transform: translateX(-50%); transform: translateX(-50%); white-space: normal; text-align: center; width: max-content; max-width: 82%; }
@@ -181,3 +244,6 @@ html.native .glow { -webkit-animation: none; animation: none; }
 .toast-fill { height: 100%; width: 0; background: #6f86ff; border-radius: 3px; transition: width .4s; }
 .toast-bar.running .toast-fill { width: 35%; position: absolute; left: -35%; animation: toastrun 1.6s ease-in-out infinite; }
 @keyframes toastrun { 0% { left: -35%; } 100% { left: 100%; } }
+
+/* a message while the controls are up: above them */
+#osd.on ~ #toast { bottom: 340px; }
