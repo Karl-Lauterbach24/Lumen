@@ -541,12 +541,21 @@
   })();
 
   // ---- screens ----
-  window.lumenToast = function (text, ms) { toast(text, ms); };
-  function toast(text, ms) {
+  // progress: undefined = none, a number 0..1 = that much done, -1 = running without a known end (an animated bar)
+  window.lumenToast = function (text, ms, progress) { toast(text, ms, progress); };
+  function toast(text, ms, progress) {
     var e = $('toast');
     e.textContent = text;
+    if (text && progress !== undefined && progress !== null) {
+      var bar = document.createElement('div'), fill = document.createElement('div');
+      bar.className = 'toast-bar' + (progress < 0 ? ' running' : '');
+      fill.className = 'toast-fill';
+      if (progress >= 0) fill.style.width = Math.round(Math.min(1, progress) * 100) + '%';
+      bar.appendChild(fill);
+      e.appendChild(bar);
+    }
     e.style.display = text ? 'block' : 'none';
-    if (text && ms) setTimeout(function () { if (e.textContent === text) e.style.display = 'none'; }, ms);
+    if (text && ms) setTimeout(function () { if (e.firstChild && e.firstChild.nodeValue === text) e.style.display = 'none'; }, ms);
   }
   function setMode(m) {
     mode = m;
