@@ -551,9 +551,11 @@
   // ---- screens ----
   // progress: undefined = none, a number 0..1 = that much done, -1 = running without a known end (an animated bar)
   window.lumenToast = function (text, ms, progress) { toast(text, ms, progress); };
+  var toastWaits = false;     // the message shown is a wait (a running bar): it goes once the film runs
   function toast(text, ms, progress) {
     var e = $('toast');
     e.textContent = text;
+    toastWaits = !!text && progress !== undefined && progress !== null && progress < 0;
     if (text && progress !== undefined && progress !== null) {
       var bar = document.createElement('div'), fill = document.createElement('div');
       bar.className = 'toast-bar' + (progress < 0 ? ' running' : '');
@@ -1259,7 +1261,10 @@
     lastTime = t;
   }
 
-  video.addEventListener('playing', function () { if (current) setState('playing'); if (local) drawOsd(); });
+  video.addEventListener('playing', function () {
+    if (current) setState('playing');
+    if (local) { drawOsd(); if (toastWaits) toast(''); }
+  });
   video.addEventListener('pause', function () { if (local) showOsd(); });
   video.addEventListener('waiting', function () { if (current) setState('buffering'); });
   video.addEventListener('timeupdate', function () { if (local) drawOsd(); });
