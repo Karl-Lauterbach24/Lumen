@@ -1024,5 +1024,10 @@
  "4K HDR TV (OLED)": "4K HDR-телевізор (OLED)",
  "HDR-Passthrough, TV übernimmt das Tonemapping. Bildrate wird angepasst.": "Пряме передавання HDR, тональне відображення виконує телевізор. Частота оновлення узгоджується.",
  "Leistung / Laptop": "Продуктивність / ноутбук",
- "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "Мінімальне навантаження на GPU: просте масштабування, без дебандингу, апаратне декодування."
+ "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "Мінімальне навантаження на GPU: просте масштабування, без дебандингу, апаратне декодування.",
+ "Pause": "Пауза",
+ "10 Sekunden zurück": "Назад на 10 секунд",
+ "10 Sekunden vor": "Вперед на 10 секунд",
+ "Kapitel %1 von %2": "Розділ %1 з %2",
+ "Ende %1": "Кінець о %1"
 }

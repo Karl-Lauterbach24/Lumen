@@ -1024,5 +1024,10 @@
  "4K HDR TV (OLED)": "4K HDR 电视 (OLED)",
  "HDR-Passthrough, TV übernimmt das Tonemapping. Bildrate wird angepasst.": "HDR 直通，由电视进行色调映射。匹配刷新率。",
  "Leistung / Laptop": "性能 / 笔记本",
- "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "最低 GPU 负载：简单缩放、不去色带、硬件解码。"
+ "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "最低 GPU 负载：简单缩放、不去色带、硬件解码。",
+ "Pause": "暂停",
+ "10 Sekunden zurück": "后退 10 秒",
+ "10 Sekunden vor": "前进 10 秒",
+ "Kapitel %1 von %2": "第 %1 章，共 %2 章",
+ "Ende %1": "%1 结束"
 }

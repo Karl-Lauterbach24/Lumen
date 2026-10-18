@@ -1024,5 +1024,10 @@
  "4K HDR TV (OLED)": "4K HDR-tv (OLED)",
  "HDR-Passthrough, TV übernimmt das Tonemapping. Bildrate wird angepasst.": "HDR-genomströmning, tv:n gör tonmappningen. Bildfrekvensen anpassas.",
  "Leistung / Laptop": "Prestanda / bärbar dator",
- "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "Minimal GPU-belastning: enkel skalning, ingen debanding, hårdvaruavkodning."
+ "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "Minimal GPU-belastning: enkel skalning, ingen debanding, hårdvaruavkodning.",
+ "Pause": "Paus",
+ "10 Sekunden zurück": "10 sekunder bakåt",
+ "10 Sekunden vor": "10 sekunder framåt",
+ "Kapitel %1 von %2": "Kapitel %1 av %2",
+ "Ende %1": "Slutar %1"
 }

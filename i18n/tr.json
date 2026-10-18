@@ -1024,5 +1024,10 @@
  "4K HDR TV (OLED)": "4K HDR TV (OLED)",
  "HDR-Passthrough, TV übernimmt das Tonemapping. Bildrate wird angepasst.": "HDR geçişi, ton eşlemeyi TV yapar. Yenileme hızı eşlenir.",
  "Leistung / Laptop": "Performans / dizüstü",
- "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "En düşük GPU yükü: basit ölçekleme, bant giderme yok, donanımsal kod çözme."
+ "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "En düşük GPU yükü: basit ölçekleme, bant giderme yok, donanımsal kod çözme.",
+ "Pause": "Duraklat",
+ "10 Sekunden zurück": "10 saniye geri",
+ "10 Sekunden vor": "10 saniye ileri",
+ "Kapitel %1 von %2": "Bölüm %1 / %2",
+ "Ende %1": "Bitiş %1"
 }

@@ -1024,5 +1024,10 @@
  "4K HDR TV (OLED)": "4K HDR TV (OLED)",
  "HDR-Passthrough, TV übernimmt das Tonemapping. Bildrate wird angepasst.": "HDR 패스스루, 톤 매핑은 TV가 합니다. 주사율을 맞춥니다.",
  "Leistung / Laptop": "성능 / 노트북",
- "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "GPU 부하 최소: 단순 스케일링, 디밴딩 없음, 하드웨어 디코딩."
+ "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "GPU 부하 최소: 단순 스케일링, 디밴딩 없음, 하드웨어 디코딩.",
+ "Pause": "일시정지",
+ "10 Sekunden zurück": "10초 뒤로",
+ "10 Sekunden vor": "10초 앞으로",
+ "Kapitel %1 von %2": "챕터 %1 / %2",
+ "Ende %1": "%1 종료"
 }

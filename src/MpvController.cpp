@@ -33,6 +33,9 @@ extern "C" {
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
 #include <QLocale>
 #include <QSet>
@@ -265,7 +268,12 @@ MpvController::MpvController(DisplayManager *displays, BlurayNav *nav, QObject *
             }
         });
         connect(m_nav, &BlurayNav::mvcChanged, this, &MpvController::onMvcChanged);
+        connect(m_nav, &BlurayNav::stateChanged, this, [this] { publishOsc(true); });
+        connect(m_nav, &BlurayNav::positionChanged, this, [this] { publishOsc(false); });
     }
+    for (auto signal : {&MpvController::tracksChanged, &MpvController::videoInfoChanged, &MpvController::idleChanged,
+                        &MpvController::mediaChanged, &MpvController::profileApplied})
+        connect(this, signal, this, [this] { publishOsc(true); });
 }
 
 void MpvController::onMvcChanged()
@@ -595,6 +603,116 @@ QString MpvController::writeInputConf() const
     return file;
 }
 
+// Die Steuerung im Player-Fenster: ein Lua-Skript für mpv (resources/mpv/lumen-osc.lua, im Programm eingebettet).
+// mpv lädt Skripte nur aus Dateien – es wird bei jedem Start neben input.conf geschrieben. LUMEN_NO_OSC=1: ohne.
+QString MpvController::writeOscScript() const
+{
+    if (qEnvironmentVariableIntValue("LUMEN_NO_OSC"))
+        return {};
+    QFile src(QStringLiteral(":/mpv/lumen-osc.lua"));
+    if (!src.open(QIODevice::ReadOnly))
+        return {};
+    const QByteArray code = src.readAll();
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    const QString file = dir + QStringLiteral("/lumen-osc.lua");
+    QFile f(file);
+    if (!f.open(QIODevice::ReadOnly) || f.readAll() != code) {
+        f.close();
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return {};
+        f.write(code);
+    }
+    return file;
+}
+
+// Die Texte der Steuerung in der Sprache der Oberfläche, und die Namen der Sprachen von Tonspuren
+void MpvController::publishOscText()
+{
+    if (!m_mpv)
+        return;
+    QJsonObject t{
+        {"play", LTR("Abspielen")}, {"pause", LTR("Pause")}, {"back10", LTR("10 Sekunden zurück")},
+        {"fwd10", LTR("10 Sekunden vor")}, {"chprev", LTR("Voriges Kapitel")}, {"chnext", LTR("Nächstes Kapitel")},
+        {"audio", LTR("Tonspur")}, {"subs", LTR("Untertitel")}, {"off", LTR("Aus")}, {"fullscreen", LTR("Vollbild")},
+        {"chapter", LTR("Kapitel %1")}, {"chapterOf", LTR("Kapitel %1 von %2")}, {"endsAt", LTR("Ende %1")},
+        {"stop", LTR("Stopp")},
+    };
+    QJsonObject langs;
+    for (const char *code : {"ger", "deu", "eng", "fre", "fra", "spa", "ita", "por", "dut", "nld", "pol", "cze", "ces", "rus", "ukr",
+                             "tur", "swe", "nor", "dan", "fin", "hun", "gre", "ell", "jpn", "chi", "zho", "kor", "ara", "heb", "hin", "tha"}) {
+        const QLocale::Language l = QLocale::codeToLanguage(QString::fromLatin1(code), QLocale::ISO639Part2);
+        if (l == QLocale::AnyLanguage)
+            continue;
+        // im eigenen Namen der Sprache ("English", "Deutsch", "français")
+        QString name = QLocale(l).nativeLanguageName();
+        if (name.isEmpty())
+            continue;
+        name[0] = name[0].toUpper();
+        langs[QString::fromLatin1(code)] = name;
+    }
+    t["langs"] = langs;
+    mpv_set_property_string(m_mpv, "user-data/lumen/osc-text", QJsonDocument(t).toJson(QJsonDocument::Compact).constData());
+}
+
+// Was die Steuerung im Player-Fenster von Lumen braucht und mpv nicht kennt: bei einer Disc mit Menüs (libbluray,
+// libdvdnav) Zeitleiste und Kapitel und ob ein Menü offen ist; die Spuren so beschriftet und gefiltert wie in Lumen.
+// [now] false: höchstens viermal je Sekunde (die Position einer Disc mit Menüs)
+void MpvController::publishOsc(bool now)
+{
+    if (!m_mpv)
+        return;
+    const qint64 t = m_clock.elapsed();
+    if (!now && t - m_oscPublished < 250)
+        return;
+    m_oscPublished = t;
+    QJsonObject o;
+    const bool dvd = m_dvd && m_dvd->active();
+    const bool nav = !dvd && m_nav && m_nav->active();
+    o["kiosk"] = m_kiosk;
+    if (dvd || nav) {
+        o["nav"] = true;
+        o["menu"] = dvd ? m_dvd->menuVisible() : m_nav->menuVisible();
+        o["position"] = dvd ? m_dvd->position() : m_nav->position();
+        o["duration"] = dvd ? m_dvd->duration() : m_nav->duration();
+        o["chapters"] = QJsonArray::fromVariantList(dvd ? m_dvd->chapters() : m_nav->chapters());
+    } else if (m_vcd && m_vcd->active()) {
+        o["menu"] = true; // eine Video-CD mit Menü: ihre Tasten gehören dem Menü
+    }
+    const auto tracks = [](const QVariantList &l, int sel) {
+        QJsonArray a;
+        for (const auto &v : l) {
+            const QVariantMap m = v.toMap();
+            a.append(QJsonObject{{"id", m.value("id").toInt()}, {"label", m.value("label").toString()},
+                                 {"selected", m.value("id").toInt() == sel}});
+        }
+        return a;
+    };
+    o["audio"] = tracks(m_audioTracks, m_aid);
+    o["subs"] = tracks(m_subtitleTracks, m_sid);
+    // das Bild in einem Wort: 2160p · HDR10 · HEVC
+    const int h = m_videoInfo.value("height").toInt();
+    QStringList video;
+    if (h > 0)
+        video << (h >= 2000 ? QStringLiteral("2160p") : h >= 1000 ? QStringLiteral("1080p") : h >= 700 ? QStringLiteral("720p") : QStringLiteral("%1p").arg(h));
+    const QString gamma = m_videoInfo.value("gamma").toString();
+    if (m_videoInfo.value("dolbyVision").toInt() > 0)
+        video << QStringLiteral("Dolby Vision");
+    else if (gamma == QLatin1String("pq"))
+        video << QStringLiteral("HDR10");
+    else if (gamma == QLatin1String("hlg"))
+        video << QStringLiteral("HLG");
+    const QString codec = m_videoInfo.value("codec").toString();
+    if (!codec.isEmpty())
+        video << codec;
+    o["video"] = video.join(QStringLiteral(" · "));
+    const QByteArray json = QJsonDocument(o).toJson(QJsonDocument::Compact);
+    if (json == m_oscLast)
+        return;
+    m_oscLast = json;
+    mpv_set_property_string(m_mpv, "user-data/lumen/osc", json.constData());
+}
+
 bool MpvController::create(const QVariantMap &options)
 {
     m_mpv = mpv_create();
@@ -653,6 +771,12 @@ bool MpvController::create(const QVariantMap &options)
     };
     for (auto it = base.cbegin(); it != base.cend(); ++it)
         setOptionRaw(it.key(), it.value(), true);
+    // Lumens Steuerung im Player-Fenster (Titel, Zeitleiste mit Kapiteln, Knöpfe) statt mpvs eigenem OSC
+    const QString osc = writeOscScript();
+    m_osc = !osc.isEmpty();
+    QStringList scripts; // (dazu die Skripte der Plugins: eine Liste, getrennt wie Pfade des Systems)
+    if (m_osc)
+        scripts << osc;
     // Lautstärke und Nachtmodus der letzten Sitzung
     {
         QSettings s;
@@ -666,11 +790,21 @@ bool MpvController::create(const QVariantMap &options)
         setOptionRaw(QStringLiteral("script-opts"), QStringLiteral("ytdl_hook-ytdl_path=") + m_ytdl, true);
     for (const auto &provider : m_optionProviders) {
         const QVariantMap extra = provider();
-        for (auto it = extra.cbegin(); it != extra.cend(); ++it)
+        for (auto it = extra.cbegin(); it != extra.cend(); ++it) {
+            if (it.key() == QLatin1String("scripts"))
+                scripts << it.value().toString().split(QDir::listSeparator(), Qt::SkipEmptyParts);
+            else
+                setOptionRaw(it.key(), it.value(), true);
+        }
+    }
+    for (auto it = options.cbegin(); it != options.cend(); ++it) {
+        if (it.key() == QLatin1String("scripts"))
+            scripts << it.value().toString().split(QDir::listSeparator(), Qt::SkipEmptyParts);
+        else
             setOptionRaw(it.key(), it.value(), true);
     }
-    for (auto it = options.cbegin(); it != options.cend(); ++it)
-        setOptionRaw(it.key(), it.value(), true);
+    if (!scripts.isEmpty())
+        setOptionRaw(QStringLiteral("scripts"), scripts.join(QDir::listSeparator()), true);
 
     // Entwickler-Hilfe: LUMEN_MPV_LOG=warn|info|v|debug gibt mpv-Meldungen aus
     const QByteArray logLevel = qgetenv("LUMEN_MPV_LOG");
@@ -684,6 +818,8 @@ bool MpvController::create(const QVariantMap &options)
         return false;
     }
     observeAll();
+    publishOscText();
+    publishOsc(true);
     // LumenOS: bevor mpv Bild und Ton öffnet – die Betriebsart des Bildschirms für die Bildrate des Films
     // (direkte Ausgabe), und der Tonausgang bekommt einen neuen Versuch
     if (m_direct || m_kiosk)
@@ -1177,6 +1313,30 @@ void MpvController::syncDiscTracks()
 
 void MpvController::handleClientMessage(const QStringList &args)
 {
+    // die Steuerung im Player-Fenster: Spulen, Kapitel, Spuren – über die Navigation der Disc, wo eine läuft
+    if (args.value(0) == QLatin1String("lumen-osc")) {
+        const QString what = args.value(1);
+        const double x = args.value(2).toDouble();
+        const bool dvd = m_dvd && m_dvd->active();
+        const bool nav = !dvd && m_nav && m_nav->active();
+        if (what == QLatin1String("seek")) {
+            if (dvd) m_dvd->seek(x); else if (nav) m_nav->seek(x); else seek(x, false);
+        } else if (what == QLatin1String("skip")) {
+            if (dvd) m_dvd->seekRelative(x); else if (nav) m_nav->seekRelative(x); else seek(x, true);
+        } else if (what == QLatin1String("chapter")) {
+            if (x > 0) { if (dvd) m_dvd->nextChapter(); else if (nav) m_nav->nextChapter(); else nextChapter(); }
+            else { if (dvd) m_dvd->prevChapter(); else if (nav) m_nav->prevChapter(); else prevChapter(); }
+        } else if (what == QLatin1String("aid")) {
+            setAudioId(int(x));
+        } else if (what == QLatin1String("sid")) {
+            setSubtitleId(int(x));
+        } else if (what == QLatin1String("fullscreen")) {
+            toggleFullscreen();
+        } else if (what == QLatin1String("stop")) {
+            stop();
+        }
+        return;
+    }
     // LumenOS: "Zurück" im Player-Fenster beendet die Wiedergabe
     if (args.value(0) == QLatin1String("lumen-os")) {
         if (args.value(1) == QLatin1String("back"))
@@ -1544,6 +1704,8 @@ void MpvController::setDvdNav(DvdNav *dvd)
         m_dvd->attach(m_mpv);
     connect(m_dvd, &DvdNav::audioPidSelected, this, [this](int id) { selectTrackByPid(QStringLiteral("audio"), id); });
     connect(m_dvd, &DvdNav::streamsChanged, this, [this] { rebuildTracks(m_rawTracks); });
+    connect(m_dvd, &DvdNav::stateChanged, this, [this] { publishOsc(true); });
+    connect(m_dvd, &DvdNav::positionChanged, this, [this] { publishOsc(false); });
 }
 
 // --------------------------------------------------------------------------
@@ -1642,19 +1804,20 @@ void MpvController::stop()
 void MpvController::seek(double seconds, bool relative)
 {
     holdGovernor(3);
-    command({"osd-msg-bar", "seek", QString::number(seconds, 'f', 3), relative ? "relative" : "absolute"});
+    command({m_osc ? "osd-auto" : "osd-msg-bar", "seek", QString::number(seconds, 'f', 3), relative ? "relative" : "absolute"});
 }
 
 void MpvController::seekExact(double seconds)
 {
     holdGovernor(3);
-    command({"osd-msg-bar", "seek", QString::number(seconds, 'f', 3), "absolute+exact"});
+    command({m_osc ? "osd-auto" : "osd-msg-bar", "seek", QString::number(seconds, 'f', 3), "absolute+exact"});
 }
 
 void MpvController::frameStep() { command({"frame-step"}); }
 void MpvController::frameBackStep() { command({"frame-back-step"}); }
-void MpvController::nextChapter() { command({"osd-msg", "add", "chapter", "1"}); }
-void MpvController::prevChapter() { command({"osd-msg", "add", "chapter", "-1"}); }
+// (mit Lumens Steuerung im Fenster zeigt die Zeit und Kapitel; ohne sie mpvs eigene Meldung)
+void MpvController::nextChapter() { command({m_osc ? "osd-auto" : "osd-msg", "add", "chapter", "1"}); }
+void MpvController::prevChapter() { command({m_osc ? "osd-auto" : "osd-msg", "add", "chapter", "-1"}); }
 void MpvController::setChapter(int index) { setOptionRaw(QStringLiteral("chapter"), index, false); }
 void MpvController::setTitle(int index) { setOptionRaw(QStringLiteral("disc-title"), index, false); }
 void MpvController::cycleAbLoop() { command({"osd-msg", "ab-loop"}); }

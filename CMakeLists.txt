@@ -313,6 +313,10 @@ qt_add_resources(lumen "lumen_receiver" PREFIX "/receiver" BASE "${CMAKE_CURRENT
     FILES receiver/index.html receiver/receiver.js receiver/receiver.css receiver/icon.png
           receiver/hls.light.min.js)
 
+# Lumens Steuerung im Player-Fenster: ein Lua-Skript für mpv (MpvController schreibt es beim Start in die App-Daten)
+qt_add_resources(lumen "lumen_mpv_scripts" PREFIX "/mpv" BASE "${CMAKE_CURRENT_SOURCE_DIR}/resources/mpv"
+    FILES resources/mpv/lumen-osc.lua)
+
 function(lumen_optional_libs target)
     if(LUMEN_HAVE_OPENSSL)
         target_link_libraries(${target} PRIVATE OpenSSL::Crypto)

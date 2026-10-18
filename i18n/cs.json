@@ -1024,5 +1024,10 @@
  "4K HDR TV (OLED)": "4K HDR televizor (OLED)",
  "HDR-Passthrough, TV übernimmt das Tonemapping. Bildrate wird angepasst.": "Průchod HDR, mapování tónů provádí televizor. Obnovovací frekvence se přizpůsobuje.",
  "Leistung / Laptop": "Výkon / notebook",
- "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "Minimální zátěž GPU: jednoduché škálování, bez debandingu, hardwarové dekódování."
+ "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "Minimální zátěž GPU: jednoduché škálování, bez debandingu, hardwarové dekódování.",
+ "Pause": "Pozastavit",
+ "10 Sekunden zurück": "O 10 sekund zpět",
+ "10 Sekunden vor": "O 10 sekund vpřed",
+ "Kapitel %1 von %2": "Kapitola %1 z %2",
+ "Ende %1": "Konec v %1"
 }

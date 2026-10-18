@@ -1024,5 +1024,10 @@
  "4K HDR TV (OLED)": "TV 4K HDR (OLED)",
  "HDR-Passthrough, TV übernimmt das Tonemapping. Bildrate wird angepasst.": "HDR passthrough, le téléviseur se charge du tone mapping. La fréquence est adaptée.",
  "Leistung / Laptop": "Performance / portable",
- "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "Charge GPU minimale : mise à l'échelle simple, pas de debanding, décodage matériel."
+ "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "Charge GPU minimale : mise à l'échelle simple, pas de debanding, décodage matériel.",
+ "Pause": "Pause",
+ "10 Sekunden zurück": "Reculer de 10 secondes",
+ "10 Sekunden vor": "Avancer de 10 secondes",
+ "Kapitel %1 von %2": "Chapitre %1 sur %2",
+ "Ende %1": "Fin à %1"
 }

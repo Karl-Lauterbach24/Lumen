@@ -1024,5 +1024,10 @@
  "4K HDR TV (OLED)": "4K HDR テレビ (OLED)",
  "HDR-Passthrough, TV übernimmt das Tonemapping. Bildrate wird angepasst.": "HDR パススルー、トーンマッピングはテレビ側。リフレッシュレートを合わせます。",
  "Leistung / Laptop": "パフォーマンス / ノート PC",
- "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "GPU 負荷を最小に: 簡易スケーリング、デバンディングなし、ハードウェアデコード。"
+ "Minimale GPU-Last: einfache Skalierung, kein Debanding, Hardware-Decoding.": "GPU 負荷を最小に: 簡易スケーリング、デバンディングなし、ハードウェアデコード。",
+ "Pause": "一時停止",
+ "10 Sekunden zurück": "10秒戻る",
+ "10 Sekunden vor": "10秒進む",
+ "Kapitel %1 von %2": "チャプター %1 / %2",
+ "Ende %1": "終了 %1"
 }

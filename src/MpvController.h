@@ -350,6 +350,9 @@ private:
     void onContentFormatKnown();
     void setError(const QString &e);
     QString writeInputConf() const;
+    QString writeOscScript() const;
+    void publishOscText();
+    void publishOsc(bool now = true);
     void handleClientMessage(const QStringList &args);
     void selectTrackByPid(const QString &type, int pid);
     void syncDiscTracks();
@@ -519,6 +522,9 @@ private:
     Tuning::Governor m_governor;
     QTimer m_tuneTimer;
     QElapsedTimer m_clock;
+    qint64 m_oscPublished = -1000; // die Steuerung im Player-Fenster (lumen-osc.lua): zuletzt mitgeteilt (m_clock, ms)
+    QByteArray m_oscLast;
+    bool m_osc = false;            // die Steuerung im Fenster ist geladen (sie zeigt Spulen und Kapitel selbst)
     QString m_tuningStatus;
     bool m_learnedLoaded = false;
     double m_tickPosition = -1;
