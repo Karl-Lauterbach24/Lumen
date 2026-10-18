@@ -1282,7 +1282,7 @@
   // Hidden while the film runs; any key brings them. Two rows take the focus: the time bar (Left/Right look for a
   // place, OK or a moment without a key jumps there) and the buttons under it (Down). Up opens the audio and subtitle tracks;
   // the first Back takes the controls away, the next one ends the film.
-  var osdOn = false, osdTimer = null, zone = 'bar', btns = [], btnsKey = '', btnIndex = 0;
+  var osdOn = false, osdTimer = null, zone = 'btns', btns = [], btnNodes = [], btnsKey = '', btnIndex = 0;
   var scrub = null, scrubEdge = false, scrubTimer = null, scrubLast = 0, scrubStart = 0, flashUntil = 0;
   var info = {}, infoTimer = null, ticksKey = '', drawn = {};
   var BTN_ICON = { chprev: 'chprev', back10: 'back10', fwd10: 'fwd10', chnext: 'chnext', tracks: 'subtitles', nextitem: 'episodes' };
@@ -1300,7 +1300,7 @@
 
   function showOsd(z) {
     if (!local) return;
-    if (!osdOn) zone = 'bar';
+    if (!osdOn) { zone = 'btns'; btnIndex = Math.max(0, btns.indexOf('play')); }
     if (z) zone = z;
     osdOn = true;
     drawOsd();
@@ -1310,7 +1310,7 @@
   function armOsd() {
     clearTimeout(osdTimer);
     osdTimer = setTimeout(function () {
-      if (local && !video.paused && scrub === null) hideOsd(); else armOsd();
+      if (local && scrub === null && !trk) hideOsd(); else armOsd();
     }, local && local.menu ? 3500 : 5000);
   }
   function hideOsd() {
@@ -1359,8 +1359,10 @@
 
   function buildBtns() {
     if (!local) return;
+    // on the left the tracks, in the middle the film, on the right the next title
     var hasCh = chapterList().length > 1, canSeek = seekable(), list = [];
     if (!local.menu) {
+      if (P.drives && P.drives.tracks) list.push('tracks');
       if (hasCh) list.push('chprev');
       if (canSeek) list.push('back10');
     }
@@ -1368,7 +1370,6 @@
     if (!local.menu) {
       if (canSeek) list.push('fwd10');
       if (hasCh) list.push('chnext');
-      if (P.drives && P.drives.tracks) list.push('tracks');
       if (local.index < local.siblings.length - 1) list.push('nextitem');
     }
     var key = list.join(',');
@@ -1378,16 +1379,22 @@
     btnIndex = list.indexOf(had) >= 0 ? list.indexOf(had) : list.indexOf('play');
     var box = $('osdBtns');
     box.innerHTML = '';
+    var groups = { l: document.createElement('div'), m: document.createElement('div'), r: document.createElement('div') };
+    groups.l.className = 'obl'; groups.m.className = 'obm'; groups.r.className = 'obr';
+    btnNodes = [];
     for (var i = 0; i < list.length; i++) {
       var b = document.createElement('div');
       b.className = 'ob' + (list[i] === 'play' ? ' big' : '');
       var img = document.createElement('img');
       img.src = 'ic-' + (BTN_ICON[list[i]] || 'play') + '.svg';
       b.appendChild(img);
-      box.appendChild(b);
+      groups[btnSide(list[i])].appendChild(b);
+      btnNodes.push(b);
     }
+    box.appendChild(groups.l); box.appendChild(groups.m); box.appendChild(groups.r);
     drawn.btnSel = -1; drawn.playIcon = '';
   }
+  function btnSide(id) { return id === 'tracks' ? 'l' : id === 'nextitem' ? 'r' : 'm'; }
   function btnLabel(id) {
     if (id === 'play') return tr(video.paused ? 'bPlay' : 'bPause');
     if (id === 'nextitem') return tr('bNext') + ': ' + local.siblings[local.index + 1].name.replace(/\.[^.]+$/, '');
@@ -1452,7 +1459,7 @@
       for (var j = 0; j < meta.length; j++) { var c = document.createElement('span'); c.textContent = meta[j]; mb.appendChild(c); }
     }
     // the buttons
-    var nodes = $('osdBtns').childNodes, sel = zone === 'btns' ? btnIndex : -1;
+    var nodes = btnNodes, sel = zone === 'btns' ? btnIndex : -1;
     if (drawn.btnSel !== sel) {
       drawn.btnSel = sel;
       for (var b = 0; b < nodes.length; b++) nodes[b].className = 'ob' + (btns[b] === 'play' ? ' big' : '') + (b === sel ? ' sel' : '');
@@ -1460,6 +1467,9 @@
     var pi = video.paused ? 'play' : 'pause', pIdx = btns.indexOf('play');
     if (drawn.playIcon !== pi && pIdx >= 0 && nodes[pIdx]) { drawn.playIcon = pi; nodes[pIdx].firstChild.src = 'ic-' + pi + '.svg'; }
     setText('osdHint', zone === 'btns' && btns[btnIndex] ? btnLabel(btns[btnIndex]) : '');
+    // (the name under its button: on the left, in the middle or on the right)
+    var side = zone === 'btns' && btns[btnIndex] ? btnSide(btns[btnIndex]) : 'm';
+    if (drawn.hintSide !== side) { drawn.hintSide = side; $('osdHint').className = side; }
   }
 
   // ---- looking for a place: the steps grow while the key is held, the jump comes when it is let go ----
@@ -1650,6 +1660,9 @@
     } else if (key === 'stop') { closeTracks(); stopLocalToList(); }
   }
 
+  // The controls are hidden while the film runs. OK brings them and pauses, Up brings them; Left/Right look for a place
+  // at once. Shown: Left/Right go through the buttons, OK presses one, Up leads to the time bar (Down back), Down hides
+  // them; without a key they go after 5 seconds. Back hides them, or (hidden) ends the film.
   function localKey(key) {
     if (trk) { tracksKey(key); return; }
     if (key === 'stop') { stopLocalToList(); return; }
@@ -1663,22 +1676,30 @@
     if (key === 'pause') { video.pause(); showOsd(); return; }
     if (key === 'playpause') { togglePlay(); showOsd(); return; }
     if (local.menu) { showOsd(); return; }          // (the disc's own menu takes the arrows and OK)
-    if (key === 'menu' || (key === 'up' && !(osdOn && zone === 'btns'))) { if (openTracks()) return; }
+    if (key === 'menu') { if (openTracks()) return; }
     if (key === 'rewind' || key === 'forward') { scrubBy(key === 'rewind' ? -1 : 1, true); return; }
     if (key === 'next') { if (!skipChapter(1)) nextLocal(1); return; }
     if (key === 'prev') { if (!skipChapter(-1)) { if ((video.currentTime || 0) > 5) jumpTo(0); else nextLocal(-1); } return; }
-    if (osdOn && zone === 'btns') {
+    if (!osdOn) {
+      if (key === 'enter') { if (!video.paused) video.pause(); showOsd('btns'); }
+      else if (key === 'up') showOsd('btns');
+      else if (key === 'left' || key === 'right') scrubBy(key === 'left' ? -1 : 1, false);
+      return;
+    }
+    if (zone === 'btns') {
       if (key === 'left' && btnIndex > 0) btnIndex--;
       else if (key === 'right' && btnIndex < btns.length - 1) btnIndex++;
       else if (key === 'up') zone = 'bar';
+      else if (key === 'down') { hideOsd(); return; }
       else if (key === 'enter') activate(btns[btnIndex]);
       if (local) { drawOsd(); armOsd(); }
       return;
     }
+    // the time bar
     if (key === 'left' || key === 'right') { scrubBy(key === 'left' ? -1 : 1, false); return; }
-    if (key === 'enter') { if (scrub !== null) commitScrub(); else { togglePlay(); showOsd(); } return; }
-    if (key === 'down') { showOsd('btns'); return; }
-    showOsd();
+    if (key === 'enter') { if (scrub !== null) commitScrub(); else togglePlay(); armOsd(); return; }
+    if (key === 'down') { if (scrub !== null) commitScrub(); zone = 'btns'; drawOsd(); armOsd(); return; }
+    armOsd();
   }
 
   // ---- remote control ----
